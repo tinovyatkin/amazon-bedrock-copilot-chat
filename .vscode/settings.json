@@ -1,0 +1,19 @@
+{
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "esbenp.prettier-vscode",
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit"
+	},
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"typescript.enablePromptUseWorkspaceTsdk": true,
+	"files.exclude": {
+		"out": false,
+		"node_modules": true,
+		".vscode-test": true
+	},
+	"search.exclude": {
+		"out": true,
+		"node_modules": true,
+		".vscode-test": true
+	}
+}
