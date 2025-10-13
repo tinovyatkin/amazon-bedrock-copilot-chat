@@ -1,4 +1,8 @@
-import { BedrockClient, ListFoundationModelsCommand, ListInferenceProfilesCommand } from "@aws-sdk/client-bedrock";
+import {
+	BedrockClient,
+	ListFoundationModelsCommand,
+	paginateListInferenceProfiles,
+} from "@aws-sdk/client-bedrock";
 import {
 	BedrockRuntimeClient,
 	ConverseStreamCommand,
@@ -68,13 +72,14 @@ export class BedrockAPIClient {
 				credentials: this.getCredentials(),
 			});
 
-			const command = new ListInferenceProfilesCommand({});
-			const response = await client.send(command);
-
 			const profileIds = new Set<string>();
-			for (const profile of response.inferenceProfileSummaries ?? []) {
-				if (profile.inferenceProfileId) {
-					profileIds.add(profile.inferenceProfileId);
+			const paginator = paginateListInferenceProfiles({ client }, {});
+
+			for await (const page of paginator) {
+				for (const profile of page.inferenceProfileSummaries ?? []) {
+					if (profile.inferenceProfileId) {
+						profileIds.add(profile.inferenceProfileId);
+					}
 				}
 			}
 
