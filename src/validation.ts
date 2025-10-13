@@ -1,30 +1,31 @@
-import * as vscode from "vscode";
+import { Message as BedrockMessage } from "@aws-sdk/client-bedrock-runtime";
 
 /**
- * Validate the request before sending to Bedrock
+ * Validate converted Bedrock messages before sending to API
  * Bedrock Converse API requires:
- * - First message must be User role
- * - Messages must alternate between User and Assistant roles
+ * - At least one message
+ * - First message must be user role
+ * - Messages must alternate between user and assistant roles
  */
-export function validateRequest(messages: readonly vscode.LanguageModelChatMessage[]): void {
+export function validateBedrockMessages(messages: BedrockMessage[]): void {
   if (messages.length === 0) {
     throw new Error("Messages array cannot be empty");
   }
 
-  // Bedrock requires first message to be User role
-  if (messages[0].role !== vscode.LanguageModelChatMessageRole.User) {
+  // Bedrock requires first message to be user role
+  if (messages[0].role !== "user") {
     throw new Error("First message must be User role");
   }
 
   // Validate alternating user/assistant pattern
-  let lastRole: undefined | vscode.LanguageModelChatMessageRole;
+  let lastRole: string | undefined;
   for (const msg of messages) {
     const currentRole = msg.role;
 
     // Check for consecutive messages with same role
     if (lastRole === currentRole) {
       throw new Error(
-        `Invalid message sequence: consecutive ${currentRole === vscode.LanguageModelChatMessageRole.User ? "User" : "Assistant"} messages`,
+        `Invalid message sequence: consecutive ${currentRole === "user" ? "User" : "Assistant"} messages`,
       );
     }
     lastRole = currentRole;

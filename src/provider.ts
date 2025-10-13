@@ -15,7 +15,7 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getBedrockSettings } from "./settings";
 import { StreamProcessor } from "./stream-processor";
-import { validateRequest } from "./validation";
+import { validateBedrockMessages } from "./validation";
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_CONTEXT_LENGTH = 200000;
@@ -179,7 +179,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       });
 
       const converted = convertMessages(messages, model.id);
-      validateRequest(messages);
 
       logger.log(
         "[Bedrock Model Provider] Converted to Bedrock messages:",
@@ -193,6 +192,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         });
         logger.log(`[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`, contentTypes);
       });
+
+      // Validate the converted Bedrock messages, not the original VSCode messages
+      // System messages are extracted separately and don't count in the alternating pattern
+      validateBedrockMessages(converted.messages);
 
       const toolConfig = convertTools(options, model.id);
 

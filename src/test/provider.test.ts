@@ -1,7 +1,6 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 import { BedrockChatModelProvider } from "../provider";
-import { validateRequest } from "../validation";
 import { convertTools } from "../converters/tools";
 import { convertMessages } from "../converters/messages";
 
@@ -126,24 +125,7 @@ suite("HuggingFace Chat Provider Extension", () => {
 
 	});
 
-	suite.skip("utils/validation", () => {
-		test("validateRequest enforces tool result pairing", () => {
-			const callId = "xyz";
-			const toolCall = new vscode.LanguageModelToolCallPart(callId, "toolA", { q: 1 });
-			const toolRes = new vscode.LanguageModelToolResultPart(callId, [new vscode.LanguageModelTextPart("ok")]);
-			const valid: vscode.LanguageModelChatMessage[] = [
-				{ content: [toolCall], name: undefined, role: vscode.LanguageModelChatMessageRole.Assistant },
-				{ content: [toolRes], name: undefined, role: vscode.LanguageModelChatMessageRole.User },
-			];
-			assert.doesNotThrow(() => validateRequest(valid));
-
-			const invalid: vscode.LanguageModelChatMessage[] = [
-				{ content: [toolCall], name: undefined, role: vscode.LanguageModelChatMessageRole.Assistant },
-				{ content: [new vscode.LanguageModelTextPart("missing")], name: undefined, role: vscode.LanguageModelChatMessageRole.User },
-			];
-			assert.throws(() => validateRequest(invalid));
-		});
-	});
+	// Note: validation tests skipped - validateBedrockMessages now validates converted messages
 
 
 });
