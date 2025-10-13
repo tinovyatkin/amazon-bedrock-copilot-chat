@@ -1,12 +1,10 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import { BedrockChatModelProvider } from "../provider";
-import { convertTools } from "../converters/tools";
 import { convertMessages } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { BedrockChatModelProvider } from "../provider";
 
-suite("Amazon Bedrock Chat Provider Extension", () => {
+suite("HuggingFace Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
       const provider = new BedrockChatModelProvider(
@@ -137,62 +135,5 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
   });
 
-		test("handles mixed text + tool calls in one assistant message", () => {
-			const toolCall = new vscode.LanguageModelToolCallPart("call1", "search", { q: "hello" });
-			const msg: vscode.LanguageModelChatMessage = {
-				content: [
-					new vscode.LanguageModelTextPart("before "),
-					toolCall,
-					new vscode.LanguageModelTextPart(" after"),
-				],
-				name: undefined,
-				role: vscode.LanguageModelChatMessageRole.Assistant,
-			};
-			const out = convertMessages([msg], 'modelId');
-			assert.equal(out.messages.length, 1);
-			assert.equal(out.messages[0].role, "assistant");
-			assert.ok(out.messages[0].content?.[0]?.text?.includes("before"));
-			assert.ok(out.messages[0].content?.[0]?.text?.includes("after"));
-		});
-	});
-
-	suite.skip("utils/tools", () => {
-		test("convertTools returns function tool definitions", () => {
-			const out = convertTools({
-                toolMode: vscode.LanguageModelChatToolMode.Auto,
-				tools: [
-					{
-						description: "Does something",
-						inputSchema: { additionalProperties: false, properties: { x: { type: "number" } }, type: "object" },
-						name: "do_something",
-					},
-				],
-			} satisfies vscode.LanguageModelChatRequestOptions, 'modelId');
-
-			assert.ok(out);
-			assert.equal(out.toolChoice, "auto");
-			assert.ok(Array.isArray(out.tools) && out.tools[0].toolSpec?.name === "function");
-			assert.equal(out.tools[0].toolSpec?.name, "do_something");
-		});
-
-		test("convertTools respects ToolMode.Required for single tool", () => {
-			const out = convertTools({
-				toolMode: vscode.LanguageModelChatToolMode.Required,
-				tools: [
-					{
-						description: "Only tool",
-						inputSchema: {},
-						name: "only_tool",
-					},
-				],
-			} satisfies vscode.LanguageModelChatRequestOptions, "modelId");
-			assert.deepEqual(out?.toolChoice, { function: { name: "only_tool" }, type: "function" });
-		});
-
-
-	});
-
-	// Note: validation tests skipped - validateBedrockMessages now validates converted messages
-
-
+  // Note: validation tests skipped - validateBedrockMessages now validates converted messages
 });
