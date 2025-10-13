@@ -9,6 +9,7 @@ import {
   Progress,
 } from "vscode";
 
+import { hasAwsCredentials } from "./aws-profiles";
 import { BedrockAPIClient } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
@@ -73,6 +74,28 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     _token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
     const settings = getBedrockSettings(this.globalState);
+
+    // Check if this appears to be a first run (no profile configured and using default region)
+    // Only prompt if credentials are also not available
+    const isFirstRun = settings.region === "us-east-1" && !settings.profile && !hasAwsCredentials();
+
+    if (isFirstRun && !options.silent) {
+      const action = await vscode.window.showInformationMessage(
+        "Amazon Bedrock integration requires AWS credentials. Would you like to configure your AWS profile and region first?",
+        "Configure Settings",
+        "Use Default Credentials",
+      );
+
+      if (action === "Configure Settings") {
+        await vscode.commands.executeCommand("bedrock.manage");
+        // Return empty array - user will need to refresh after configuring
+        return [];
+      } else if (action !== "Use Default Credentials") {
+        // User cancelled
+        return [];
+      }
+      // If "Use Default Credentials" was selected, continue with the fetch
+    }
 
     this.client.setRegion(settings.region);
     this.client.setProfile(settings.profile);
