@@ -8,7 +8,7 @@
 		"type": "git",
 		"url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
 	},
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"engines": {
 		"vscode": "^1.104.0"
 	},
@@ -17,7 +17,7 @@
 		"Chat"
 	],
 	"galleryBanner": {
-		"color": "#100f11",
+		"color": "#349885",
 		"theme": "dark"
 	},
 	"homepage": "https://aws.amazon.com/bedrock/",
@@ -89,6 +89,13 @@
 	"sponsor": {
 		"url": "https://github.com/sponsors/tinovyatkin"
 	},
+	"badges": [
+		{
+			"url": "https://img.shields.io/github/stars/tinovyatkin/amazon-bedrock-copilot-chat?style=social",
+			"description": "Star amazon-bedrock-copilot-chat on Github",
+			"href": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
+		},
+	],
 	"scripts": {
 		"vscode:prepublish": "npm run package",
 		"download-api": "dts dev",
