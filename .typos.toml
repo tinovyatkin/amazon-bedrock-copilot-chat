@@ -1,0 +1,32 @@
+# https://github.com/crate-ci/typos
+# cargo install typos-cli
+# typos
+[files]
+# https://github.com/crate-ci/typos/issues/868
+extend-exclude = ["**/fixtures/**/*", "**/snapshots/**/*"]
+
+[default.extend-words]
+BA       = "BA"      # acronym for "Bad Allowed", used in testing.
+Numer    = "Numer"   # Library name 'NumerBlox' in "Who's Using Ruff?"
+"arange" = "arange"  # e.g. `numpy.arange`
+hel      = "hel"
+jod      = "jod"     # e.g., `jod-thread`
+ned      = "ned"
+pn       = "pn"      # `import panel as pn` is a thing
+poit     = "poit"
+spawnve  = "spawnve"
+whos     = "whos"
+
+[default]
+extend-ignore-re = [
+    # Line ignore with trailing "spellchecker:disable-line"
+    "(?Rm)^.*#\\s*spellchecker:disable-line$",
+    "LICENSEs",
+    # Various third party dependencies uses `typ` as struct field names (e.g., lsp_types::LogMessageParams)
+    "typ",
+    # TODO: Remove this once the `TYP` redirects are removed from `rule_redirects.rs`
+    "TYP",
+]
+
+[default.extend-identifiers]
+"FrIeNdLy" = "FrIeNdLy"

@@ -22,7 +22,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 
 1. Install the extension from the VSCode marketplace
 2. Configure your AWS credentials if you haven't already:
-    - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
+   - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
 3. Run the "Manage Amazon Bedrock Provider" command to select your AWS profile and region
 
 ## Configuration
@@ -74,6 +74,7 @@ The extension automatically filters and displays only models that support **tool
 ### Supported Model Families
 
 **Anthropic Claude:**
+
 - Claude Sonnet 4.5 and Claude Sonnet 4
 - Claude Opus 4.1 and Claude Opus 4
 - Claude 3.7 Sonnet
@@ -81,32 +82,40 @@ The extension automatically filters and displays only models that support **tool
 - Claude 3 family: Opus, Sonnet, Haiku (legacy)
 
 **OpenAI OSS:**
+
 - gpt-oss-120b (120B parameters, near o4-mini performance)
 - gpt-oss-20b (20B parameters, optimized for edge deployment)
 
 **Amazon Nova:**
+
 - Nova Premier, Nova Pro, Nova Lite, Nova Micro
 
 **Meta Llama:**
+
 - Llama 3.1 and later (8B, 70B, 405B variants)
 - Llama 3.2 (11B, 90B)
 - Llama 4 (Scout, Maverick)
 
 **Mistral AI:**
+
 - Mistral Large and Mistral Large 2
 - Mistral Small
 - Pixtral Large
 
 **Cohere:**
+
 - Command R and Command R+
 
 **AI21 Labs:**
+
 - Jamba 1.5 Large and Jamba 1.5 Mini
 
 **Writer:**
+
 - Palmyra X4 and Palmyra X5
 
 **DeepSeek:**
+
 - DeepSeek models (via Amazon Bedrock when available)
 
 ### Models Automatically Excluded
@@ -132,9 +141,9 @@ The following models are filtered out as they don't support the Converse API too
 
 1. Verify your AWS credentials are valid and not expired
 2. Check that your IAM user/role has the necessary Bedrock permissions:
-    - `bedrock:ListFoundationModels`
-    - `bedrock:InvokeModel`
-    - `bedrock:InvokeModelWithResponseStream`
+   - `bedrock:ListFoundationModels`
+   - `bedrock:InvokeModel`
+   - `bedrock:InvokeModelWithResponseStream`
 
 ## Credits
 

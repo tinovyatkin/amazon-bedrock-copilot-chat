@@ -3,14 +3,14 @@
  */
 
 export interface ModelProfile {
-	/**
-	 * Whether the model supports the toolChoice parameter
-	 */
-	supportsToolChoice: boolean;
-	/**
-	 * Format to use for tool result content ('text' or 'json')
-	 */
-	toolResultFormat: "json" | "text";
+  /**
+   * Whether the model supports the toolChoice parameter
+   */
+  supportsToolChoice: boolean;
+  /**
+   * Format to use for tool result content ('text' or 'json')
+   */
+  toolResultFormat: "json" | "text";
 }
 
 /**
@@ -19,58 +19,57 @@ export interface ModelProfile {
  * @returns Model profile with capabilities
  */
 export function getModelProfile(modelId: string): ModelProfile {
-	const defaultProfile: ModelProfile = {
-		supportsToolChoice: false,
-		toolResultFormat: "text",
-	};
+  const defaultProfile: ModelProfile = {
+    supportsToolChoice: false,
+    toolResultFormat: "text",
+  };
 
-	// Split the model name into parts
-	let parts = modelId.split(".");
+  // Split the model name into parts
+  let parts = modelId.split(".");
 
-	// Handle regional prefixes (e.g. "us.anthropic.claude-...")
-	if (parts.length > 2 && parts[0].length === 2) {
-		parts = parts.slice(1);
-	}
+  // Handle regional prefixes (e.g. "us.anthropic.claude-...")
+  if (parts.length > 2 && parts[0].length === 2) {
+    parts = parts.slice(1);
+  }
 
-	if (parts.length < 2) {
-		return defaultProfile;
-	}
+  if (parts.length < 2) {
+    return defaultProfile;
+  }
 
-	const provider = parts[0];
+  const provider = parts[0];
 
-	// Provider-specific profiles
-	switch (provider) {
-		case "ai21":
+  // Provider-specific profiles
+  switch (provider) {
+    case "ai21":
 
-		case "cohere":
+    case "cohere":
+    case "meta":
+      // Older models don't support tool choice
+      return defaultProfile;
 
-		case "meta":
-			// Older models don't support tool choice
-			return defaultProfile;
+    case "amazon":
+      // Amazon Nova models support tool choice
+      if (modelId.includes("nova")) {
+        return {
+          supportsToolChoice: true,
+          toolResultFormat: "text",
+        };
+      }
+      return defaultProfile;
+    case "anthropic":
+      // Claude models support tool choice
+      return {
+        supportsToolChoice: true,
+        toolResultFormat: "text",
+      };
+    case "mistral":
+      // Mistral models require JSON format for tool results
+      return {
+        supportsToolChoice: false,
+        toolResultFormat: "json",
+      };
 
-		case "amazon":
-			// Amazon Nova models support tool choice
-			if (modelId.includes("nova")) {
-				return {
-					supportsToolChoice: true,
-					toolResultFormat: "text",
-				};
-			}
-			return defaultProfile;
-		case "anthropic":
-			// Claude models support tool choice
-			return {
-				supportsToolChoice: true,
-				toolResultFormat: "text",
-			};
-		case "mistral":
-			// Mistral models require JSON format for tool results
-			return {
-				supportsToolChoice: false,
-				toolResultFormat: "json",
-			};
-
-		default:
-			return defaultProfile;
-	}
+    default:
+      return defaultProfile;
+  }
 }

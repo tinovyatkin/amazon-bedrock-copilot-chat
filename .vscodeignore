@@ -3,9 +3,7 @@
 src/**
 out/**
 .gitignore
-.prettierignore
-.prettierrc
-esbuild.js
+.prettier*
 eslint.config.mjs
 tsconfig.json
 node_modules/**
@@ -15,6 +13,11 @@ CLAUDE.md
 *.log
 .git*
 *.md
+*.toml
+*.yml
+bun*
+.*
+.github
 !README.md
 !CHANGELOG.md
 !LICENSE.md

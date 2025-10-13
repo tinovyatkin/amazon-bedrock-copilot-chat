@@ -1,0 +1,23 @@
+endOfLine: lf
+jsdocAllowAccessTag: false
+jsdocAllowDescriptionOnNewLinesForTags:
+  - see
+  - overview
+  - summary
+  - file
+  - fileoverview
+jsdocEnforceAccessTag: false
+jsdocEnsureDescriptionsAreSentences: false
+jsdocUseInlineCommentForASingleTagBlock: true
+plugins:
+  - "@homer0/prettier-plugin-jsdoc"
+  - prettier-plugin-organize-imports
+printWidth: 100
+semi: true
+trailingComma: all
+singleAttributePerLine: true
+htmlWhitespaceSensitivity: ignore
+overrides:
+  - files: "**/__snapshots__/**/*.json"
+    options:
+      parser: json-stringify

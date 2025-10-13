@@ -1,0 +1,20 @@
+extends: default
+
+rules:
+  line-length:
+    max: 270
+  document-start:
+    present: false
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  key-duplicates: enable
+  key-ordering: disable
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+  quoted-strings:
+    quote-type: any
+    required: false

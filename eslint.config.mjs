@@ -43,6 +43,12 @@ export default defineConfig([
 					varsIgnorePattern: "^_",
 				},
 			],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/require-await": "warn",
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-argument":"warn",
+      "@typescript-eslint/no-unsafe-member-access":"warn",
+      "no-fallthrough": ["error", { "allowEmptyCase": true }],
 			"perfectionist/sort-imports": "off",
 		},
 	},
@@ -58,10 +64,13 @@ export default defineConfig([
 		files: ["**/*.md"],
 		language: "markdown/gfm",
 		plugins: { markdown },
+    rules: {
+      "markdown/no-missing-label-refs": "warn"
+    }
 	},
 	stylistic.configs.recommended,
 	prettierConfig,
 	{
-		ignores: ["out", "node_modules", ".vscode-test", "vscode.d.ts"],
+		ignores: ["out", "node_modules", ".vscode-test", "**/vscode.d.ts"],
 	},
 ]);

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1] - 2024-10-12
 
 ### Added
+
 - Initial release
 - AWS named profile support for authentication
 - Support for all Bedrock foundation models with streaming and text output
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling and logging
 
 ### Features
+
 - AWS profile selection from `~/.aws/credentials` and `~/.aws/config`
 - Default credentials chain support (when no profile selected)
 - Region selection across 14 AWS regions
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token count estimation
 
 ### Developer Notes
+
 - Based on bedrock-vscode-chat by Aristide
 - Uses AWS SDK v3 with `@aws-sdk/credential-providers`
 - TypeScript with strict mode enabled

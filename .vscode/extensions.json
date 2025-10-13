@@ -2,6 +2,7 @@
 	"recommendations": [
 		"dbaeumer.vscode-eslint",
 		"esbenp.prettier-vscode",
-		"typescriptteam.native-preview"
+		"typescriptteam.native-preview",
+		"oven.bun-vscode"
 	]
 }

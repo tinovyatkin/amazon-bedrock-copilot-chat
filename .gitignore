@@ -6,3 +6,5 @@ node_modules
 .DS_Store
 .github
 src/test
+.github/workflows/release.yml
+.eslintcache
