@@ -4,7 +4,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 
 ## Features
 
-- **Native AWS Bedrock Integration**: Access Claude, Llama, Mistral, and other models directly in GitHub Copilot Chat
+- **Native AWS Bedrock Integration**: Access Claude, Opus, DeepSeek, OpenAI OSS, and other models directly in GitHub Copilot Chat
 - **AWS Profile Support**: Uses AWS named profiles from your `~/.aws/credentials` and `~/.aws/config` files
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities
@@ -100,27 +100,6 @@ This includes models from:
     - `bedrock:ListFoundationModels`
     - `bedrock:InvokeModel`
     - `bedrock:InvokeModelWithResponseStream`
-
-## Development
-
-To build from source:
-
-```bash
-npm install
-npm run compile
-```
-
-To run linting:
-
-```bash
-npm run lint
-```
-
-To format code:
-
-```bash
-npm run format
-```
 
 ## Credits
 
