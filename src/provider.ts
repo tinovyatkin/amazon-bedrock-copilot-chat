@@ -32,26 +32,25 @@ const DEFAULT_CONTEXT_LENGTH = 200000;
  */
 const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
 	// Amazon Titan Text (legacy models)
-	/^(us\.)?amazon\.titan-text-/,
-	/^(us\.)?amazon\.titan-embed-/,
+	/^([a-z]{2}\.)?amazon\.titan-text-/,
 
 	// Stability AI (image generation)
-	/^(us\.)?stability\./,
+	/^([a-z]{2}\.)?stability\./,
 
 	// AI21 Jurassic 2 (older models)
-	/^(us\.)?ai21\.j2-/,
+	/^([a-z]{2}\.)?ai21\.j2-/,
 
 	// Meta Llama 2 (doesn't support tools)
-	/^(us\.)?meta\.llama-?2/,
+	/^([a-z]{2}\.)?meta\.llama-?2/,
 
 	// Meta Llama 3.0 (only 3.1+ supports tools)
-	/^(us\.)?meta\.llama-?3\.0/,
+	/^([a-z]{2}\.)?meta\.llama-?3\.0/,
 
 	// Cohere Embed (embedding models)
-	/^(us\.)?cohere\.embed-/,
+	/^([a-z]{2}\.)?cohere\.embed-/,
 
 	// Amazon Titan Embed (embedding models)
-	/^(us\.)?amazon\.titan-embed-/,
+	/^([a-z]{2}\.)?amazon\.titan-embed-/,
 ];
 
 /**
