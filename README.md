@@ -10,6 +10,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 - **Function Calling**: Full support for tool/function calling capabilities
 - **Vision Support**: Work with models that support image inputs
 - **Cross-Region Inference**: Automatic support for cross-region inference profiles
+- **Prompt Caching**: Automatic caching of system prompts, tool definitions, and conversation history for faster responses and reduced costs (Claude and Nova models)
 
 ## Prerequisites
 

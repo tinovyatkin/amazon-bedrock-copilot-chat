@@ -22,10 +22,13 @@ export function convertMessages(
   for (const msg of messages) {
     if (msg.role === vscode.LanguageModelChatMessageRole.User) {
       const content: any[] = [];
+      let hasToolResults = false;
+
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
           content.push({ text: part.value });
         } else if (part instanceof vscode.LanguageModelToolResultPart) {
+          hasToolResults = true;
           const isJson =
             profile.toolResultFormat === "json" &&
             typeof part.content === "object" &&
@@ -42,6 +45,12 @@ export function convertMessages(
           });
         }
       }
+
+      // Add cache point after tool results if prompt caching is supported
+      if (profile.supportsPromptCaching && hasToolResults) {
+        content.push({ cachePoint: { type: "default" } });
+      }
+
       if (content.length > 0) {
         bedrockMessages.push({ content, role: "user" });
       }
@@ -71,6 +80,11 @@ export function convertMessages(
         }
       }
     }
+  }
+
+  // Add cache point after system messages if prompt caching is supported
+  if (profile.supportsPromptCaching && systemMessages.length > 0) {
+    systemMessages.push({ cachePoint: { type: "default" } });
   }
 
   return { messages: bedrockMessages, system: systemMessages };
