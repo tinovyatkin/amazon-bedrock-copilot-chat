@@ -25,7 +25,9 @@ export function convertTools(
     },
   }));
 
-  // Add cache point after tools if prompt caching is supported
+  // Add cache point after tool definitions if prompt caching is supported
+  // This is one of three strategic cache points: after system messages,
+  // after tool definitions, and after tool results (within 4-point limit)
   if (profile.supportsPromptCaching && tools.length > 0) {
     tools.push({ cachePoint: { type: "default" } });
   }
