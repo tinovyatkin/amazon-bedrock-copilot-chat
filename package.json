@@ -105,6 +105,7 @@
     "check-types": "tsgo --noEmit",
     "lint": "eslint",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "pretest": "bun run compile",
     "test": "vscode-test",
     "package": "bun run compile",
