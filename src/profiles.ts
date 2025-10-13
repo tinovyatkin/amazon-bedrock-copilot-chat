@@ -4,6 +4,10 @@
 
 export interface ModelProfile {
   /**
+   * Whether the model supports prompt caching via cache points
+   */
+  supportsPromptCaching: boolean;
+  /**
    * Whether the model supports the toolChoice parameter
    */
   supportsToolChoice: boolean;
@@ -20,6 +24,7 @@ export interface ModelProfile {
  */
 export function getModelProfile(modelId: string): ModelProfile {
   const defaultProfile: ModelProfile = {
+    supportsPromptCaching: false,
     supportsToolChoice: false,
     toolResultFormat: "text",
   };
@@ -48,23 +53,26 @@ export function getModelProfile(modelId: string): ModelProfile {
       return defaultProfile;
 
     case "amazon":
-      // Amazon Nova models support tool choice
+      // Amazon Nova models support tool choice and prompt caching
       if (modelId.includes("nova")) {
         return {
+          supportsPromptCaching: true,
           supportsToolChoice: true,
           toolResultFormat: "text",
         };
       }
       return defaultProfile;
     case "anthropic":
-      // Claude models support tool choice
+      // Claude models support tool choice and prompt caching
       return {
+        supportsPromptCaching: true,
         supportsToolChoice: true,
         toolResultFormat: "text",
       };
     case "mistral":
       // Mistral models require JSON format for tool results
       return {
+        supportsPromptCaching: false,
         supportsToolChoice: false,
         toolResultFormat: "json",
       };
