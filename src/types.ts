@@ -1,14 +1,14 @@
 export interface BedrockModelSummary {
-	modelArn: string;
-	modelId: string;
-	modelName: string;
-	providerName: string;
-	inputModalities: string[];
-	outputModalities: string[];
-	responseStreamingSupported: boolean;
 	customizationsSupported?: string[];
 	inferenceTypesSupported?: string[];
+	inputModalities: string[];
+	modelArn: string;
+	modelId: string;
 	modelLifecycle?: {
 		status?: string;
 	};
+	modelName: string;
+	outputModalities: string[];
+	providerName: string;
+	responseStreamingSupported: boolean;
 }

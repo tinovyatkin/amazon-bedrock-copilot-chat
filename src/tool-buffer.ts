@@ -1,17 +1,12 @@
 interface ToolCall {
 	id: string;
-	name: string;
 	input: any;
+	name: string;
 }
 
 export class ToolBuffer {
-	private tools: Map<number, ToolCall> = new Map();
 	private inputBuffers: Map<number, string> = new Map();
-
-	startTool(index: number, id: string, name: string): void {
-		this.tools.set(index, { id, name, input: {} });
-		this.inputBuffers.set(index, "");
-	}
+	private tools: Map<number, ToolCall> = new Map();
 
 	appendInput(index: number, inputChunk: string): void {
 		const current = this.inputBuffers.get(index) || "";
@@ -36,5 +31,10 @@ export class ToolBuffer {
 		this.inputBuffers.delete(index);
 
 		return tool;
+	}
+
+	startTool(index: number, id: string, name: string): void {
+		this.tools.set(index, { id, input: {}, name });
+		this.inputBuffers.set(index, "");
 	}
 }

@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
 
 class Logger {
-	private outputChannel: vscode.OutputChannel | undefined;
 	private extensionMode: vscode.ExtensionMode = vscode.ExtensionMode.Production;
+	private outputChannel: undefined | vscode.OutputChannel;
+
+	error(message: string, ...args: any[]) {
+		const formattedMessage = this.formatMessage(message, args);
+		this.outputChannel?.appendLine(`ERROR: ${formattedMessage}`);
+	}
 
 	initialize(outputChannel: vscode.OutputChannel, extensionMode: vscode.ExtensionMode) {
 		this.outputChannel = outputChannel;
@@ -14,11 +19,6 @@ class Logger {
 			const formattedMessage = this.formatMessage(message, args);
 			this.outputChannel?.appendLine(formattedMessage);
 		}
-	}
-
-	error(message: string, ...args: any[]) {
-		const formattedMessage = this.formatMessage(message, args);
-		this.outputChannel?.appendLine(`ERROR: ${formattedMessage}`);
 	}
 
 	private formatMessage(message: string, args: any[]): string {

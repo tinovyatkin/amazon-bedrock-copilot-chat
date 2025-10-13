@@ -1,0 +1,68 @@
+
+> amazon-bedrock-copilot-chat@0.0.1 test
+> NODE_OPTIONS=--enable-source-maps npm run compile && vscode-test
+
+
+> amazon-bedrock-copilot-chat@0.0.1 compile
+> tsc -p ./
+
+- Resolving version...
+✔ Validated version: 1.105.0
+✔ Found existing install in /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/vscode-darwin-arm64-1.105.0
+WARNING: IPC handle "/Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/user-data/1.10-main.sock" is longer than 103 chars, try a shorter --user-data-dir
+[91m[main 2025-10-13T13:27:49.495Z][0m [File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[90m[main 2025-10-13T13:27:49.634Z][0m update#setState disabled
+[90m[main 2025-10-13T13:27:49.634Z][0m update#ctor - updates are disabled by the environment
+ChatSessionStore: Migrating 0 chat sessions from storage service to file system
+MCP Registry configured: https://api.mcp.github.com/2025-09-15
+Loading development extension at /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat
+[91m[main 2025-10-13T13:27:50.377Z][0m [File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/user-data/User/snippets for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/vscode-darwin-arm64-1.105.0/Visual Studio Code.app/Contents/Resources/app/extensions/theme-abyss/themes/abyss-color-theme.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/vscode-darwin-arm64-1.105.0/Visual Studio Code.app/Contents/Resources/app/extensions/theme-defaults/fileicons/vs_minimal-icon-theme.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+Settings Sync: Account status changed from uninitialized to unavailable
+[91m[main 2025-10-13T13:27:50.396Z][0m [File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/extensions for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+[91m[main 2025-10-13T13:27:50.397Z][0m [File Watcher (node.js)] Refusing to watch /Volumes/workplace/GitHub/tinovyatkin/amazon-bedrock-copilot-chat/.vscode-test/extensions/extensions.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+Started local extension host with pid 97957.
+[0m[0m
+[0m  HuggingFace Chat Provider Extension[0m
+[0m    provider[0m
+    [32m  ✔[0m[90m prepareLanguageModelChatInformation returns array (no key -> empty)[0m
+    [32m  ✔[0m[90m provideTokenCount counts simple string[0m
+[0m    utils/convertMessages[0m
+    [36m  - maps user/assistant text[0m
+    [36m  - handles mixed text + tool calls in one assistant message[0m
+[0m    utils/tools[0m
+    [36m  - convertTools returns function tool definitions[0m
+    [36m  - convertTools respects ToolMode.Required for single tool[0m
+[0m    utils/validation[0m
+    [36m  - validateRequest enforces tool result pairing[0m
+[0m  BedrockAPIClient Integration Tests[0m
+[0m    fetchModels[0m
+✓ Fetched 100 foundation models
+    [32m  ✔[0m[90m should fetch foundation models from AWS Bedrock[0m[31m (861ms)[0m
+✓ Region us-east-1: 100 models
+✓ Region us-west-2: 108 models
+    [32m  ✔[0m[90m should handle different regions[0m[31m (1820ms)[0m
+✓ Fetched 100 models using profile: oneclick-prod
+    [32m  ✔[0m[90m should fetch models with custom AWS profile if configured[0m[31m (687ms)[0m
+[0m    fetchInferenceProfiles[0m
+✓ Fetched 41 inference profiles
+  ✓ Includes cross-region inference profiles
+    [32m  ✔[0m[90m should fetch inference profiles from AWS Bedrock[0m[31m (571ms)[0m
+✓ Pagination test passed: 41 unique profiles
+    [32m  ✔[0m[90m should handle pagination for inference profiles[0m[31m (576ms)[0m
+✓ Default credentials work: 41 profiles
+    [32m  ✔[0m[90m should work with default credentials chain[0m[31m (590ms)[0m
+[0m    setRegion and setProfile[0m
+✓ Region change successful: 108 models
+    [32m  ✔[0m[90m should allow changing region after construction[0m[31m (1121ms)[0m
+✓ Profile change successful: 100 models
+    [32m  ✔[0m[90m should allow changing profile after construction[0m[31m (724ms)[0m
+✓ Profile cleared successfully: 100 models
+    [32m  ✔[0m[90m should allow clearing profile to use default credentials[0m[31m (687ms)[0m
+[92m [0m[32m 11 passing[0m[90m (8s)[0m
+[36m [0m[36m 5 pending[0m
+[90m[main 2025-10-13T13:27:58.907Z][0m Extension host with pid 97957 exited with code: 0, signal: unknown.
+Exit code:   0

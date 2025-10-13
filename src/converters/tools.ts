@@ -1,4 +1,4 @@
-import { LanguageModelChatToolMode, LanguageModelChatProvider } from "vscode";
+import { LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
 import type * as bedrockRuntime from '@aws-sdk/client-bedrock-runtime';
 import { convertSchema } from "./schema";
 import { getModelProfile } from "../profiles";
@@ -17,11 +17,11 @@ export function convertTools(
 	const profile = getModelProfile(modelId);
 	const tools = options.tools.map((tool: any) => ({
 		toolSpec: {
-			name: tool.name,
 			description: tool.description,
 			inputSchema: {
 				json: convertSchema(tool.inputSchema),
 			},
+			name: tool.name,
 		},
 	}));
 

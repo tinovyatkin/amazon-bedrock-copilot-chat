@@ -17,7 +17,7 @@ export function validateRequest(messages: readonly vscode.LanguageModelChatMessa
 	}
 
 	// Validate alternating user/assistant pattern
-	let lastRole: vscode.LanguageModelChatMessageRole | undefined;
+	let lastRole: undefined | vscode.LanguageModelChatMessageRole;
 	for (const msg of messages) {
 		const currentRole = msg.role;
 

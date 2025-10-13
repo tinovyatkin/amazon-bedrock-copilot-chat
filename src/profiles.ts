@@ -10,7 +10,7 @@ export interface ModelProfile {
 	/**
 	 * Format to use for tool result content ('text' or 'json')
 	 */
-	toolResultFormat: "text" | "json";
+	toolResultFormat: "json" | "text";
 }
 
 /**
@@ -40,19 +40,13 @@ export function getModelProfile(modelId: string): ModelProfile {
 
 	// Provider-specific profiles
 	switch (provider) {
-		case "anthropic":
-			// Claude models support tool choice
-			return {
-				supportsToolChoice: true,
-				toolResultFormat: "text",
-			};
+		case "ai21":
 
-		case "mistral":
-			// Mistral models require JSON format for tool results
-			return {
-				supportsToolChoice: false,
-				toolResultFormat: "json",
-			};
+		case "cohere":
+
+		case "meta":
+			// Older models don't support tool choice
+			return defaultProfile;
 
 		case "amazon":
 			// Amazon Nova models support tool choice
@@ -63,12 +57,18 @@ export function getModelProfile(modelId: string): ModelProfile {
 				};
 			}
 			return defaultProfile;
-
-		case "cohere":
-		case "meta":
-		case "ai21":
-			// Older models don't support tool choice
-			return defaultProfile;
+		case "anthropic":
+			// Claude models support tool choice
+			return {
+				supportsToolChoice: true,
+				toolResultFormat: "text",
+			};
+		case "mistral":
+			// Mistral models require JSON format for tool results
+			return {
+				supportsToolChoice: false,
+				toolResultFormat: "json",
+			};
 
 		default:
 			return defaultProfile;

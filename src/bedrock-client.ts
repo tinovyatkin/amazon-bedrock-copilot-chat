@@ -1,7 +1,7 @@
 import {
 	BedrockClient,
 	ListFoundationModelsCommand,
-	paginateListInferenceProfiles,
+	paginateListInferenceProfiles, 
 } from "@aws-sdk/client-bedrock";
 import {
 	BedrockRuntimeClient,
@@ -13,63 +13,19 @@ import type { BedrockModelSummary } from "./types";
 import { logger } from "./logger";
 
 export class BedrockAPIClient {
-	private region: string;
 	private profileName: string | undefined;
+	private region: string;
 
 	constructor(region: string, profileName?: string) {
 		this.region = region;
 		this.profileName = profileName;
 	}
 
-	setRegion(region: string): void {
-		this.region = region;
-	}
-
-	setProfile(profileName: string | undefined): void {
-		this.profileName = profileName;
-	}
-
-	private getCredentials() {
-		if (this.profileName) {
-			return fromIni({ profile: this.profileName });
-		}
-		// Use default credentials chain if no profile specified
-		return undefined;
-	}
-
-	async fetchModels(): Promise<BedrockModelSummary[]> {
-		try {
-			const client = new BedrockClient({
-				region: this.region,
-				credentials: this.getCredentials(),
-			});
-
-			const command = new ListFoundationModelsCommand({});
-			const response = await client.send(command);
-
-			return (response.modelSummaries ?? []).map((summary) => ({
-				modelArn: summary.modelArn || "",
-				modelId: summary.modelId || "",
-				modelName: summary.modelName || "",
-				providerName: summary.providerName || "",
-				inputModalities: summary.inputModalities || [],
-				outputModalities: summary.outputModalities || [],
-				responseStreamingSupported: summary.responseStreamingSupported || false,
-				customizationsSupported: summary.customizationsSupported,
-				inferenceTypesSupported: summary.inferenceTypesSupported,
-				modelLifecycle: summary.modelLifecycle,
-			}));
-		} catch (err) {
-			logger.error("[Bedrock API Client] Failed to fetch Bedrock models", err);
-			throw err;
-		}
-	}
-
 	async fetchInferenceProfiles(): Promise<Set<string>> {
 		try {
 			const client = new BedrockClient({
-				region: this.region,
 				credentials: this.getCredentials(),
+				region: this.region,
 			});
 
 			const profileIds = new Set<string>();
@@ -90,10 +46,46 @@ export class BedrockAPIClient {
 		}
 	}
 
+	async fetchModels(): Promise<BedrockModelSummary[]> {
+		try {
+			const client = new BedrockClient({
+				credentials: this.getCredentials(),
+				region: this.region,
+			});
+
+			const command = new ListFoundationModelsCommand({});
+			const response = await client.send(command);
+
+			return (response.modelSummaries ?? []).map((summary) => ({
+				customizationsSupported: summary.customizationsSupported,
+				inferenceTypesSupported: summary.inferenceTypesSupported,
+				inputModalities: summary.inputModalities || [],
+				modelArn: summary.modelArn || "",
+				modelId: summary.modelId || "",
+				modelLifecycle: summary.modelLifecycle,
+				modelName: summary.modelName || "",
+				outputModalities: summary.outputModalities || [],
+				providerName: summary.providerName || "",
+				responseStreamingSupported: summary.responseStreamingSupported || false,
+			}));
+		} catch (err) {
+			logger.error("[Bedrock API Client] Failed to fetch Bedrock models", err);
+			throw err;
+		}
+	}
+
+	setProfile(profileName: string | undefined): void {
+		this.profileName = profileName;
+	}
+
+	setRegion(region: string): void {
+		this.region = region;
+	}
+
 	async startConversationStream(input: ConverseStreamCommandInput): Promise<AsyncIterable<any>> {
 		const client = new BedrockRuntimeClient({
-			region: this.region,
 			credentials: this.getCredentials(),
+			region: this.region,
 		});
 
 		const command = new ConverseStreamCommand(input);
@@ -104,5 +96,13 @@ export class BedrockAPIClient {
 		}
 
 		return response.stream;
+	}
+
+	private getCredentials() {
+		if (this.profileName) {
+			return fromIni({ profile: this.profileName });
+		}
+		// Use default credentials chain if no profile specified
+		return undefined;
 	}
 }

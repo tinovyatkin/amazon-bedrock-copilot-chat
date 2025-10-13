@@ -27,19 +27,19 @@ suite("HuggingFace Chat Provider Extension", () => {
 		test("provideTokenCount counts simple string", async () => {
 			const provider = new BedrockChatModelProvider({
 				get: async () => undefined,
-				update: async () => {},
-                keys: () => []
+				keys: () => [],
+                update: async () => {}
 			} , "GitHubCopilotChat/test VSCode/test");
 
 			const est = await provider.provideTokenCount(
 				{
-					id: "m",
-					name: "m",
+					capabilities: {},
 					family: "huggingface",
-					version: "1.0.0",
+					id: "m",
 					maxInputTokens: 1000,
 					maxOutputTokens: 1000,
-					capabilities: {},
+					name: "m",
+					version: "1.0.0",
 				} as unknown as vscode.LanguageModelChatInformation,
 				"hello world",
 				new vscode.CancellationTokenSource().token
@@ -53,20 +53,20 @@ suite("HuggingFace Chat Provider Extension", () => {
 		test("maps user/assistant text", () => {
 			const messages: vscode.LanguageModelChatMessage[] = [
 				{
-					role: vscode.LanguageModelChatMessageRole.User,
 					content: [new vscode.LanguageModelTextPart("hi")],
 					name: undefined,
+					role: vscode.LanguageModelChatMessageRole.User,
 				},
 				{
-					role: vscode.LanguageModelChatMessageRole.Assistant,
 					content: [new vscode.LanguageModelTextPart("hello")],
 					name: undefined,
+					role: vscode.LanguageModelChatMessageRole.Assistant,
 				},
 			];
 			const out = convertMessages(messages, 'modelId');
 			assert.deepEqual(out, [
-				{ role: "user", content: "hi" },
-				{ role: "assistant", content: "hello" },
+				{ content: "hi", role: "user" },
+				{ content: "hello", role: "assistant" },
 			]);
 		});
 
@@ -74,13 +74,13 @@ suite("HuggingFace Chat Provider Extension", () => {
 		test("handles mixed text + tool calls in one assistant message", () => {
 			const toolCall = new vscode.LanguageModelToolCallPart("call1", "search", { q: "hello" });
 			const msg: vscode.LanguageModelChatMessage = {
-				role: vscode.LanguageModelChatMessageRole.Assistant,
 				content: [
 					new vscode.LanguageModelTextPart("before "),
 					toolCall,
 					new vscode.LanguageModelTextPart(" after"),
 				],
 				name: undefined,
+				role: vscode.LanguageModelChatMessageRole.Assistant,
 			};
 			const out = convertMessages([msg], 'modelId');
 			assert.equal(out.messages.length, 1);
@@ -96,9 +96,9 @@ suite("HuggingFace Chat Provider Extension", () => {
                 toolMode: vscode.LanguageModelChatToolMode.Auto,
 				tools: [
 					{
-						name: "do_something",
 						description: "Does something",
-						inputSchema: { type: "object", properties: { x: { type: "number" } }, additionalProperties: false },
+						inputSchema: { additionalProperties: false, properties: { x: { type: "number" } }, type: "object" },
+						name: "do_something",
 					},
 				],
 			} satisfies vscode.LanguageModelChatRequestOptions, 'modelId');
@@ -114,13 +114,13 @@ suite("HuggingFace Chat Provider Extension", () => {
 				toolMode: vscode.LanguageModelChatToolMode.Required,
 				tools: [
 					{
-						name: "only_tool",
 						description: "Only tool",
 						inputSchema: {},
+						name: "only_tool",
 					},
 				],
 			} satisfies vscode.LanguageModelChatRequestOptions, "modelId");
-			assert.deepEqual(out?.toolChoice, { type: "function", function: { name: "only_tool" } });
+			assert.deepEqual(out?.toolChoice, { function: { name: "only_tool" }, type: "function" });
 		});
 
 
@@ -132,14 +132,14 @@ suite("HuggingFace Chat Provider Extension", () => {
 			const toolCall = new vscode.LanguageModelToolCallPart(callId, "toolA", { q: 1 });
 			const toolRes = new vscode.LanguageModelToolResultPart(callId, [new vscode.LanguageModelTextPart("ok")]);
 			const valid: vscode.LanguageModelChatMessage[] = [
-				{ role: vscode.LanguageModelChatMessageRole.Assistant, content: [toolCall], name: undefined },
-				{ role: vscode.LanguageModelChatMessageRole.User, content: [toolRes], name: undefined },
+				{ content: [toolCall], name: undefined, role: vscode.LanguageModelChatMessageRole.Assistant },
+				{ content: [toolRes], name: undefined, role: vscode.LanguageModelChatMessageRole.User },
 			];
 			assert.doesNotThrow(() => validateRequest(valid));
 
 			const invalid: vscode.LanguageModelChatMessage[] = [
-				{ role: vscode.LanguageModelChatMessageRole.Assistant, content: [toolCall], name: undefined },
-				{ role: vscode.LanguageModelChatMessageRole.User, content: [new vscode.LanguageModelTextPart("missing")], name: undefined },
+				{ content: [toolCall], name: undefined, role: vscode.LanguageModelChatMessageRole.Assistant },
+				{ content: [new vscode.LanguageModelTextPart("missing")], name: undefined, role: vscode.LanguageModelChatMessageRole.User },
 			];
 			assert.throws(() => validateRequest(invalid));
 		});

@@ -4,6 +4,17 @@ import * as os from "os";
 import * as ini from "ini";
 
 /**
+ * Get the path to the AWS config file
+ */
+export function getConfigFilename(): string {
+	const envVal = process.env.AWS_CONFIG_FILE;
+	if (envVal) {
+		return path.resolve(envVal);
+	}
+	return path.join(os.homedir(), ".aws", "config");
+}
+
+/**
  * Get the path to the AWS credentials file
  */
 export function getCredentialsFilename(): string {
@@ -15,14 +26,12 @@ export function getCredentialsFilename(): string {
 }
 
 /**
- * Get the path to the AWS config file
+ * Check if AWS credentials files exist
  */
-export function getConfigFilename(): string {
-	const envVal = process.env.AWS_CONFIG_FILE;
-	if (envVal) {
-		return path.resolve(envVal);
-	}
-	return path.join(os.homedir(), ".aws", "config");
+export function hasAwsCredentials(): boolean {
+	const credentialsFile = getCredentialsFilename();
+	const configFile = getConfigFilename();
+	return fs.existsSync(credentialsFile) || fs.existsSync(configFile);
 }
 
 /**
@@ -39,7 +48,7 @@ export async function listAwsProfiles(): Promise<string[]> {
 			const parsed = ini.parse(content);
 			Object.keys(parsed).forEach((key) => profiles.add(key));
 		}
-	} catch (_error) {
+	} catch {
 		// Ignore errors reading credentials file
 	}
 
@@ -58,18 +67,9 @@ export async function listAwsProfiles(): Promise<string[]> {
 				}
 			});
 		}
-	} catch (_error) {
+	} catch {
 		// Ignore errors reading config file
 	}
 
 	return Array.from(profiles).sort();
-}
-
-/**
- * Check if AWS credentials files exist
- */
-export function hasAwsCredentials(): boolean {
-	const credentialsFile = getCredentialsFilename();
-	const configFile = getConfigFilename();
-	return fs.existsSync(credentialsFile) || fs.existsSync(configFile);
 }
