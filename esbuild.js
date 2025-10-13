@@ -1,7 +1,20 @@
 const esbuild = require("esbuild");
+const { parseArgs } = require("node:util");
 
-const production = process.argv.includes("--production");
-const watch = process.argv.includes("--watch");
+const { values } = parseArgs({
+	options: {
+		production: {
+			type: "boolean",
+			default: false,
+		},
+		watch: {
+			type: "boolean",
+			default: false,
+		},
+	},
+});
+
+const { production, watch } = values;
 
 /**
  * @type {import('esbuild').Plugin}
@@ -32,6 +45,7 @@ async function main() {
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: "node",
+		target: 'node22',
 		outfile: "dist/extension.js",
 		external: ["vscode"],
 		logLevel: "silent",
