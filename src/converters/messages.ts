@@ -35,21 +35,26 @@ export function convertMessages(
 				if (part instanceof vscode.LanguageModelTextPart) {
 					content.push({ text: part.value });
 				} else if (part instanceof vscode.LanguageModelToolResultPart) {
-					const resultContent =
-						profile.toolResultFormat === "json" && typeof part.content === "object"
-							? JSON.stringify(part.content)
-							: String(part.content);
+					const isJson =
+						profile.toolResultFormat === "json" &&
+						typeof part.content === "object" &&
+						part.content !== null;
+					const contentBlock = isJson
+						? { json: part.content }
+						: { text: String(part.content) };
+					const status = (part as any).isError ? "error" : undefined;
 
 					content.push({
 						toolResult: {
+							content: [contentBlock],
 							toolUseId: part.callId,
-							content: [{ text: resultContent }],
+							...(status ? { status } : {}),
 						},
 					});
 				}
 			}
 			if (content.length > 0) {
-				bedrockMessages.push({ role: "user", content });
+				bedrockMessages.push({ content, role: "user" });
 			}
 		} else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
 			const content: any[] = [];
@@ -59,15 +64,15 @@ export function convertMessages(
 				} else if (part instanceof vscode.LanguageModelToolCallPart) {
 					content.push({
 						toolUse: {
-							toolUseId: part.callId,
-							name: part.name,
 							input: part.input,
+							name: part.name,
+							toolUseId: part.callId,
 						},
 					});
 				}
 			}
 			if (content.length > 0) {
-				bedrockMessages.push({ role: "assistant", content });
+				bedrockMessages.push({ content, role: "assistant" });
 			}
 		} else {
 			// System messages
