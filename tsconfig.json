@@ -1,0 +1,29 @@
+{
+	"compilerOptions": {
+		"module": "Node16",
+		"target": "ES2024",
+		"lib": [
+			"ES2024"
+		],
+		"inlineSourceMap": true,
+		"outDir": "out",
+		"strict": true,
+		"rootDir": "src",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"moduleResolution": "Node16",
+		"types": [
+			"node",
+			"mocha"
+		]
+	},
+	"include": [
+		"src/**/*"
+	],
+	"exclude": [
+		"node_modules",
+		".vscode-test"
+	]
+}

@@ -1,0 +1,26 @@
+{
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "esbenp.prettier-vscode",
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit",
+		"source.organizeImports": "always",
+		"source.removeUnusedImports": "always"
+	},
+	"files.exclude": {
+		"out": false,
+		".vscode-test": true
+	},
+	"search.exclude": {
+		"out": true,
+		"node_modules": true,
+		".vscode-test": true
+	},
+	"[javascript][typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"git.branchProtection": [
+		"main"
+	],
+	"files.trimTrailingWhitespace": true,
+	"bedrock.profile": "oneclick-prod"
+}
