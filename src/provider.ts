@@ -9,13 +9,14 @@ import {
   Progress,
 } from "vscode";
 
+import { hasAwsCredentials } from "./aws-profiles";
 import { BedrockAPIClient } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getBedrockSettings } from "./settings";
 import { StreamProcessor } from "./stream-processor";
-import { validateRequest } from "./validation";
+import { validateBedrockMessages } from "./validation";
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_CONTEXT_LENGTH = 200000;
@@ -73,6 +74,28 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     _token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
     const settings = getBedrockSettings(this.globalState);
+
+    // Check if this appears to be a first run (no profile configured and using default region)
+    // Only prompt if credentials are also not available
+    const isFirstRun = settings.region === "us-east-1" && !settings.profile && !hasAwsCredentials();
+
+    if (isFirstRun && !options.silent) {
+      const action = await vscode.window.showInformationMessage(
+        "Amazon Bedrock integration requires AWS credentials. Would you like to configure your AWS profile and region first?",
+        "Configure Settings",
+        "Use Default Credentials",
+      );
+
+      if (action === "Configure Settings") {
+        await vscode.commands.executeCommand("bedrock.manage");
+        // Return empty array - user will need to refresh after configuring
+        return [];
+      } else if (action !== "Use Default Credentials") {
+        // User cancelled
+        return [];
+      }
+      // If "Use Default Credentials" was selected, continue with the fetch
+    }
 
     this.client.setRegion(settings.region);
     this.client.setProfile(settings.profile);
@@ -179,7 +202,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       });
 
       const converted = convertMessages(messages, model.id);
-      validateRequest(messages);
 
       logger.log(
         "[Bedrock Model Provider] Converted to Bedrock messages:",
@@ -193,6 +215,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         });
         logger.log(`[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`, contentTypes);
       });
+
+      // Validate the converted Bedrock messages, not the original VSCode messages
+      // System messages are extracted separately and don't count in the alternating pattern
+      validateBedrockMessages(converted.messages);
 
       const toolConfig = convertTools(options, model.id);
 
