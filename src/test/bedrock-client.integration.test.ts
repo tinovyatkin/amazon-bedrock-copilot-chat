@@ -1,4 +1,5 @@
 import * as assert from "assert";
+
 import { BedrockAPIClient } from "../bedrock-client";
 
 /**
@@ -19,277 +20,196 @@ import { BedrockAPIClient } from "../bedrock-client";
  */
 
 suite("BedrockAPIClient Integration Tests", () => {
-	const TEST_REGION = "us-east-1";
-	let client: BedrockAPIClient;
+  const TEST_REGION = "us-east-1";
+  let client: BedrockAPIClient;
 
-	// Check if AWS credentials are available
-	const hasAwsCredentials = (): boolean => {
-		// Check for environment variables
-		if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-			return true;
-		}
-		// Check for AWS profile
-		if (process.env.AWS_PROFILE) {
-			return true;
-		}
-		// Assume credentials might be available from default credential chain
-		return true;
-	};
+  setup(() => {
+    client = new BedrockAPIClient(TEST_REGION);
+  });
 
-	suiteSetup(function () {
-		if (!hasAwsCredentials()) {
-			this.skip();
-		}
-	});
+  suite("fetchModels", () => {
+    test("should fetch foundation models from Amazon Bedrock", async function () {
+      this.timeout(30000); // Allow 30 seconds for AWS API call
 
-	setup(() => {
-		client = new BedrockAPIClient(TEST_REGION);
-	});
+      const models = await client.fetchModels();
 
-	suite("fetchModels", () => {
-		test("should fetch foundation models from Amazon Bedrock", async function () {
-			this.timeout(30000); // Allow 30 seconds for AWS API call
+      // Validate response structure
+      assert.ok(Array.isArray(models), "fetchModels should return an array");
+      assert.ok(models.length > 0, "Should return at least one model");
 
-			try {
-				const models = await client.fetchModels();
+      // Validate first model has expected structure
+      const firstModel = models[0];
+      assert.ok(firstModel.modelId, "Model should have modelId");
+      assert.ok(firstModel.modelArn, "Model should have modelArn");
+      assert.ok(firstModel.providerName, "Model should have providerName");
+      assert.ok(
+        Array.isArray(firstModel.inputModalities),
+        "Model should have inputModalities array",
+      );
+      assert.ok(
+        Array.isArray(firstModel.outputModalities),
+        "Model should have outputModalities array",
+      );
+      assert.strictEqual(
+        typeof firstModel.responseStreamingSupported,
+        "boolean",
+        "responseStreamingSupported should be boolean",
+      );
 
-				// Validate response structure
-				assert.ok(Array.isArray(models), "fetchModels should return an array");
-				assert.ok(models.length > 0, "Should return at least one model");
+      // Verify we get popular models (sanity check)
+      const modelIds = models.map((m) => m.modelId);
+      const hasClaudeOrOtherModels = modelIds.some(
+        (id) => id.includes("anthropic") || id.includes("meta") || id.includes("mistral"),
+      );
+      assert.ok(hasClaudeOrOtherModels, "Should include models from major providers");
 
-				// Validate first model has expected structure
-				const firstModel = models[0];
-				assert.ok(firstModel.modelId, "Model should have modelId");
-				assert.ok(firstModel.modelArn, "Model should have modelArn");
-				assert.ok(firstModel.providerName, "Model should have providerName");
-				assert.ok(Array.isArray(firstModel.inputModalities), "Model should have inputModalities array");
-				assert.ok(Array.isArray(firstModel.outputModalities), "Model should have outputModalities array");
-				assert.strictEqual(typeof firstModel.responseStreamingSupported, "boolean", "responseStreamingSupported should be boolean");
+      console.log(`✓ Fetched ${models.length} foundation models`);
+    });
 
-				// Verify we get popular models (sanity check)
-				const modelIds = models.map(m => m.modelId);
-				const hasClaudeOrOtherModels = modelIds.some(id =>
-					id.includes("anthropic") || id.includes("meta") || id.includes("mistral")
-				);
-				assert.ok(hasClaudeOrOtherModels, "Should include models from major providers");
+    test("should handle different regions", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Fetched ${models.length} foundation models`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
+      const regions = ["us-east-1", "us-west-2"];
 
-		test("should handle different regions", async function () {
-			this.timeout(30000);
+      for (const region of regions) {
+        const regionalClient = new BedrockAPIClient(region);
+        const models = await regionalClient.fetchModels();
 
-			const regions = ["us-east-1", "us-west-2"];
+        assert.ok(Array.isArray(models), `Should return models for region ${region}`);
+        assert.ok(models.length > 0, `Should have models in region ${region}`);
 
-			for (const region of regions) {
-				try {
-					const regionalClient = new BedrockAPIClient(region);
-					const models = await regionalClient.fetchModels();
+        console.log(`✓ Region ${region}: ${models.length} models`);
+      }
+    });
 
-					assert.ok(Array.isArray(models), `Should return models for region ${region}`);
-					assert.ok(models.length > 0, `Should have models in region ${region}`);
+    test("should fetch models with custom AWS profile if configured", async function () {
+      this.timeout(30000);
 
-					console.log(`✓ Region ${region}: ${models.length} models`);
-				} catch (error: any) {
-					if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-						this.skip();
-					}
-					throw error;
-				}
-			}
-		});
+      const profileName = process.env.AWS_PROFILE;
+      if (!profileName) {
+        this.skip();
+      }
 
-		test("should fetch models with custom AWS profile if configured", async function () {
-			this.timeout(30000);
+      const profileClient = new BedrockAPIClient(TEST_REGION, profileName);
+      const models = await profileClient.fetchModels();
 
-			const profileName = process.env.AWS_PROFILE;
-			if (!profileName) {
-				this.skip();
-			}
+      assert.ok(Array.isArray(models), "Should return models with custom profile");
+      assert.ok(models.length > 0, "Should have models with custom profile");
 
-			try {
-				const profileClient = new BedrockAPIClient(TEST_REGION, profileName);
-				const models = await profileClient.fetchModels();
+      console.log(`✓ Fetched ${models.length} models using profile: ${profileName}`);
+    });
+  });
 
-				assert.ok(Array.isArray(models), "Should return models with custom profile");
-				assert.ok(models.length > 0, "Should have models with custom profile");
+  suite("fetchInferenceProfiles", () => {
+    test("should fetch inference profiles from Amazon Bedrock", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Fetched ${models.length} models using profile: ${profileName}`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
-	});
+      const profiles = await client.fetchInferenceProfiles();
 
-	suite("fetchInferenceProfiles", () => {
-		test("should fetch inference profiles from Amazon Bedrock", async function () {
-			this.timeout(30000);
+      // Validate response structure
+      assert.ok(profiles instanceof Set, "fetchInferenceProfiles should return a Set");
 
-			try {
-				const profiles = await client.fetchInferenceProfiles();
+      // Cross-region inference profiles exist in most regions
+      // If this region has any, validate them
+      if (profiles.size > 0) {
+        const profileArray = Array.from(profiles);
 
-				// Validate response structure
-				assert.ok(profiles instanceof Set, "fetchInferenceProfiles should return a Set");
+        // Validate profile ID format (should look like region.model-id)
+        const firstProfile = profileArray[0];
+        assert.ok(firstProfile.length > 0, "Profile ID should not be empty");
 
-				// Cross-region inference profiles exist in most regions
-				// If this region has any, validate them
-				if (profiles.size > 0) {
-					const profileArray = Array.from(profiles);
+        // Many cross-region profiles follow the pattern: us.anthropic.claude-3-*
+        const hasCrossRegionProfile = profileArray.some(
+          (id) => id.includes(".anthropic.") || id.includes(".meta.") || id.includes(".mistral."),
+        );
 
-					// Validate profile ID format (should look like region.model-id)
-					const firstProfile = profileArray[0];
-					assert.ok(firstProfile.length > 0, "Profile ID should not be empty");
+        console.log(`✓ Fetched ${profiles.size} inference profiles`);
+        if (hasCrossRegionProfile) {
+          console.log("  ✓ Includes cross-region inference profiles");
+        }
+      } else {
+        console.log("✓ No inference profiles in this region (this is normal for some regions)");
+      }
+    });
 
-					// Many cross-region profiles follow the pattern: us.anthropic.claude-3-*
-					const hasCrossRegionProfile = profileArray.some(id =>
-						id.includes(".anthropic.") || id.includes(".meta.") || id.includes(".mistral.")
-					);
+    test("should handle pagination for inference profiles", async function () {
+      this.timeout(30000);
 
-					console.log(`✓ Fetched ${profiles.size} inference profiles`);
-					if (hasCrossRegionProfile) {
-						console.log("  ✓ Includes cross-region inference profiles");
-					}
-				} else {
-					console.log("✓ No inference profiles in this region (this is normal for some regions)");
-				}
-			} catch (error: any) {
-				// Some regions may not support inference profiles yet
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				// If the API call succeeds but returns empty, that's valid
-				if (error.name !== "AccessDeniedException") {
-					throw error;
-				}
-			}
-		});
+      const profiles = await client.fetchInferenceProfiles();
 
-		test("should handle pagination for inference profiles", async function () {
-			this.timeout(30000);
+      // This test validates that pagination is working correctly
+      // by ensuring we get all profiles (not just first page)
+      assert.ok(profiles instanceof Set, "Should return a Set");
 
-			try {
-				const profiles = await client.fetchInferenceProfiles();
+      // Convert to array to check for duplicates
+      const profileArray = Array.from(profiles);
+      const uniqueProfiles = new Set(profileArray);
 
-				// This test validates that pagination is working correctly
-				// by ensuring we get all profiles (not just first page)
-				assert.ok(profiles instanceof Set, "Should return a Set");
+      // Ensure no duplicates (pagination should not double-count)
+      assert.strictEqual(
+        profileArray.length,
+        uniqueProfiles.size,
+        "Should not have duplicate profile IDs (pagination working correctly)",
+      );
 
-				// Convert to array to check for duplicates
-				const profileArray = Array.from(profiles);
-				const uniqueProfiles = new Set(profileArray);
+      console.log(`✓ Pagination test passed: ${profiles.size} unique profiles`);
+    });
 
-				// Ensure no duplicates (pagination should not double-count)
-				assert.strictEqual(
-					profileArray.length,
-					uniqueProfiles.size,
-					"Should not have duplicate profile IDs (pagination working correctly)"
-				);
+    test("should work with default credentials chain", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Pagination test passed: ${profiles.size} unique profiles`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				if (error.name === "AccessDeniedException") {
-					console.log("  ⚠ AccessDeniedException - may need bedrock:ListInferenceProfiles permission");
-					this.skip();
-				}
-				throw error;
-			}
-		});
+      // Client without explicit profile should use default credential chain
+      const defaultClient = new BedrockAPIClient(TEST_REGION);
+      const profiles = await defaultClient.fetchInferenceProfiles();
 
-		test("should work with default credentials chain", async function () {
-			this.timeout(30000);
+      assert.ok(profiles instanceof Set, "Should work with default credentials");
 
-			try {
-				// Client without explicit profile should use default credential chain
-				const defaultClient = new BedrockAPIClient(TEST_REGION);
-				const profiles = await defaultClient.fetchInferenceProfiles();
+      console.log(`✓ Default credentials work: ${profiles.size} profiles`);
+    });
+  });
 
-				assert.ok(profiles instanceof Set, "Should work with default credentials");
+  suite("setRegion and setProfile", () => {
+    test("should allow changing region after construction", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Default credentials work: ${profiles.size} profiles`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
-	});
+      client.setRegion("us-west-2");
+      const models = await client.fetchModels();
 
-	suite("setRegion and setProfile", () => {
-		test("should allow changing region after construction", async function () {
-			this.timeout(30000);
+      assert.ok(Array.isArray(models), "Should work after setRegion");
+      assert.ok(models.length > 0, "Should fetch models from new region");
 
-			try {
-				client.setRegion("us-west-2");
-				const models = await client.fetchModels();
+      console.log(`✓ Region change successful: ${models.length} models`);
+    });
 
-				assert.ok(Array.isArray(models), "Should work after setRegion");
-				assert.ok(models.length > 0, "Should fetch models from new region");
+    test("should allow changing profile after construction", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Region change successful: ${models.length} models`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
+      const profileName = process.env.AWS_PROFILE;
+      if (!profileName) {
+        this.skip();
+      }
 
-		test("should allow changing profile after construction", async function () {
-			this.timeout(30000);
+      client.setProfile(profileName);
+      const models = await client.fetchModels();
 
-			const profileName = process.env.AWS_PROFILE;
-			if (!profileName) {
-				this.skip();
-			}
+      assert.ok(Array.isArray(models), "Should work after setProfile");
+      assert.ok(models.length > 0, "Should fetch models with new profile");
 
-			try {
-				client.setProfile(profileName);
-				const models = await client.fetchModels();
+      console.log(`✓ Profile change successful: ${models.length} models`);
+    });
 
-				assert.ok(Array.isArray(models), "Should work after setProfile");
-				assert.ok(models.length > 0, "Should fetch models with new profile");
+    test("should allow clearing profile to use default credentials", async function () {
+      this.timeout(30000);
 
-				console.log(`✓ Profile change successful: ${models.length} models`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
+      client.setProfile("some-profile");
+      client.setProfile(undefined); // Clear profile
 
-		test("should allow clearing profile to use default credentials", async function () {
-			this.timeout(30000);
+      const models = await client.fetchModels();
 
-			try {
-				client.setProfile("some-profile");
-				client.setProfile(undefined); // Clear profile
+      assert.ok(Array.isArray(models), "Should work after clearing profile");
+      assert.ok(models.length > 0, "Should fetch models with default credentials");
 
-				const models = await client.fetchModels();
-
-				assert.ok(Array.isArray(models), "Should work after clearing profile");
-				assert.ok(models.length > 0, "Should fetch models with default credentials");
-
-				console.log(`✓ Profile cleared successfully: ${models.length} models`);
-			} catch (error: any) {
-				if (error.name === "UnrecognizedClientException" || error.message?.includes("credentials")) {
-					this.skip();
-				}
-				throw error;
-			}
-		});
-	});
+      console.log(`✓ Profile cleared successfully: ${models.length} models`);
+    });
+  });
 });

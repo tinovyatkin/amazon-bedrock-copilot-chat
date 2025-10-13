@@ -5,17 +5,20 @@ Thank you for your interest in contributing to this project!
 ## Development Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/tinovyatkin/amazon-bedrock-copilot-chat.git
    cd amazon-bedrock-copilot-chat
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    ```
 
 3. **Compile the TypeScript code**
+
    ```bash
    npm run compile
    ```
@@ -27,7 +30,7 @@ Thank you for your interest in contributing to this project!
 
 ## Project Structure
 
-```
+```text
 src/
 ├── aws-profiles.ts          # AWS profile listing utilities
 ├── bedrock-client.ts        # Bedrock API client with AWS SDK
@@ -86,6 +89,7 @@ Currently, the extension requires manual testing in VSCode:
 ## AWS Profile Authentication
 
 The extension uses the AWS SDK's `fromIni()` credential provider to load credentials from:
+
 - `~/.aws/credentials`
 - `~/.aws/config`
 
@@ -94,19 +98,25 @@ When no profile is selected, it falls back to the default AWS credentials chain.
 ## Key Implementation Details
 
 ### Message Conversion
+
 Messages are converted from VSCode's format to Bedrock's Converse API format in `converters/messages.ts`. This handles:
+
 - Text content
 - Tool calls
 - Tool results
 - System messages
 
 ### Model Profiles
+
 Different Bedrock models have different capabilities. The `profiles.ts` file maintains model-specific settings:
+
 - Tool choice support
 - Tool result format (text vs JSON)
 
 ### Streaming
+
 Bedrock responses are streamed using the Converse Stream API. The `stream-processor.ts` handles:
+
 - Content blocks
 - Tool use events
 - Token buffering
@@ -124,16 +134,19 @@ Bedrock responses are streamed using the Converse Stream API. The `stream-proces
 ## Common Issues
 
 ### TypeScript Compilation Errors
+
 - Run `npm run compile` to see detailed errors
 - Ensure all type definitions are correct
 - Check that VSCode API types match the expected interface
 
 ### Extension Not Loading
+
 - Check the Extension Development Host console for errors
 - Verify `package.json` contributes section is correct
 - Ensure the extension activation event is properly defined
 
 ### AWS Authentication Errors
+
 - Verify AWS credentials are correctly configured
 - Check IAM permissions for Bedrock access
 - Ensure the selected region has Bedrock enabled
