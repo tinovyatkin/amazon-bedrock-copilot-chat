@@ -18,6 +18,7 @@ CLAUDE.md
 bun*
 .*
 .github
+renovate.json
 !README.md
 !CHANGELOG.md
 !LICENSE.md
