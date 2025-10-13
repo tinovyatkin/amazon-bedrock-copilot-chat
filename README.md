@@ -4,7 +4,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 
 ## Features
 
-- **Native AWS Bedrock Integration**: Access Claude, Opus, DeepSeek, OpenAI OSS, and other models directly in GitHub Copilot Chat
+- **Native Amazon Bedrock Integration**: Access Claude, Opus, DeepSeek, OpenAI OSS, and other models directly in GitHub Copilot Chat
 - **AWS Profile Support**: Uses AWS named profiles from your `~/.aws/credentials` and `~/.aws/config` files
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities
@@ -23,7 +23,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 1. Install the extension from the VSCode marketplace
 2. Configure your AWS credentials if you haven't already:
     - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
-3. Run the "Manage AWS Bedrock Provider" command to select your AWS profile and region
+3. Run the "Manage Amazon Bedrock Provider" command to select your AWS profile and region
 
 ## Configuration
 
@@ -37,7 +37,7 @@ This extension uses AWS named profiles from your AWS configuration files. You ca
 To configure:
 
 1. Open the Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`)
-2. Run "Manage AWS Bedrock Provider"
+2. Run "Manage Amazon Bedrock Provider"
 3. Choose "Set AWS Profile" to select from your available profiles
 4. Choose "Set Region" to select your preferred AWS region
 
@@ -64,25 +64,56 @@ Once configured, Bedrock models will appear in GitHub Copilot Chat's model selec
 
 1. Open GitHub Copilot Chat
 2. Click on the model selector
-3. Choose a Bedrock model (they will be labeled with "AWS Bedrock")
+3. Choose a Bedrock model (they will be labeled with "Amazon Bedrock")
 4. Start chatting!
 
 ## Supported Models
 
-The extension supports all Bedrock foundation models that offer:
+The extension automatically filters and displays only models that support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations.
 
-- Streaming responses
-- Text output
-- Converse API compatibility
+### Supported Model Families
 
-This includes models from:
+**Anthropic Claude:**
+- Claude 3 family (Opus, Sonnet, Haiku)
+- Claude 3.5 Sonnet and Claude 3.5 Haiku
+- Claude 3.7 Sonnet
+- Claude Sonnet 4 and Claude Sonnet 4.5
+- Claude Opus 4 and Claude Opus 4.1
 
-- Anthropic (Claude)
-- Meta (Llama)
-- Mistral AI
-- Amazon (Nova)
-- Cohere
-- AI21 Labs
+**Amazon Nova:**
+- Nova Premier, Nova Pro, Nova Lite, Nova Micro
+
+**Meta Llama:**
+- Llama 3.1 and later (8B, 70B, 405B variants)
+- Llama 3.2 (11B, 90B)
+- Llama 4 (Scout, Maverick)
+
+**Mistral AI:**
+- Mistral Large and Mistral Large 2
+- Mistral Small
+- Pixtral Large
+
+**Cohere:**
+- Command R and Command R+
+
+**AI21 Labs:**
+- Jamba 1.5 Large and Jamba 1.5 Mini
+
+**Writer:**
+- Palmyra X4 and Palmyra X5
+
+**DeepSeek:**
+- DeepSeek models (via Amazon Bedrock when available)
+
+### Models Automatically Excluded
+
+The following models are filtered out as they don't support the Converse API tool use feature:
+
+- Amazon Titan Text (legacy models)
+- Stability AI models (image generation only)
+- AI21 Jurassic 2
+- Meta Llama 2 and Llama 3.0
+- All embedding models (Titan Embed, Cohere Embed)
 
 ## Troubleshooting
 
