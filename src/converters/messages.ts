@@ -1,4 +1,9 @@
-import { Message as BedrockMessage, SystemContentBlock } from "@aws-sdk/client-bedrock-runtime";
+import {
+  Message as BedrockMessage,
+  CachePointType,
+  ContentBlock,
+  SystemContentBlock,
+} from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
 
 import { getModelProfile } from "../profiles";
@@ -21,7 +26,7 @@ export function convertMessages(
 
   for (const msg of messages) {
     if (msg.role === vscode.LanguageModelChatMessageRole.User) {
-      const content: any[] = [];
+      const content: ContentBlock[] = [];
       let hasToolResults = false;
 
       for (const part of msg.content) {
@@ -38,7 +43,7 @@ export function convertMessages(
 
           content.push({
             toolResult: {
-              content: [contentBlock],
+              content: [contentBlock] as any, // AWS SDK uses __DocumentType which is too strict
               toolUseId: part.callId,
               ...(status ? { status } : {}),
             },
@@ -48,21 +53,21 @@ export function convertMessages(
 
       // Add cache point after tool results if prompt caching is supported
       if (profile.supportsPromptCaching && hasToolResults) {
-        content.push({ cachePoint: { type: "default" } });
+        content.push({ cachePoint: { type: CachePointType.DEFAULT } });
       }
 
       if (content.length > 0) {
         bedrockMessages.push({ content, role: "user" });
       }
     } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
-      const content: any[] = [];
+      const content: ContentBlock[] = [];
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
           content.push({ text: part.value });
         } else if (part instanceof vscode.LanguageModelToolCallPart) {
           content.push({
             toolUse: {
-              input: part.input,
+              input: part.input as any, // AWS SDK uses __DocumentType which is too strict
               name: part.name,
               toolUseId: part.callId,
             },
@@ -84,7 +89,7 @@ export function convertMessages(
 
   // Add cache point after system messages if prompt caching is supported
   if (profile.supportsPromptCaching && systemMessages.length > 0) {
-    systemMessages.push({ cachePoint: { type: "default" } });
+    systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
   return { messages: bedrockMessages, system: systemMessages };
