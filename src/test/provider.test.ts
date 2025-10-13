@@ -36,7 +36,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const est = await provider.provideTokenCount(
         {
           capabilities: {},
-          family: "huggingface",
+          family: "bedrock",
           id: "m",
           maxInputTokens: 1000,
           maxOutputTokens: 1000,

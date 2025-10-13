@@ -1,4 +1,4 @@
-import { Message as BedrockMessage } from "@aws-sdk/client-bedrock-runtime";
+import { Message as BedrockMessage, ConversationRole } from "@aws-sdk/client-bedrock-runtime";
 
 /**
  * Validate converted Bedrock messages before sending to API
@@ -13,19 +13,19 @@ export function validateBedrockMessages(messages: BedrockMessage[]): void {
   }
 
   // Bedrock requires first message to be user role
-  if (messages[0].role !== "user") {
+  if (messages[0].role !== ConversationRole.USER) {
     throw new Error("First message must be User role");
   }
 
   // Validate alternating user/assistant pattern
-  let lastRole: string | undefined;
+  let lastRole: ConversationRole | undefined;
   for (const msg of messages) {
     const currentRole = msg.role;
 
     // Check for consecutive messages with same role
     if (lastRole === currentRole) {
       throw new Error(
-        `Invalid message sequence: consecutive ${currentRole === "user" ? "User" : "Assistant"} messages`,
+        `Invalid message sequence: consecutive ${currentRole === ConversationRole.USER ? "User" : "Assistant"} messages`,
       );
     }
     lastRole = currentRole;

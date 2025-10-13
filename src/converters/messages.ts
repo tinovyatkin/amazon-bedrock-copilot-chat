@@ -2,10 +2,12 @@ import {
   Message as BedrockMessage,
   CachePointType,
   ContentBlock,
+  ConversationRole,
   SystemContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
 
+import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
 
 interface ConvertedMessages {
@@ -57,7 +59,15 @@ export function convertMessages(
       }
 
       if (content.length > 0) {
-        bedrockMessages.push({ content, role: "user" });
+        // Check if last message was also a user message - if so, merge content
+        const lastMessage = bedrockMessages[bedrockMessages.length - 1];
+        if (lastMessage && lastMessage.role === ConversationRole.USER && lastMessage.content) {
+          // Merge content into the last user message
+          logger.log("[Message Converter] Merging consecutive USER messages");
+          lastMessage.content.push(...content);
+        } else {
+          bedrockMessages.push({ content, role: ConversationRole.USER });
+        }
       }
     } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
       const content: ContentBlock[] = [];
@@ -75,7 +85,15 @@ export function convertMessages(
         }
       }
       if (content.length > 0) {
-        bedrockMessages.push({ content, role: "assistant" });
+        // Check if last message was also an assistant message - if so, merge content
+        const lastMessage = bedrockMessages[bedrockMessages.length - 1];
+        if (lastMessage && lastMessage.role === ConversationRole.ASSISTANT && lastMessage.content) {
+          // Merge content into the last assistant message
+          logger.log("[Message Converter] Merging consecutive ASSISTANT messages");
+          lastMessage.content.push(...content);
+        } else {
+          bedrockMessages.push({ content, role: ConversationRole.ASSISTANT });
+        }
       }
     } else {
       // System messages
