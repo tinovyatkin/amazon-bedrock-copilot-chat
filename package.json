@@ -38,9 +38,51 @@
 				"command": "bedrock.manage",
 				"title": "Manage AWS Bedrock Provider"
 			}
-		]
+		],
+		"configuration": {
+			"title": "AWS Bedrock",
+			"properties": {
+				"bedrock.region": {
+					"type": "string",
+					"default": "us-east-1",
+					"enum": [
+						"us-east-1",
+						"us-east-2",
+						"us-west-2",
+						"ap-south-1",
+						"ap-northeast-1",
+						"ap-northeast-2",
+						"ap-southeast-1",
+						"ap-southeast-2",
+						"ca-central-1",
+						"eu-central-1",
+						"eu-west-1",
+						"eu-west-2",
+						"eu-west-3",
+						"sa-east-1"
+					],
+					"description": "AWS region for Bedrock API calls",
+					"scope": "resource"
+				},
+				"bedrock.profile": {
+					"type": ["string", "null"],
+					"default": null,
+					"description": "AWS named profile from ~/.aws/credentials. Leave empty to use default credentials chain (environment variables, IAM roles, SSO, etc.)",
+					"scope": "resource"
+				},
+				"bedrock.preferredModel": {
+					"type": ["string", "null"],
+					"default": null,
+					"description": "Preferred Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
+					"scope": "resource"
+				}
+			}
+		}
 	},
 	"main": "./out/extension.js",
+	"sponsor": {
+		"url": "https://github.com/sponsors/tinovyatkin"
+	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
 		"download-api": "dts dev",
@@ -50,17 +92,19 @@
 		"lint": "eslint",
 		"format": "prettier --write .",
 		"watch": "tsc -watch -p ./",
-		"test": "NODE_OPTIONS=--enable-source-maps npm run compile && vscode-test"
+		"pretest": "npm run compile",
+		"test": "vscode-test"
 	},
 	"dependencies": {
-		"@aws-sdk/client-bedrock": "^3.716.0",
-		"@aws-sdk/client-bedrock-runtime": "^3.716.0",
-		"@aws-sdk/credential-providers": "^3.901.0",
+		"@aws-sdk/client-bedrock": "^3.908.0",
+		"@aws-sdk/client-bedrock-runtime": "^3.908.0",
+		"@aws-sdk/credential-providers": "^3.908.0",
 		"ini": "^5.0.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.13.0",
-		"@stylistic/eslint-plugin": "^2.9.0",
+		"@eslint/markdown": "^7.4.0",
+		"@stylistic/eslint-plugin": "^5.4.0",
 		"@types/ini": "^4.1.1",
 		"@types/mocha": "^10.0.6",
 		"@types/node": "^22",
@@ -69,6 +113,9 @@
 		"@vscode/test-cli": "^0.0.11",
 		"@vscode/test-electron": "^2.5.2",
 		"eslint": "^9.37.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-perfectionist": "^4.15.1",
+		"globals": "^16.4.0",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.2",
 		"typescript-eslint": "^8.46.0"

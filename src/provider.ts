@@ -14,60 +14,33 @@ import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { validateRequest } from "./validation";
 import { logger } from "./logger";
+import { getBedrockSettings } from "./settings";
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_CONTEXT_LENGTH = 200000;
 
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
+	private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
 	private client: BedrockAPIClient;
 	private streamProcessor: StreamProcessor;
-	private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
 
 	constructor(
 		private readonly globalState: vscode.Memento,
 		private readonly userAgent: string
 	) {
-		const region = this.globalState.get<string>("bedrock.region") ?? "us-east-1";
-		const profile = this.globalState.get<string>("bedrock.profile");
-		this.client = new BedrockAPIClient(region, profile);
+		const settings = getBedrockSettings(this.globalState);
+		this.client = new BedrockAPIClient(settings.region, settings.profile);
 		this.streamProcessor = new StreamProcessor();
-	}
-
-	private estimateMessagesTokens(msgs: readonly vscode.LanguageModelChatMessage[]): number {
-		let total = 0;
-		for (const m of msgs) {
-			for (const part of m.content) {
-				if (part instanceof vscode.LanguageModelTextPart) {
-					total += Math.ceil(part.value.length / 4);
-				}
-			}
-		}
-		return total;
-	}
-
-	private estimateToolTokens(
-		toolConfig: ToolConfiguration | undefined
-	): number {
-		if (!toolConfig || toolConfig?.tools?.length === 0) {
-			return 0;
-		}
-		try {
-			const json = JSON.stringify(toolConfig);
-			return Math.ceil(json.length / 4);
-		} catch {
-			return 0;
-		}
 	}
 
 	async prepareLanguageModelChatInformation(
 		options: { silent: boolean },
 		_token: CancellationToken
 	): Promise<LanguageModelChatInformation[]> {
-		const region = this.globalState.get<string>("bedrock.region") ?? "us-east-1";
-		const profile = this.globalState.get<string>("bedrock.profile");
-		
-		this.client.setRegion(region);
-		this.client.setProfile(profile);
+		const settings = getBedrockSettings(this.globalState);
+
+		this.client.setRegion(settings.region);
+		this.client.setProfile(settings.profile);
 
 		try {
 			const [models, availableProfileIds] = await Promise.all([
@@ -76,7 +49,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 			]);
 
 			const infos: LanguageModelChatInformation[] = [];
-			const regionPrefix = region.split("-")[0];
+			const regionPrefix = settings.region.split("-")[0];
 
 			for (const m of models) {
 				if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
@@ -92,17 +65,17 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 				const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
 
 				const modelInfo: LanguageModelChatInformation = {
-					id: hasInferenceProfile ? inferenceProfileId : m.modelId,
-					name: m.modelName,
-					tooltip: `AWS Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
+					capabilities: {
+						imageInput: vision,
+						toolCalling: true,
+					},
 					family: "bedrock",
-					version: "1.0.0",
+					id: hasInferenceProfile ? inferenceProfileId : m.modelId,
 					maxInputTokens: maxInput,
 					maxOutputTokens: maxOutput,
-					capabilities: {
-						toolCalling: true,
-						imageInput: vision,
-					},
+					name: m.modelName,
+					tooltip: `AWS Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
+					version: "1.0.0",
 				};
 				infos.push(modelInfo);
 			}
@@ -144,8 +117,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 					progress.report(part);
 				} catch (e) {
 					logger.error("[Bedrock Model Provider] Progress.report failed", {
+						error: e instanceof Error ? { message: e.message, name: e.name } : String(e),
 						modelId: model.id,
-						error: e instanceof Error ? { name: e.name, message: e.message } : String(e),
 					});
 				}
 			},
@@ -186,19 +159,19 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 			const tokenLimit = Math.max(1, model.maxInputTokens);
 			if (inputTokenCount + toolTokenCount > tokenLimit) {
 				logger.error("[Bedrock Model Provider] Message exceeds token limit", {
-					total: inputTokenCount + toolTokenCount,
 					tokenLimit,
+					total: inputTokenCount + toolTokenCount,
 				});
 				throw new Error("Message exceeds token limit.");
 			}
 
 			const requestInput: ConverseStreamCommandInput = {
-				modelId: model.id,
-				messages: converted.messages as any,
 				inferenceConfig: {
 					maxTokens: Math.min(options.modelOptions?.max_tokens || 4096, model.maxOutputTokens),
 					temperature: options.modelOptions?.temperature ?? 0.7,
 				},
+				messages: converted.messages as any,
+				modelId: model.id,
 			};
 
 			if (converted.system.length > 0) {
@@ -229,9 +202,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 			logger.log("[Bedrock Model Provider] Finished processing stream");
 		} catch (err) {
 			logger.error("[Bedrock Model Provider] Chat request failed", {
-				modelId: model.id,
+				error: err instanceof Error ? { message: err.message, name: err.name } : String(err),
 				messageCount: messages.length,
-				error: err instanceof Error ? { name: err.name, message: err.message } : String(err),
+				modelId: model.id,
 			});
 			throw err;
 		}
@@ -239,7 +212,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
 	async provideTokenCount(
 		model: LanguageModelChatInformation,
-		text: string | LanguageModelChatMessage,
+		text: LanguageModelChatMessage | string,
 		_token: CancellationToken
 	): Promise<number> {
 		if (typeof text === "string") {
@@ -252,6 +225,32 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 				}
 			}
 			return totalTokens;
+		}
+	}
+
+	private estimateMessagesTokens(msgs: readonly vscode.LanguageModelChatMessage[]): number {
+		let total = 0;
+		for (const m of msgs) {
+			for (const part of m.content) {
+				if (part instanceof vscode.LanguageModelTextPart) {
+					total += Math.ceil(part.value.length / 4);
+				}
+			}
+		}
+		return total;
+	}
+
+	private estimateToolTokens(
+		toolConfig: ToolConfiguration | undefined
+	): number {
+		if (!toolConfig || toolConfig?.tools?.length === 0) {
+			return 0;
+		}
+		try {
+			const json = JSON.stringify(toolConfig);
+			return Math.ceil(json.length / 4);
+		} catch {
+			return 0;
 		}
 	}
 }

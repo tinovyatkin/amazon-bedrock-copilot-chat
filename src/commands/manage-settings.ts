@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
+import { getBedrockSettings, updateBedrockSettings } from "../settings";
 
 const REGIONS = [
 	"us-east-1",
@@ -19,8 +20,9 @@ const REGIONS = [
 ];
 
 export async function manageSettings(globalState: vscode.Memento): Promise<void> {
-	const existingProfile = globalState.get<string>("bedrock.profile");
-	const existingRegion = globalState.get<string>("bedrock.region") ?? "us-east-1";
+	const settings = getBedrockSettings(globalState);
+	const existingProfile = settings.profile;
+	const existingRegion = settings.region;
 
 	const action = await vscode.window.showQuickPick(
 		[
@@ -72,12 +74,37 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 		});
 
 		if (selected !== undefined) {
-			if (selected.value) {
-				await globalState.update("bedrock.profile", selected.value);
-				vscode.window.showInformationMessage(`AWS profile set to: ${selected.value}`);
-			} else {
-				await globalState.update("bedrock.profile", undefined);
-				vscode.window.showInformationMessage("AWS profile set to: Default credentials");
+			// Ask where to save the setting
+			const scope = await vscode.window.showQuickPick(
+				[
+					{
+						description: "Save for this workspace only",
+						label: "$(folder) Workspace Settings",
+						value: vscode.ConfigurationTarget.Workspace,
+					},
+					{
+						description: "Save globally for all workspaces",
+						label: "$(globe) User Settings",
+						value: vscode.ConfigurationTarget.Global,
+					},
+				],
+				{
+					placeHolder: "Where do you want to save this setting?",
+					title: "Configuration Scope",
+				}
+			);
+
+			if (scope) {
+				await updateBedrockSettings("profile", selected.value, scope.value, globalState);
+
+				const scopeLabel = scope.value === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
+				if (selected.value) {
+					vscode.window.showInformationMessage(
+						`AWS profile set to: ${selected.value} (${scopeLabel} settings)`
+					);
+				} else {
+					vscode.window.showInformationMessage(`AWS profile set to: Default credentials (${scopeLabel} settings)`);
+				}
 			}
 		}
 	} else if (action.value === "region") {
@@ -87,12 +114,48 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 			title: "AWS Bedrock Region",
 		});
 		if (region) {
-			await globalState.update("bedrock.region", region);
-			vscode.window.showInformationMessage(`AWS Bedrock region set to ${region}.`);
+			// Ask where to save the setting
+			const scope = await vscode.window.showQuickPick(
+				[
+					{
+						description: "Save for this workspace only",
+						label: "$(folder) Workspace Settings",
+						value: vscode.ConfigurationTarget.Workspace,
+					},
+					{
+						description: "Save globally for all workspaces",
+						label: "$(globe) User Settings",
+						value: vscode.ConfigurationTarget.Global,
+					},
+				],
+				{
+					placeHolder: "Where do you want to save this setting?",
+					title: "Configuration Scope",
+				}
+			);
+
+			if (scope) {
+				await updateBedrockSettings("region", region, scope.value, globalState);
+
+				const scopeLabel = scope.value === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
+				vscode.window.showInformationMessage(`AWS Bedrock region set to ${region} (${scopeLabel} settings).`);
+			}
 		}
 	} else if (action.value === "clear") {
-		await globalState.update("bedrock.profile", undefined);
-		await globalState.update("bedrock.region", undefined);
-		vscode.window.showInformationMessage("AWS Bedrock settings cleared.");
+		const config = vscode.workspace.getConfiguration("bedrock");
+
+		// Clear both workspace and user settings
+		await Promise.all([
+			config.update("profile", undefined, vscode.ConfigurationTarget.Workspace),
+			config.update("profile", undefined, vscode.ConfigurationTarget.Global),
+			config.update("region", undefined, vscode.ConfigurationTarget.Workspace),
+			config.update("region", undefined, vscode.ConfigurationTarget.Global),
+			config.update("preferredModel", undefined, vscode.ConfigurationTarget.Workspace),
+			config.update("preferredModel", undefined, vscode.ConfigurationTarget.Global),
+			globalState.update("bedrock.profile", undefined),
+			globalState.update("bedrock.region", undefined),
+		]);
+
+		vscode.window.showInformationMessage("AWS Bedrock settings cleared from all scopes.");
 	}
 }
