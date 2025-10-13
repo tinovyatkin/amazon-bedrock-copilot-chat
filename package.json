@@ -65,13 +65,19 @@
 					"scope": "resource"
 				},
 				"bedrock.profile": {
-					"type": ["string", "null"],
+					"type": [
+						"string",
+						"null"
+					],
 					"default": null,
 					"description": "AWS named profile from ~/.aws/credentials. Leave empty to use default credentials chain (environment variables, IAM roles, SSO, etc.)",
 					"scope": "resource"
 				},
 				"bedrock.preferredModel": {
-					"type": ["string", "null"],
+					"type": [
+						"string",
+						"null"
+					],
 					"default": null,
 					"description": "Preferred Amazon Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
 					"scope": "resource"
@@ -79,21 +85,26 @@
 			}
 		}
 	},
-	"main": "./out/extension.js",
+	"main": "./dist/extension.js",
 	"sponsor": {
 		"url": "https://github.com/sponsors/tinovyatkin"
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run compile",
+		"vscode:prepublish": "npm run package",
 		"download-api": "dts dev",
 		"postdownload-api": "dts main",
 		"postinstall": "npm run download-api",
-		"compile": "tsc -p ./",
+		"compile": "npm run check-types && node esbuild.js",
+		"check-types": "tsc --noEmit",
 		"lint": "eslint",
 		"format": "prettier --write .",
-		"watch": "tsc -watch -p ./",
+		"watch": "npm-run-all -p watch:*",
+		"watch:esbuild": "node esbuild.js --watch",
+		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
 		"pretest": "npm run compile",
-		"test": "vscode-test"
+		"test": "vscode-test",
+		"package": "npm run check-types && node esbuild.js --production",
+		"vsce:package": "npx @vscode/vsce package -o dist/extension.vsix"
 	},
 	"dependencies": {
 		"@aws-sdk/client-bedrock": "^3.908.0",
@@ -112,10 +123,12 @@
 		"@vscode/dts": "^0.4.1",
 		"@vscode/test-cli": "^0.0.11",
 		"@vscode/test-electron": "^2.5.2",
+		"esbuild": "^0.25.10",
 		"eslint": "^9.37.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-perfectionist": "^4.15.1",
 		"globals": "^16.4.0",
+		"npm-run-all": "^4.1.5",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.2",
 		"typescript-eslint": "^8.46.0"

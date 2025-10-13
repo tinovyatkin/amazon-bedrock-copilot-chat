@@ -4,26 +4,53 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": "$tsc-watch",
+			"group": "build",
+			"problemMatcher": [
+				"$tsc-watch",
+				{
+					"owner": "esbuild",
+					"source": "esbuild",
+					"fileLocation": "relative",
+					"pattern": {
+						"regexp": "^✘ \\[ERROR\\] (.*)$",
+						"message": 1
+					},
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "^\\[watch\\] build started",
+						"endsPattern": "^\\[watch\\] build (finished|failed)"
+					}
+				}
+			],
 			"isBackground": true,
 			"presentation": {
-				"reveal": "never"
+				"reveal": "never",
+				"group": "watchers"
 			},
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			}
+			"label": "npm: watch"
 		},
 		{
 			"type": "npm",
 			"script": "compile",
-			"problemMatcher": "$tsc",
-			"group": "build"
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": ["$tsc"],
+			"label": "npm: compile"
+		},
+		{
+			"type": "npm",
+			"script": "package",
+			"group": "build",
+			"problemMatcher": ["$tsc"],
+			"label": "npm: package - production build"
 		},
 		{
 			"type": "npm",
 			"script": "lint",
-			"problemMatcher": "$eslint-stylish"
+			"problemMatcher": "$eslint-stylish",
+			"label": "npm: lint"
 		}
 	]
 }
