@@ -8,7 +8,7 @@
 		"type": "git",
 		"url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
 	},
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"engines": {
 		"vscode": "^1.104.0"
 	},
@@ -103,7 +103,7 @@
 		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
 		"pretest": "npm run compile",
 		"test": "vscode-test",
-		"package": "npm run check-types && node esbuild.js --production",
+		"package": "npm run check-types && node esbuild.js",
 		"vsce:package": "npx @vscode/vsce package -o dist/extension.vsix"
 	},
 	"dependencies": {
