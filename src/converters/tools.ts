@@ -15,7 +15,7 @@ export function convertTools(
   }
 
   const profile = getModelProfile(modelId);
-  const tools = options.tools.map((tool: any) => ({
+  const tools: bedrockRuntime.Tool[] = options.tools.map((tool: any) => ({
     toolSpec: {
       description: tool.description,
       inputSchema: {
@@ -24,6 +24,13 @@ export function convertTools(
       name: tool.name,
     },
   }));
+
+  // Add cache point after tool definitions if prompt caching is supported
+  // This is one of three strategic cache points: after system messages,
+  // after tool definitions, and after tool results (within 4-point limit)
+  if (profile.supportsPromptCaching && tools.length > 0) {
+    tools.push({ cachePoint: { type: "default" } });
+  }
 
   const config: bedrockRuntime.ToolConfiguration = { tools };
 
