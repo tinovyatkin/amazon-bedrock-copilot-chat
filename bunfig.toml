@@ -1,0 +1,8 @@
+bun       = true
+telemetry = false
+
+[install]
+linkWorkspacePackages = true
+
+[run]
+bun = true

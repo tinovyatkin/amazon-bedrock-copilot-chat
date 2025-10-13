@@ -9,31 +9,34 @@ A VSCode extension that integrates AWS Bedrock foundation models (Claude, Llama,
 ## Essential Commands
 
 ### Development
+
 ```bash
-npm install              # Install dependencies (also downloads VSCode API definitions)
-npm run compile          # Compile TypeScript to out/ directory
-npm run watch            # Watch mode for development
-npm run lint             # Run ESLint
-npm run format           # Format code with Prettier
+bun install              # Install dependencies (also downloads VSCode API definitions)
+bun run compile          # Compile TypeScript to out/ directory
+bun run lint             # Run ESLint
+bun run format           # Format code with Prettier
 ```
 
 ### Testing
+
 ```bash
 # Press F5 in VSCode to launch Extension Development Host
 # Or use Run and Debug panel -> "Run Extension"
 
-npm run test             # Run tests (requires compilation first)
+bun run test             # Run tests (requires compilation first)
 ```
 
 ### Build & Package
+
 ```bash
-npm run vscode:prepublish  # Prepare for publishing (runs compile)
-vsce package               # Create .vsix package (requires @vscode/vsce)
+bun run vscode:prepublish  # Prepare for publishing (runs compile)
+bunx vsce package               # Create .vsix package (requires @vscode/vsce)
 ```
 
 ## Architecture Overview
 
 ### Core Flow
+
 1. **Extension activation** (extension.ts) → Registers `BedrockChatModelProvider` with VSCode
 2. **Model listing** → `BedrockAPIClient` fetches available models via AWS SDK
 3. **Chat requests** → Messages converted to Bedrock format → Streamed responses via `ConverseStream` API
@@ -42,24 +45,28 @@ vsce package               # Create .vsix package (requires @vscode/vsce)
 ### Key Components
 
 **Provider Layer** (src/provider.ts)
+
 - `BedrockChatModelProvider`: Main VSCode integration implementing `LanguageModelChatProvider`
 - `provideLanguageModelChatInformation()`: Lists available Bedrock models
 - `provideLanguageModelChatResponse()`: Handles chat requests with streaming
 - Token estimation using char_count/4 approximation
 
 **AWS Integration** (src/bedrock-client.ts)
+
 - `BedrockAPIClient`: Wraps AWS SDK Bedrock clients
 - Uses `fromIni()` credential provider when profile specified
 - Falls back to default AWS credential chain when no profile
 - Handles both foundation models and cross-region inference profiles
 
 **Message Conversion** (src/converters/)
+
 - `messages.ts`: VSCode messages → Bedrock Converse API format
 - `tools.ts`: VSCode tools → Bedrock tool configuration
 - `schema.ts`: Tool schemas → JSON Schema format
 - Handles text, images, tool calls, and tool results
 
 **Stream Processing** (src/stream-processor.ts)
+
 - Processes Bedrock `ConverseStream` events
 - `contentBlockStart` → Initiates tool calls
 - `contentBlockDelta` → Streams text or tool inputs
@@ -67,6 +74,7 @@ vsce package               # Create .vsix package (requires @vscode/vsce)
 - Uses `ToolBuffer` to accumulate streaming JSON tool parameters
 
 **Configuration** (src/commands/manage-settings.ts, src/aws-profiles.ts)
+
 - `manageSettings()`: Interactive UI for profile/region selection
 - `listAwsProfiles()`: Parses ~/.aws/credentials and ~/.aws/config files
 - Settings persisted in VSCode `globalState` (Memento)
@@ -74,6 +82,7 @@ vsce package               # Create .vsix package (requires @vscode/vsce)
 ### Model Capabilities (src/profiles.ts)
 
 Different Bedrock models have varying capabilities:
+
 - **Tool choice modes**: Some models support `any`/`auto`/`tool`, others only support absence vs presence
 - **Tool result formats**: Models differ in how they expect tool results (JSON vs text)
 - Check model-specific profiles when debugging tool calling issues
@@ -81,6 +90,7 @@ Different Bedrock models have varying capabilities:
 ## Important Patterns
 
 ### AWS Credential Resolution
+
 ```typescript
 // If profile specified: use fromIni({ profile })
 // If no profile: use default credential chain (env vars, IAM roles, etc.)
@@ -93,25 +103,30 @@ private getCredentials() {
 ```
 
 ### Cross-Region Inference Profiles
+
 Models can be accessed via cross-region inference profiles (format: `{region-prefix}.{model-id}`):
+
 - Automatically detected via `ListInferenceProfilesCommand`
 - Provides better availability and latency
 - Example: `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
 
 ### Message Validation
+
 - First message must be USER role
 - Messages must alternate USER/ASSISTANT
 - Tool call/result messages must match ASSISTANT/USER pattern
 - See `validation.ts` for detailed rules
 
 ### Token Estimation
+
 Uses simple approximation: `tokens ≈ char_count / 4`
+
 - Applied to both message content and tool configurations
 - Validates against model's `maxInputTokens` before request
 
 ## File Organization
 
-```
+```text
 src/
 ├── extension.ts              # Entry point, activation
 ├── provider.ts               # Main LanguageModelChatProvider
@@ -159,18 +174,20 @@ See TESTING.md and IMPLEMENTATION.md for detailed testing procedures.
 ## VSCode API Requirements
 
 - Minimum VSCode version: 1.104.0
-- Uses proposed/experimental APIs (downloaded via `npm run download-api`)
+- Uses proposed/experimental APIs (downloaded via `bun run download-api`)
 - API definitions in vscode.d.ts (auto-generated)
 
 ## Dependencies
 
 **Runtime**:
+
 - `@aws-sdk/client-bedrock`: Model listing
 - `@aws-sdk/client-bedrock-runtime`: Converse API
 - `@aws-sdk/credential-providers`: AWS profile support
 - `ini`: Parse AWS config files
 
 **Development**:
+
 - `typescript`: 5.9+, strict mode
 - `eslint`: Code quality with typescript-eslint
 - `prettier`: Code formatting
@@ -232,6 +249,6 @@ gh api repos/tinovyatkin/amazon-bedrock-copilot-chat/pulls/<PR_NUMBER>/comments/
   -X POST -f body='✅ Addressed in <hash>. Thanks!'
 ```
 
-*Replace `<hash>` with the short commit SHA.*
+_Replace `<hash>` with the short commit SHA._
 
 **Follow these five steps exactly to process a GitHub review comment.**
