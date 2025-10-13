@@ -23,26 +23,6 @@ suite("BedrockAPIClient Integration Tests", () => {
   const TEST_REGION = "us-east-1";
   let client: BedrockAPIClient;
 
-  // Check if AWS credentials are available
-  const hasAwsCredentials = (): boolean => {
-    // Check for environment variables
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      return true;
-    }
-    // Check for AWS profile
-    if (process.env.AWS_PROFILE) {
-      return true;
-    }
-    // Assume credentials might be available from default credential chain
-    return true;
-  };
-
-  suiteSetup(function () {
-    if (!hasAwsCredentials()) {
-      this.skip();
-    }
-  });
-
   setup(() => {
     client = new BedrockAPIClient(TEST_REGION);
   });
