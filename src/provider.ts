@@ -4,11 +4,10 @@ import {
 	LanguageModelChatInformation,
 	LanguageModelChatMessage,
 	LanguageModelChatProvider,
-	ProvideLanguageModelChatResponseOptions,
 	LanguageModelResponsePart,
 	Progress,
 } from "vscode";
-import { ConverseStreamCommandInput } from "@aws-sdk/client-bedrock-runtime";
+import { ConverseStreamCommandInput, ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { BedrockAPIClient } from "./bedrock-client";
 import { StreamProcessor } from "./stream-processor";
 import { convertMessages } from "./converters/messages";
@@ -47,9 +46,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 	}
 
 	private estimateToolTokens(
-		toolConfig: { tools: Array<{ toolSpec: { name: string; description?: string; inputSchema: { json: object } } }> } | undefined
+		toolConfig: ToolConfiguration | undefined
 	): number {
-		if (!toolConfig || toolConfig.tools.length === 0) {
+		if (!toolConfig || toolConfig?.tools?.length === 0) {
 			return 0;
 		}
 		try {
@@ -135,7 +134,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 	async provideLanguageModelChatResponse(
 		model: LanguageModelChatInformation,
 		messages: readonly LanguageModelChatMessage[],
-		options: ProvideLanguageModelChatResponseOptions,
+		options: Parameters<LanguageModelChatProvider['provideLanguageModelChatResponse']>[2],
 		progress: Progress<LanguageModelResponsePart>,
 		token: CancellationToken
 	): Promise<void> {
@@ -168,7 +167,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
 			logger.log("[Bedrock Model Provider] Converted to Bedrock messages:", converted.messages.length);
 			converted.messages.forEach((msg, idx) => {
-				const contentTypes = msg.content.map((c) => {
+				const contentTypes = msg.content?.map((c) => {
 					if ("text" in c) return "text";
 					if ("toolUse" in c) return "toolUse";
 					return "toolResult";
@@ -183,7 +182,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 			}
 
 			const inputTokenCount = this.estimateMessagesTokens(messages);
-			const toolTokenCount = this.estimateToolTokens(toolConfig);
+			const toolTokenCount =  this.estimateToolTokens(toolConfig);
 			const tokenLimit = Math.max(1, model.maxInputTokens);
 			if (inputTokenCount + toolTokenCount > tokenLimit) {
 				logger.error("[Bedrock Model Provider] Message exceeds token limit", {

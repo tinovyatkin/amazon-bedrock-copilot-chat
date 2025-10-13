@@ -22,7 +22,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 
 1. Install the extension from the VSCode marketplace
 2. Configure your AWS credentials if you haven't already:
-   - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
+    - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
 3. Run the "Manage AWS Bedrock Provider" command to select your AWS profile and region
 
 ## Configuration
@@ -70,11 +70,13 @@ Once configured, Bedrock models will appear in GitHub Copilot Chat's model selec
 ## Supported Models
 
 The extension supports all Bedrock foundation models that offer:
+
 - Streaming responses
 - Text output
 - Converse API compatibility
 
 This includes models from:
+
 - Anthropic (Claude)
 - Meta (Llama)
 - Mistral AI
@@ -95,9 +97,9 @@ This includes models from:
 
 1. Verify your AWS credentials are valid and not expired
 2. Check that your IAM user/role has the necessary Bedrock permissions:
-   - `bedrock:ListFoundationModels`
-   - `bedrock:InvokeModel`
-   - `bedrock:InvokeModelWithResponseStream`
+    - `bedrock:ListFoundationModels`
+    - `bedrock:InvokeModel`
+    - `bedrock:InvokeModelWithResponseStream`
 
 ## Development
 
@@ -122,7 +124,7 @@ npm run format
 
 ## Credits
 
-This extension is based on [bedrock-vscode-chat](https://github.com/aristide1997/bedrock-vscode-chat) by Aristide, adapted to use AWS named profiles instead of API keys.
+This extension is based on [huggingface-vscode-chat](https://github.com/huggingface/huggingface-vscode-chat) and [vscode-copilot-chat PR#1046](https://github.com/microsoft/vscode-copilot-chat/pull/1046).
 
 AWS profile handling inspired by [AWS Toolkit for Visual Studio Code](https://github.com/aws/aws-toolkit-vscode).
 

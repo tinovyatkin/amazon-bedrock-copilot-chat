@@ -50,7 +50,7 @@
 		"lint": "eslint",
 		"format": "prettier --write .",
 		"watch": "tsc -watch -p ./",
-		"test": "npm run compile && vscode-test"
+		"test": "NODE_OPTIONS=--enable-source-maps npm run compile && vscode-test"
 	},
 	"dependencies": {
 		"@aws-sdk/client-bedrock": "^3.716.0",
@@ -68,9 +68,9 @@
 		"@vscode/dts": "^0.4.1",
 		"@vscode/test-cli": "^0.0.11",
 		"@vscode/test-electron": "^2.5.2",
-		"eslint": "^9.13.0",
-		"prettier": "^3.1.0",
+		"eslint": "^9.37.0",
+		"prettier": "^3.6.2",
 		"typescript": "^5.9.2",
-		"typescript-eslint": "^8.39.0"
+		"typescript-eslint": "^8.46.0"
 	}
 }

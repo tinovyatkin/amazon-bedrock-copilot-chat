@@ -1,18 +1,20 @@
 import * as vscode from "vscode";
+import {
+	Message as BedrockMessage,
+	CachePointBlock,
+	CachePointType,
+	ContentBlock,
+	SystemContentBlock,
+} from '@aws-sdk/client-bedrock-runtime';
 import { getModelProfile } from "../profiles";
 
-interface BedrockMessage {
-	role: string;
-	content: any[];
-}
 
-interface BedrockSystemMessage {
-	text: string;
-}
+
+
 
 interface ConvertedMessages {
 	messages: BedrockMessage[];
-	system: BedrockSystemMessage[];
+	system: SystemContentBlock[];
 }
 
 /**
@@ -24,7 +26,7 @@ export function convertMessages(
 ): ConvertedMessages {
 	const profile = getModelProfile(modelId);
 	const bedrockMessages: BedrockMessage[] = [];
-	const systemMessages: BedrockSystemMessage[] = [];
+	const systemMessages: SystemContentBlock[] = [];
 
 	for (const msg of messages) {
 		if (msg.role === vscode.LanguageModelChatMessageRole.User) {
