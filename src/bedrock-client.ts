@@ -1,8 +1,4 @@
-import {
-	BedrockClient,
-	ListFoundationModelsCommand,
-	paginateListInferenceProfiles, 
-} from "@aws-sdk/client-bedrock";
+import { BedrockClient, ListFoundationModelsCommand, paginateListInferenceProfiles } from "@aws-sdk/client-bedrock";
 import {
 	BedrockRuntimeClient,
 	ConverseStreamCommand,

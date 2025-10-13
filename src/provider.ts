@@ -19,6 +19,50 @@ import { getBedrockSettings } from "./settings";
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_CONTEXT_LENGTH = 200000;
 
+/**
+ * Patterns for models that do not support tool calling.
+ * These models will be completely excluded from the provider list.
+ *
+ * Based on AWS Bedrock documentation:
+ * - Legacy Titan Text models don't support Converse API tool use
+ * - Stability AI models are for image generation only
+ * - AI21 Jurassic 2 models don't support tool calling
+ * - Meta Llama 2 and Llama 3.0 don't support tools (but 3.1+ do)
+ * - Embedding models don't support conversational tool use
+ */
+const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
+	// Amazon Titan Text (legacy models)
+	/^(us\.)?amazon\.titan-text-/,
+	/^(us\.)?amazon\.titan-embed-/,
+
+	// Stability AI (image generation)
+	/^(us\.)?stability\./,
+
+	// AI21 Jurassic 2 (older models)
+	/^(us\.)?ai21\.j2-/,
+
+	// Meta Llama 2 (doesn't support tools)
+	/^(us\.)?meta\.llama-?2/,
+
+	// Meta Llama 3.0 (only 3.1+ supports tools)
+	/^(us\.)?meta\.llama-?3\.0/,
+
+	// Cohere Embed (embedding models)
+	/^(us\.)?cohere\.embed-/,
+
+	// Amazon Titan Embed (embedding models)
+	/^(us\.)?amazon\.titan-embed-/,
+];
+
+/**
+ * Check if a model ID matches any of the tool-incapable patterns.
+ * @param modelId The model ID to check (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0" or "us.anthropic.claude-...")
+ * @returns true if the model is tool-incapable and should be excluded
+ */
+function isToolIncapableModel(modelId: string): boolean {
+	return TOOL_INCAPABLE_MODEL_PATTERNS.some((pattern) => pattern.test(modelId));
+}
+
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
 	private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
 	private client: BedrockAPIClient;
@@ -56,13 +100,21 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 					continue;
 				}
 
+				// Determine which model ID to use (with or without inference profile)
+				const inferenceProfileId = `${regionPrefix}.${m.modelId}`;
+				const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
+				const modelIdToUse = hasInferenceProfile ? inferenceProfileId : m.modelId;
+
+				// Exclude models that don't support tool calling
+				if (isToolIncapableModel(modelIdToUse)) {
+					logger.log(`[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`);
+					continue;
+				}
+
 				const contextLen = DEFAULT_CONTEXT_LENGTH;
 				const maxOutput = DEFAULT_MAX_OUTPUT_TOKENS;
 				const maxInput = Math.max(1, contextLen - maxOutput);
 				const vision = m.inputModalities.includes("IMAGE");
-
-				const inferenceProfileId = `${regionPrefix}.${m.modelId}`;
-				const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
 
 				const modelInfo: LanguageModelChatInformation = {
 					capabilities: {
@@ -70,7 +122,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 						toolCalling: true,
 					},
 					family: "bedrock",
-					id: hasInferenceProfile ? inferenceProfileId : m.modelId,
+					id: modelIdToUse,
 					maxInputTokens: maxInput,
 					maxOutputTokens: maxOutput,
 					name: m.modelName,
@@ -107,7 +159,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 	async provideLanguageModelChatResponse(
 		model: LanguageModelChatInformation,
 		messages: readonly LanguageModelChatMessage[],
-		options: Parameters<LanguageModelChatProvider['provideLanguageModelChatResponse']>[2],
+		options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
 		progress: Progress<LanguageModelResponsePart>,
 		token: CancellationToken
 	): Promise<void> {
@@ -155,7 +207,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 			}
 
 			const inputTokenCount = this.estimateMessagesTokens(messages);
-			const toolTokenCount =  this.estimateToolTokens(toolConfig);
+			const toolTokenCount = this.estimateToolTokens(toolConfig);
 			const tokenLimit = Math.max(1, model.maxInputTokens);
 			if (inputTokenCount + toolTokenCount > tokenLimit) {
 				logger.error("[Bedrock Model Provider] Message exceeds token limit", {
@@ -240,9 +292,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 		return total;
 	}
 
-	private estimateToolTokens(
-		toolConfig: ToolConfiguration | undefined
-	): number {
+	private estimateToolTokens(toolConfig: ToolConfiguration | undefined): number {
 		if (!toolConfig || toolConfig?.tools?.length === 0) {
 			return 0;
 		}

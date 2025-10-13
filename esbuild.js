@@ -45,7 +45,7 @@ async function main() {
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: "node",
-		target: 'node22',
+		target: "node22",
 		outfile: "dist/extension.js",
 		external: ["vscode"],
 		logLevel: "silent",

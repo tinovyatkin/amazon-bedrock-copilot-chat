@@ -21,8 +21,7 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
 	const config = vscode.workspace.getConfiguration("bedrock");
 
 	// Read region with priority: workspace > user > globalState > default
-	const region =
-		config.get<string>("region") ?? globalState.get<string>("bedrock.region") ?? "us-east-1";
+	const region = config.get<string>("region") ?? globalState.get<string>("bedrock.region") ?? "us-east-1";
 
 	// Read profile with priority: workspace > user > globalState > default
 	// Note: null in config means "use default credentials", so we check inspect() for undefined

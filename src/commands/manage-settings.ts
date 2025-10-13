@@ -67,9 +67,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 
 		const selected = await vscode.window.showQuickPick(items, {
 			ignoreFocusOut: true,
-			placeHolder: existingProfile
-				? `Current: ${existingProfile}`
-				: "Current: Default credentials",
+			placeHolder: existingProfile ? `Current: ${existingProfile}` : "Current: Default credentials",
 			title: "Select AWS Profile",
 		});
 
@@ -103,7 +101,9 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 						`AWS profile set to: ${selected.value} (${scopeLabel} settings)`
 					);
 				} else {
-					vscode.window.showInformationMessage(`AWS profile set to: Default credentials (${scopeLabel} settings)`);
+					vscode.window.showInformationMessage(
+						`AWS profile set to: Default credentials (${scopeLabel} settings)`
+					);
 				}
 			}
 		}
@@ -138,7 +138,9 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 				await updateBedrockSettings("region", region, scope.value, globalState);
 
 				const scopeLabel = scope.value === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
-				vscode.window.showInformationMessage(`Amazon Bedrock region set to ${region} (${scopeLabel} settings).`);
+				vscode.window.showInformationMessage(
+					`Amazon Bedrock region set to ${region} (${scopeLabel} settings).`
+				);
 			}
 		}
 	} else if (action.value === "clear") {

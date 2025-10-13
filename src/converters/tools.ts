@@ -1,5 +1,5 @@
 import { LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
-import type * as bedrockRuntime from '@aws-sdk/client-bedrock-runtime';
+import type * as bedrockRuntime from "@aws-sdk/client-bedrock-runtime";
 import { convertSchema } from "./schema";
 import { getModelProfile } from "../profiles";
 
@@ -7,7 +7,7 @@ import { getModelProfile } from "../profiles";
  * Convert VSCode tools to Bedrock tool configuration
  */
 export function convertTools(
-	options: Parameters<LanguageModelChatProvider['provideLanguageModelChatResponse']>[2],
+	options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
 	modelId: string
 ): bedrockRuntime.ToolConfiguration | undefined {
 	if (!options.tools || options.tools.length === 0) {

@@ -5,12 +5,8 @@ import {
 	CachePointType,
 	ContentBlock,
 	SystemContentBlock,
-} from '@aws-sdk/client-bedrock-runtime';
+} from "@aws-sdk/client-bedrock-runtime";
 import { getModelProfile } from "../profiles";
-
-
-
-
 
 interface ConvertedMessages {
 	messages: BedrockMessage[];
@@ -39,9 +35,7 @@ export function convertMessages(
 						profile.toolResultFormat === "json" &&
 						typeof part.content === "object" &&
 						part.content !== null;
-					const contentBlock = isJson
-						? { json: part.content }
-						: { text: String(part.content) };
+					const contentBlock = isJson ? { json: part.content } : { text: String(part.content) };
 					const status = (part as any).isError ? "error" : undefined;
 
 					content.push({
