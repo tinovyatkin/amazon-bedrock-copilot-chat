@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { listAwsProfiles, hasAwsCredentials } from "../aws-profiles";
+import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
 
 const REGIONS = [
 	"us-east-1",
@@ -29,8 +29,8 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 			{ label: "Clear Settings", value: "clear" },
 		],
 		{
-			title: "Manage AWS Bedrock Provider",
 			placeHolder: "Choose an action",
+			title: "Manage AWS Bedrock Provider",
 		}
 	);
 
@@ -39,47 +39,36 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 	}
 
 	if (action.value === "profile") {
-		// Check if AWS credentials exist
-		if (!hasAwsCredentials()) {
-			const result = await vscode.window.showWarningMessage(
-				"No AWS credentials files found. Please configure AWS credentials first.",
-				"Open AWS Documentation"
+		// Attempt to list available profiles (Default credentials are always offered)
+		let profiles: string[] = [];
+		if (hasAwsCredentials()) {
+			profiles = await listAwsProfiles();
+		} else {
+			vscode.window.showInformationMessage(
+				"No local AWS credential files found. You can still use Default credentials (env/SSO/IMDS)."
 			);
-			if (result === "Open AWS Documentation") {
-				vscode.env.openExternal(
-					vscode.Uri.parse("https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html")
-				);
-			}
-			return;
-		}
-
-		// List available profiles
-		const profiles = await listAwsProfiles();
-		if (profiles.length === 0) {
-			vscode.window.showWarningMessage("No AWS profiles found in credentials files.");
-			return;
 		}
 
 		// Add option to use default credentials
 		const items = [
 			{
-				label: "$(key) Default Credentials",
 				description: "Use default AWS credentials chain",
+				label: "$(key) Default Credentials",
 				value: undefined,
 			},
 			...profiles.map((profile) => ({
-				label: `$(account) ${profile}`,
 				description: profile === existingProfile ? "Currently selected" : "",
+				label: `$(account) ${profile}`,
 				value: profile,
 			})),
 		];
 
 		const selected = await vscode.window.showQuickPick(items, {
-			title: "Select AWS Profile",
+			ignoreFocusOut: true,
 			placeHolder: existingProfile
 				? `Current: ${existingProfile}`
 				: "Current: Default credentials",
-			ignoreFocusOut: true,
+			title: "Select AWS Profile",
 		});
 
 		if (selected !== undefined) {
@@ -93,9 +82,9 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 		}
 	} else if (action.value === "region") {
 		const region = await vscode.window.showQuickPick(REGIONS, {
-			title: "AWS Bedrock Region",
-			placeHolder: `Current: ${existingRegion}`,
 			ignoreFocusOut: true,
+			placeHolder: `Current: ${existingRegion}`,
+			title: "AWS Bedrock Region",
 		});
 		if (region) {
 			await globalState.update("bedrock.region", region);
