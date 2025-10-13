@@ -4,7 +4,7 @@ import { convertMessages } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { BedrockChatModelProvider } from "../provider";
 
-suite("HuggingFace Chat Provider Extension", () => {
+suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
       const provider = new BedrockChatModelProvider(
