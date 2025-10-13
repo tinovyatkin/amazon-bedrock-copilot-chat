@@ -1,8 +1,8 @@
 {
 	"name": "amazon-bedrock-copilot-chat",
 	"publisher": "tinovyatkin",
-	"displayName": "AWS Bedrock Provider for GitHub Copilot Chat",
-	"description": "Native AWS Bedrock integration for GitHub Copilot Chat using AWS named profiles. Brings Claude, Llama, and Mistral models into your editor with streaming, function calling, and vision support.",
+	"displayName": "Amazon Bedrock Provider for GitHub Copilot Chat",
+	"description": "Native Amazon Bedrock integration for GitHub Copilot Chat using AWS named profiles. Brings Claude, Llama, and Mistral models into your editor with streaming, function calling, and vision support.",
 	"icon": "assets/logo.png",
 	"repository": {
 		"type": "git",
@@ -29,18 +29,18 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "bedrock",
-				"displayName": "AWS Bedrock",
+				"displayName": "Amazon Bedrock",
 				"managementCommand": "bedrock.manage"
 			}
 		],
 		"commands": [
 			{
 				"command": "bedrock.manage",
-				"title": "Manage AWS Bedrock Provider"
+				"title": "Manage Amazon Bedrock Provider"
 			}
 		],
 		"configuration": {
-			"title": "AWS Bedrock",
+			"title": "Amazon Bedrock",
 			"properties": {
 				"bedrock.region": {
 					"type": "string",
@@ -61,7 +61,7 @@
 						"eu-west-3",
 						"sa-east-1"
 					],
-					"description": "AWS region for Bedrock API calls",
+					"description": "AWS region for Amazon Bedrock API calls",
 					"scope": "resource"
 				},
 				"bedrock.profile": {
@@ -73,7 +73,7 @@
 				"bedrock.preferredModel": {
 					"type": ["string", "null"],
 					"default": null,
-					"description": "Preferred Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
+					"description": "Preferred Amazon Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
 					"scope": "resource"
 				}
 			}

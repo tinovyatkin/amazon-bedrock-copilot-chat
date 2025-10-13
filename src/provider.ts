@@ -74,7 +74,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 					maxInputTokens: maxInput,
 					maxOutputTokens: maxOutput,
 					name: m.modelName,
-					tooltip: `AWS Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
+					tooltip: `Amazon Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
 					version: "1.0.0",
 				};
 				infos.push(modelInfo);

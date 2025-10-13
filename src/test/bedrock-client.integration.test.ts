@@ -5,12 +5,12 @@ import { BedrockAPIClient } from "../bedrock-client";
  * Integration tests for BedrockAPIClient
  *
  * These tests require valid AWS credentials configured in the environment.
- * They make actual API calls to AWS Bedrock service.
+ * They make actual API calls to Amazon Bedrock service.
  *
  * Prerequisites:
  * - AWS credentials configured via environment variables or AWS config files
  * - IAM permissions for bedrock:ListFoundationModels and bedrock:ListInferenceProfiles
- * - Network access to AWS Bedrock API endpoints
+ * - Network access to Amazon Bedrock API endpoints
  *
  * To run these tests:
  *   npm run test
@@ -47,7 +47,7 @@ suite("BedrockAPIClient Integration Tests", () => {
 	});
 
 	suite("fetchModels", () => {
-		test("should fetch foundation models from AWS Bedrock", async function () {
+		test("should fetch foundation models from Amazon Bedrock", async function () {
 			this.timeout(30000); // Allow 30 seconds for AWS API call
 
 			try {
@@ -131,7 +131,7 @@ suite("BedrockAPIClient Integration Tests", () => {
 	});
 
 	suite("fetchInferenceProfiles", () => {
-		test("should fetch inference profiles from AWS Bedrock", async function () {
+		test("should fetch inference profiles from Amazon Bedrock", async function () {
 			this.timeout(30000);
 
 			try {

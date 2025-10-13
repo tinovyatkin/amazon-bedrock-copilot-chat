@@ -32,7 +32,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 		],
 		{
 			placeHolder: "Choose an action",
-			title: "Manage AWS Bedrock Provider",
+			title: "Manage Amazon Bedrock Provider",
 		}
 	);
 
@@ -111,7 +111,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 		const region = await vscode.window.showQuickPick(REGIONS, {
 			ignoreFocusOut: true,
 			placeHolder: `Current: ${existingRegion}`,
-			title: "AWS Bedrock Region",
+			title: "Amazon Bedrock Region",
 		});
 		if (region) {
 			// Ask where to save the setting
@@ -138,7 +138,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 				await updateBedrockSettings("region", region, scope.value, globalState);
 
 				const scopeLabel = scope.value === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
-				vscode.window.showInformationMessage(`AWS Bedrock region set to ${region} (${scopeLabel} settings).`);
+				vscode.window.showInformationMessage(`Amazon Bedrock region set to ${region} (${scopeLabel} settings).`);
 			}
 		}
 	} else if (action.value === "clear") {
@@ -156,6 +156,6 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
 			globalState.update("bedrock.region", undefined),
 		]);
 
-		vscode.window.showInformationMessage("AWS Bedrock settings cleared from all scopes.");
+		vscode.window.showInformationMessage("Amazon Bedrock settings cleared from all scopes.");
 	}
 }
