@@ -74,11 +74,15 @@ The extension automatically filters and displays only models that support **tool
 ### Supported Model Families
 
 **Anthropic Claude:**
-- Claude 3 family (Opus, Sonnet, Haiku)
-- Claude 3.5 Sonnet and Claude 3.5 Haiku
+- Claude Sonnet 4.5 and Claude Sonnet 4
+- Claude Opus 4.1 and Claude Opus 4
 - Claude 3.7 Sonnet
-- Claude Sonnet 4 and Claude Sonnet 4.5
-- Claude Opus 4 and Claude Opus 4.1
+- Claude 3.5 Sonnet and Claude 3.5 Haiku (legacy)
+- Claude 3 family: Opus, Sonnet, Haiku (legacy)
+
+**OpenAI OSS:**
+- gpt-oss-120b (120B parameters, near o4-mini performance)
+- gpt-oss-20b (20B parameters, optimized for edge deployment)
 
 **Amazon Nova:**
 - Nova Premier, Nova Pro, Nova Lite, Nova Micro
