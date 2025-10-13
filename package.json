@@ -1,0 +1,136 @@
+{
+	"name": "amazon-bedrock-copilot-chat",
+	"publisher": "tinovyatkin",
+	"displayName": "Amazon Bedrock Provider for GitHub Copilot Chat",
+	"description": "Native Amazon Bedrock integration for GitHub Copilot Chat using AWS named profiles. Brings Claude, Llama, and Mistral models into your editor with streaming, function calling, and vision support.",
+	"icon": "assets/logo.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
+	},
+	"version": "0.0.1",
+	"engines": {
+		"vscode": "^1.104.0"
+	},
+	"categories": [
+		"AI",
+		"Chat"
+	],
+	"galleryBanner": {
+		"color": "#100f11",
+		"theme": "dark"
+	},
+	"homepage": "https://aws.amazon.com/bedrock/",
+	"bugs": {
+		"url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat/issues"
+	},
+	"license": "MIT",
+	"contributes": {
+		"languageModelChatProviders": [
+			{
+				"vendor": "bedrock",
+				"displayName": "Amazon Bedrock",
+				"managementCommand": "bedrock.manage"
+			}
+		],
+		"commands": [
+			{
+				"command": "bedrock.manage",
+				"title": "Manage Amazon Bedrock Provider"
+			}
+		],
+		"configuration": {
+			"title": "Amazon Bedrock",
+			"properties": {
+				"bedrock.region": {
+					"type": "string",
+					"default": "us-east-1",
+					"enum": [
+						"us-east-1",
+						"us-east-2",
+						"us-west-2",
+						"ap-south-1",
+						"ap-northeast-1",
+						"ap-northeast-2",
+						"ap-southeast-1",
+						"ap-southeast-2",
+						"ca-central-1",
+						"eu-central-1",
+						"eu-west-1",
+						"eu-west-2",
+						"eu-west-3",
+						"sa-east-1"
+					],
+					"description": "AWS region for Amazon Bedrock API calls",
+					"scope": "resource"
+				},
+				"bedrock.profile": {
+					"type": [
+						"string",
+						"null"
+					],
+					"default": null,
+					"description": "AWS named profile from ~/.aws/credentials. Leave empty to use default credentials chain (environment variables, IAM roles, SSO, etc.)",
+					"scope": "resource"
+				},
+				"bedrock.preferredModel": {
+					"type": [
+						"string",
+						"null"
+					],
+					"default": null,
+					"description": "Preferred Amazon Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
+					"scope": "resource"
+				}
+			}
+		}
+	},
+	"main": "./dist/extension.js",
+	"sponsor": {
+		"url": "https://github.com/sponsors/tinovyatkin"
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run package",
+		"download-api": "dts dev",
+		"postdownload-api": "dts main",
+		"postinstall": "npm run download-api",
+		"compile": "npm run check-types && node esbuild.js",
+		"check-types": "tsc --noEmit",
+		"lint": "eslint",
+		"format": "prettier --write .",
+		"watch": "npm-run-all -p watch:*",
+		"watch:esbuild": "node esbuild.js --watch",
+		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+		"pretest": "npm run compile",
+		"test": "vscode-test",
+		"package": "npm run check-types && node esbuild.js --production",
+		"vsce:package": "npx @vscode/vsce package -o dist/extension.vsix"
+	},
+	"dependencies": {
+		"@aws-sdk/client-bedrock": "^3.908.0",
+		"@aws-sdk/client-bedrock-runtime": "^3.908.0",
+		"@aws-sdk/credential-providers": "^3.908.0",
+		"ini": "^5.0.0"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.13.0",
+		"@eslint/markdown": "^7.4.0",
+		"@stylistic/eslint-plugin": "^5.4.0",
+		"@types/ini": "^4.1.1",
+		"@types/mocha": "^10.0.6",
+		"@types/node": "^22",
+		"@types/vscode": "^1.103.0",
+		"@vscode/dts": "^0.4.1",
+		"@vscode/test-cli": "^0.0.11",
+		"@vscode/test-electron": "^2.5.2",
+		"esbuild": "^0.25.10",
+		"eslint": "^9.37.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-perfectionist": "^4.15.1",
+		"globals": "^16.4.0",
+		"npm-run-all": "^4.1.5",
+		"prettier": "^3.6.2",
+		"typescript": "^5.9.2",
+		"typescript-eslint": "^8.46.0"
+	}
+}
