@@ -188,21 +188,8 @@ export function convertMessages(
     }
   }
 
-  // Determine if we'll inject a thinking block without signature
-  // This affects cache point behavior - thinking blocks without signatures
-  // are incompatible with cache points due to SDK serialization issues
-  const willInjectThinkingWithoutSignature =
-    options?.extendedThinkingEnabled &&
-    options.lastThinkingBlock &&
-    !options.lastThinkingBlock.signature;
-
   // Add cache point after system messages if prompt caching is supported
-  // Skip if we'll inject thinking block without signature (causes serialization errors)
-  if (
-    profile.supportsPromptCaching &&
-    systemMessages.length > 0 &&
-    !willInjectThinkingWithoutSignature
-  ) {
+  if (profile.supportsPromptCaching && systemMessages.length > 0) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
@@ -211,12 +198,7 @@ export function convertMessages(
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
   // 3-4. After last 2 tool result messages
-  // Skip if we'll inject thinking block without signature (causes serialization errors)
-  if (
-    profile.supportsPromptCaching &&
-    userMessageIndicesWithToolResults.length > 0 &&
-    !willInjectThinkingWithoutSignature
-  ) {
+  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
     logger.debug(
@@ -233,44 +215,57 @@ export function convertMessages(
 
   // When extended thinking is enabled, inject the captured thinking block into the last assistant message
   // This is required by the API when using interleaved thinking with tool use
+  // CRITICAL: Only inject if we have a valid signature - the SDK rejects empty/missing signatures
   if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
-    // Find the last assistant message
-    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-      const message = bedrockMessages[i];
-      if (
-        message.role === ConversationRole.ASSISTANT &&
-        message.content &&
-        message.content.length > 0
-      ) {
-        // Check if it already has a thinking block
-        const hasThinking = message.content.some(
-          (block) => "thinking" in block || "redacted_thinking" in block,
-        );
-
-        if (!hasThinking) {
-          // Inject the captured thinking block at the start
-          logger.debug(
-            "[Message Converter] Injecting captured thinking block into last assistant message",
-            {
-              hasSignature: !!options.lastThinkingBlock.signature,
-              textLength: options.lastThinkingBlock.text.length,
-            },
+    if (options.lastThinkingBlock.signature) {
+      // Find the last assistant message
+      for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+        const message = bedrockMessages[i];
+        if (
+          message.role === ConversationRole.ASSISTANT &&
+          message.content &&
+          message.content.length > 0
+        ) {
+          // Check if it already has a thinking block
+          const hasThinking = message.content.some(
+            (block) => "thinking" in block || "redacted_thinking" in block,
           );
 
-          // Use proprietary format required by extended thinking API
-          // Note: Signature may be empty if captured from reasoningContent (standard format)
-          const thinkingBlock = {
-            thinking: {
-              signature: options.lastThinkingBlock.signature || "",
-              text: options.lastThinkingBlock.text,
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any as ContentBlock;
+          if (!hasThinking) {
+            // Inject the captured thinking block at the start
+            logger.debug(
+              "[Message Converter] Injecting captured thinking block into last assistant message",
+              {
+                hasSignature: true,
+                signatureLength: options.lastThinkingBlock.signature.length,
+                textLength: options.lastThinkingBlock.text.length,
+              },
+            );
 
-          message.content.unshift(thinkingBlock);
+            // Use proprietary format required by extended thinking API
+            const thinkingBlock = {
+              thinking: {
+                signature: options.lastThinkingBlock.signature,
+                text: options.lastThinkingBlock.text,
+              },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            } as any as ContentBlock;
+
+            message.content.unshift(thinkingBlock);
+          }
+          break; // Only process the last assistant message
         }
-        break; // Only process the last assistant message
       }
+    } else {
+      logger.warn(
+        "[Message Converter] Skipping thinking block injection - no signature available",
+        {
+          textLength: options.lastThinkingBlock.text.length,
+        },
+      );
+      logger.warn(
+        "[Message Converter] Extended thinking + tool use requires signatures from metadata.additionalModelResponseFields.thinkingResponse",
+      );
     }
   }
 
