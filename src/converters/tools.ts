@@ -1,6 +1,7 @@
 import type * as bedrockRuntime from "@aws-sdk/client-bedrock-runtime";
 import type { LanguageModelChatTool } from "vscode";
 import { LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
+
 import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
 import { convertSchema } from "./schema";
@@ -22,15 +23,17 @@ export function convertTools(
 
   // Convert tools to Bedrock format
   // VSCode already provides tools in the correct format, we just need to wrap them
-  const tools: bedrockRuntime.Tool[] = options.tools.map((tool: LanguageModelChatTool) => ({
-    toolSpec: {
-      description: tool.description,
-      inputSchema: {
-        json: convertSchema(tool.inputSchema) as any, // AWS SDK uses __DocumentType which is too strict
+  const tools = options.tools.map(
+    (tool: LanguageModelChatTool): bedrockRuntime.Tool => ({
+      toolSpec: {
+        description: tool.description,
+        inputSchema: {
+          json: convertSchema(tool.inputSchema),
+        },
+        name: tool.name,
       },
-      name: tool.name,
-    },
-  }));
+    }),
+  );
 
   // Add cache point after tool definitions if prompt caching is supported
   // This is one of three strategic cache points: after system messages,
@@ -44,9 +47,9 @@ export function convertTools(
   // Add tool choice if supported by the model
   if (profile.supportsToolChoice && options.toolMode) {
     if (options.toolMode === LanguageModelChatToolMode.Required) {
-      config.toolChoice = { any: {} };
+      config.toolChoice = { any: {} } satisfies bedrockRuntime.AnyToolChoice;
     } else if (options.toolMode === LanguageModelChatToolMode.Auto) {
-      config.toolChoice = { auto: {} };
+      config.toolChoice = { auto: {} } satisfies bedrockRuntime.AutoToolChoice;
     }
   }
 

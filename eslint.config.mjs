@@ -43,8 +43,7 @@ export default defineConfig([
 					varsIgnorePattern: "^_",
 				},
 			],
-      "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/require-await": "warn",
+      "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-unsafe-assignment": "warn",
       "@typescript-eslint/no-unsafe-argument":"warn",
       "@typescript-eslint/no-unsafe-member-access":"warn",
@@ -65,11 +64,19 @@ export default defineConfig([
 		language: "markdown/gfm",
 		plugins: { markdown },
     rules: {
-      "markdown/no-missing-label-refs": "warn"
+      "markdown/no-missing-label-refs": "off"
     }
 	},
 	stylistic.configs.recommended,
 	prettierConfig,
+  {
+    files: ["**/src/test/**"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off"
+    }
+  },
 	{
 		ignores: ["out", "dist", "node_modules", ".vscode-test", "**/vscode.d.ts"],
 	},

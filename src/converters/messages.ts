@@ -4,7 +4,9 @@ import {
   ContentBlock,
   ConversationRole,
   SystemContentBlock,
+  ToolResultContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
+import type { DocumentType } from "@smithy/types";
 import * as vscode from "vscode";
 
 import { logger } from "../logger";
@@ -37,20 +39,45 @@ export function convertMessages(
           content.push({ text: part.value });
         } else if (part instanceof vscode.LanguageModelToolResultPart) {
           hasToolResults = true;
+
+          // Extract text content from the tool result
+          // Tool result content is an array of LanguageModelTextPart or other types
+          let textContent = "";
+          if (Array.isArray(part.content)) {
+            for (const item of part.content) {
+              if (item instanceof vscode.LanguageModelTextPart) {
+                textContent += item.value;
+              } else if (typeof item === "string") {
+                textContent += item;
+              } else {
+                // For unknown types, try to stringify
+                textContent += JSON.stringify(item);
+              }
+            }
+          } else if (typeof part.content === "string") {
+            textContent = part.content;
+          } else {
+            textContent = JSON.stringify(part.content);
+          }
+
+          const content = part.content;
           const isJson =
             profile.toolResultFormat === "json" &&
-            typeof part.content === "object" &&
-            part.content !== null;
-          const contentBlock = isJson ? { json: part.content } : { text: String(part.content) };
-          const status = (part as any).isError ? "error" : undefined;
+            typeof content === "object" &&
+            content !== null &&
+            !Array.isArray(content);
+          const contentBlock: ToolResultContentBlock = isJson
+            ? ({ json: content } satisfies ToolResultContentBlock.JsonMember)
+            : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
+          const status = "isError" in part && part.isError ? "error" : undefined;
 
           content.push({
             toolResult: {
-              content: [contentBlock] as any, // AWS SDK uses __DocumentType which is too strict
+              content: [contentBlock],
               toolUseId: part.callId,
               ...(status ? { status } : {}),
             },
-          });
+          } satisfies ContentBlock.ToolResultMember);
         }
       }
 
@@ -83,7 +110,7 @@ export function convertMessages(
         } else if (part instanceof vscode.LanguageModelToolCallPart) {
           content.push({
             toolUse: {
-              input: part.input as any, // AWS SDK uses __DocumentType which is too strict
+              input: part.input as DocumentType,
               name: part.name,
               toolUseId: part.callId,
             },

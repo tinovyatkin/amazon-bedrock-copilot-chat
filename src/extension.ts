@@ -1,3 +1,4 @@
+import type { PackageJson } from "type-fest" with { "resolution-mode": "import" };
 import * as vscode from "vscode";
 
 import { manageSettings } from "./commands/manage-settings";
@@ -11,7 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(outputChannel);
 
   const ext = vscode.extensions.getExtension("vtkn.amazon-bedrock-copilot-chat");
-  const extVersion = ext?.packageJSON?.version ?? "unknown";
+  const extVersion = (ext?.packageJSON as PackageJson | undefined)?.version ?? "unknown";
   const vscodeVersion = vscode.version;
   const ua = `amazon-bedrock-copilot-chat/${extVersion} VSCode/${vscodeVersion}`;
 
