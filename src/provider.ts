@@ -183,7 +183,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               continue;
             }
 
-            const limits = getModelTokenLimits(modelIdToUse);
+            const limits = getModelTokenLimits(modelIdToUse, settings.context1M.enabled);
             const maxInput = limits.maxInputTokens;
             const maxOutput = limits.maxOutputTokens;
             const vision = m.inputModalities.includes("IMAGE");
@@ -390,7 +390,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       if (settings.thinking.enabled && modelProfile.supportsThinking) {
         // For Anthropic models, calculate thinking budget as 20% of maxOutputTokens
         // This ensures the budget scales appropriately with the model's capabilities
-        const modelLimits = getModelTokenLimits(model.id);
+        const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
         const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
 
         // Validate thinking budget is less than configured maxTokens for this request
@@ -413,20 +413,46 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             },
           };
 
+          // Build anthropic_beta array with required features
+          const anthropicBeta: string[] = [];
+
           // Add interleaved-thinking beta header for Claude 4 models
           if (modelProfile.requiresInterleavedThinkingHeader) {
-            requestInput.additionalModelRequestFields.anthropic_beta = [
-              "interleaved-thinking-2025-05-14",
-            ];
+            anthropicBeta.push("interleaved-thinking-2025-05-14");
+          }
+
+          // Add 1M context beta header for models that support it and setting is enabled
+          if (modelProfile.supports1MContext && settings.context1M.enabled) {
+            anthropicBeta.push("context-1m-2025-08-07");
+          }
+
+          if (anthropicBeta.length > 0) {
+            requestInput.additionalModelRequestFields.anthropic_beta = anthropicBeta;
           }
 
           logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+            anthropicBeta: anthropicBeta.length > 0 ? anthropicBeta : undefined,
             budgetTokens,
             interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
             modelId: model.id,
+            supports1MContext: modelProfile.supports1MContext,
             temperature: 1.0,
           });
         }
+      } else if (modelProfile.supports1MContext && settings.context1M.enabled) {
+        // Even if thinking is not enabled, add 1M context beta header for supported models when setting is enabled
+        const existingBeta = (requestInput.additionalModelRequestFields as Record<string, unknown>)
+          ?.anthropic_beta;
+        const betaArray = Array.isArray(existingBeta) ? existingBeta : [];
+
+        requestInput.additionalModelRequestFields = {
+          ...(requestInput.additionalModelRequestFields as Record<string, unknown>),
+          anthropic_beta: [...betaArray, "context-1m-2025-08-07"],
+        };
+
+        logger.debug("[Bedrock Model Provider] 1M context enabled", {
+          modelId: model.id,
+        });
       }
 
       logger.info("[Bedrock Model Provider] Starting streaming request", {
