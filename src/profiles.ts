@@ -8,6 +8,10 @@ export interface ModelProfile {
    */
   requiresInterleavedThinkingHeader: boolean;
   /**
+   * Whether the model supports 1M context window
+   */
+  supports1MContext: boolean;
+  /**
    * Whether the model supports prompt caching via cache points
    */
   supportsPromptCaching: boolean;
@@ -36,14 +40,10 @@ export interface ModelTokenLimits {
   maxOutputTokens: number;
 }
 
-/**
- * Get the model profile for a given Bedrock model ID
- * @param modelId The full Bedrock model ID (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
- * @returns Model profile with capabilities
- */
 export function getModelProfile(modelId: string): ModelProfile {
   const defaultProfile: ModelProfile = {
     requiresInterleavedThinkingHeader: false,
+    supports1MContext: false,
     supportsPromptCaching: false,
     supportsThinking: false,
     supportsToolChoice: false,
@@ -78,6 +78,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       if (modelId.includes("nova")) {
         return {
           requiresInterleavedThinkingHeader: false,
+          supports1MContext: false,
           supportsPromptCaching: true,
           supportsThinking: false,
           supportsToolChoice: true,
@@ -100,6 +101,7 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       return {
         requiresInterleavedThinkingHeader,
+        supports1MContext: supports1MContext(modelId),
         supportsPromptCaching: true,
         supportsThinking,
         supportsToolChoice: true,
@@ -110,6 +112,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       // Mistral models require JSON format for tool results
       return {
         requiresInterleavedThinkingHeader: false,
+        supports1MContext: false,
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: false,
@@ -120,6 +123,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       // OpenAI models support tool choice but not prompt caching
       return {
         requiresInterleavedThinkingHeader: false,
+        supports1MContext: false,
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: true,
@@ -135,9 +139,13 @@ export function getModelProfile(modelId: string): ModelProfile {
  * Get token limits for a given Bedrock model ID
  * Returns model-specific token limits for known models, or conservative defaults for others
  * @param modelId The full Bedrock model ID (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
+ * @param enable1MContext Whether to enable 1M context for supported models (default: false)
  * @returns Token limits with maxInputTokens and maxOutputTokens
  */
-export function getModelTokenLimits(modelId: string): ModelTokenLimits {
+export function getModelTokenLimits(
+  modelId: string,
+  enable1MContext: boolean = false,
+): ModelTokenLimits {
   const defaultLimits: ModelTokenLimits = {
     maxInputTokens: 196000, // 200K context - 4K output
     maxOutputTokens: 4096,
@@ -152,8 +160,15 @@ export function getModelTokenLimits(modelId: string): ModelTokenLimits {
 
   // Claude models have specific token limits based on model family
   if (normalizedModelId.startsWith("anthropic.claude")) {
-    // Claude Sonnet 4.5 and 4: 200K input, 64K output
+    // Claude Sonnet 4.5 and 4: 200K input (or 1M with setting enabled), 64K output
     if (normalizedModelId.includes("sonnet-4")) {
+      // Return 1M context if enabled, otherwise 200K
+      if (enable1MContext) {
+        return {
+          maxInputTokens: 1000000 - 64000,
+          maxOutputTokens: 64000,
+        };
+      }
       return {
         maxInputTokens: 200000 - 64000,
         maxOutputTokens: 64000,
@@ -212,3 +227,17 @@ export function getModelTokenLimits(modelId: string): ModelTokenLimits {
   // Default for unknown models
   return defaultLimits;
 }
+
+/**
+ * Check if a model supports 1M context window
+ * Claude Sonnet 4.x models support extended 1M context via anthropic_beta parameter
+ */
+function supports1MContext(modelId: string): boolean {
+  return modelId.includes("sonnet-4");
+}
+
+/**
+ * Get the model profile for a given Bedrock model ID
+ * @param modelId The full Bedrock model ID (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
+ * @returns Model profile with capabilities
+ */

@@ -9,6 +9,9 @@ import * as vscode from "vscode";
  */
 
 export interface BedrockSettings {
+  context1M: {
+    enabled: boolean;
+  };
   preferredModel: string | undefined;
   profile: string | undefined;
   region: string;
@@ -57,11 +60,17 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
     preferredModel = undefined;
   }
 
+  // Read 1M context settings with defaults (enabled by default)
+  const context1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
+
   // Read thinking settings with defaults
   const thinkingEnabled = config.get<boolean>("thinking.enabled") ?? true;
   const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10000;
 
   return {
+    context1M: {
+      enabled: context1MEnabled,
+    },
     preferredModel,
     profile,
     region,

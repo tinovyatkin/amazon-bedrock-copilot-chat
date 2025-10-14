@@ -94,6 +94,12 @@
           "minimum": 1024,
           "description": "Number of tokens allocated for thinking. Minimum 1024. Note: For Anthropic Claude models, this is automatically calculated as 20% of the model's maximum output tokens and this setting is ignored.",
           "scope": "resource"
+        },
+        "bedrock.context1M.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable 1M context window for Claude Sonnet 4.x models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
+          "scope": "resource"
         }
       }
     }
