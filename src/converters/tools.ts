@@ -17,7 +17,7 @@ export function convertTools(
     return undefined;
   }
 
-  logger.log(`Converting ${options.tools.length} tools for model ${modelId}`);
+  logger.debug(`Converting ${options.tools.length} tools for model ${modelId}`);
 
   const profile = getModelProfile(modelId);
 
@@ -53,6 +53,6 @@ export function convertTools(
     }
   }
 
-  logger.log("Tool configuration created successfully");
+  logger.debug("Tool configuration created successfully");
   return config;
 }

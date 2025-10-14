@@ -18,27 +18,27 @@ export class StreamProcessor {
 
     // Clear any previous state from the buffer
     toolBuffer.clear();
-    logger.log("[Stream Processor] Starting stream processing");
+    logger.info("[Stream Processor] Starting stream processing");
 
     try {
       for await (const event of stream) {
         if (token.isCancellationRequested) {
-          logger.log("[Stream Processor] Cancellation requested");
+          logger.info("[Stream Processor] Cancellation requested");
           break;
         }
 
         if (event.messageStart) {
-          logger.log("[Stream Processor] Message start:", event.messageStart.role);
+          logger.info("[Stream Processor] Message start:", event.messageStart.role);
         } else if (event.contentBlockStart) {
           const start = event.contentBlockStart;
-          logger.log("[Stream Processor] Content block start:", {
+          logger.debug("[Stream Processor] Content block start:", {
             hasToolUse: !!start.start?.toolUse,
             index: start.contentBlockIndex,
           });
           const toolUse = start.start?.toolUse;
           if (toolUse?.toolUseId && toolUse.name && start.contentBlockIndex) {
             toolBuffer.startTool(start.contentBlockIndex, toolUse.toolUseId, toolUse.name);
-            logger.log("[Stream Processor] Tool call started:", {
+            logger.debug("[Stream Processor] Tool call started:", {
               id: toolUse.toolUseId,
               name: toolUse.name,
             });
@@ -51,11 +51,11 @@ export class StreamProcessor {
             const text = delta.delta?.text;
             if (text) {
               textChunkCount++;
-              logger.log("[Stream Processor] Text delta received, length:", text.length);
+              logger.trace("[Stream Processor] Text delta received, length:", text.length);
               progress.report(new vscode.LanguageModelTextPart(text));
               hasEmittedContent = true;
             } else {
-              logger.log("[Stream Processor] Text delta with empty content (initialization)");
+              logger.trace("[Stream Processor] Text delta with empty content (initialization)");
             }
           }
           // Handle reasoning content deltas
@@ -63,14 +63,14 @@ export class StreamProcessor {
             const reasoningText = delta.delta?.reasoningContent?.text;
             if (reasoningText) {
               textChunkCount++;
-              logger.log(
+              logger.trace(
                 "[Stream Processor] Reasoning content delta received, length:",
                 reasoningText.length,
               );
               progress.report(new vscode.LanguageModelTextPart(reasoningText));
               hasEmittedContent = true;
             } else {
-              logger.log(
+              logger.trace(
                 "[Stream Processor] Reasoning content delta with empty text (initialization)",
               );
             }
@@ -79,7 +79,7 @@ export class StreamProcessor {
           else if ("toolUse" in (delta.delta || {})) {
             const toolUse = delta.delta?.toolUse;
             if (delta.contentBlockIndex && toolUse?.input) {
-              logger.log(
+              logger.trace(
                 "[Stream Processor] Tool use delta received for block:",
                 delta.contentBlockIndex,
               );
@@ -91,7 +91,7 @@ export class StreamProcessor {
                 const validTool = toolBuffer.tryGetValidTool(delta.contentBlockIndex);
                 if (validTool) {
                   toolCallCount++;
-                  logger.log("[Stream Processor] Tool call emitted early (valid JSON):", {
+                  logger.debug("[Stream Processor] Tool call emitted early (valid JSON):", {
                     id: validTool.id,
                     input: validTool.input,
                     name: validTool.name,
@@ -108,25 +108,25 @@ export class StreamProcessor {
                 }
               }
             } else {
-              logger.log(
+              logger.trace(
                 "[Stream Processor] Tool use delta without input or index (initialization)",
               );
             }
           }
           // Truly unknown delta types
           else {
-            logger.log("[Stream Processor] Unknown delta type:", Object.keys(delta.delta || {}));
+            logger.trace("[Stream Processor] Unknown delta type:", Object.keys(delta.delta || {}));
           }
         } else if (event.contentBlockStop) {
           const stop = event.contentBlockStop;
-          logger.log("[Stream Processor] Content block stop, index:", stop.contentBlockIndex);
+          logger.info("[Stream Processor] Content block stop, index:", stop.contentBlockIndex);
 
           // Only finalize if we haven't already emitted this tool call
           if (!toolBuffer.isEmitted(stop.contentBlockIndex!)) {
             const tool = toolBuffer.finalizeTool(stop.contentBlockIndex!);
             if (tool?.input) {
               toolCallCount++;
-              logger.log("[Stream Processor] Tool call finalized at stop:", {
+              logger.debug("[Stream Processor] Tool call finalized at stop:", {
                 id: tool.id,
                 input: tool.input,
                 name: tool.name,
@@ -138,20 +138,20 @@ export class StreamProcessor {
               hasEmittedContent = true;
             }
           } else {
-            logger.log("[Stream Processor] Tool call already emitted, skipping duplicate");
+            logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
           }
         } else if (event.messageStop) {
-          logger.log("[Stream Processor] Message stop event received", {
+          logger.info("[Stream Processor] Message stop event received", {
             stopReason: event.messageStop.stopReason,
           });
         } else if (event.metadata) {
-          logger.log("[Stream Processor] Metadata received:", event.metadata);
+          logger.info("[Stream Processor] Metadata received:", event.metadata);
         } else {
-          logger.log("[Stream Processor] Unknown event type:", Object.keys(event));
+          logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
         }
       }
 
-      logger.log("[Stream Processor] Stream processing completed", {
+      logger.info("[Stream Processor] Stream processing completed", {
         hasEmittedContent,
         textChunkCount,
         toolCallCount,

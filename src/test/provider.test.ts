@@ -276,62 +276,88 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   // Note: validation tests skipped - validateBedrockMessages now validates converted messages
 
   suite("logger", () => {
-    test("logger.log outputs messages in both Development and Production modes", () => {
-      const logs: string[] = [];
+    test("logger supports all log levels", () => {
+      const logs: Array<{ args: unknown[]; level: string }> = [];
       const mockChannel = {
-        appendLine: (msg: string) => logs.push(msg),
-      } as unknown as vscode.OutputChannel;
-
-      // Test Development mode
-      logger.initialize(mockChannel, vscode.ExtensionMode.Development);
-      logger.log("Dev message", { key: "value" });
-
-      assert.equal(logs.length, 1);
-      assert.ok(logs[0].includes("Dev message"));
-      assert.ok(logs[0].includes("key"));
-
-      // Clear logs
-      logs.length = 0;
-
-      // Test Production mode (should also log in 0.0.x)
-      logger.initialize(mockChannel, vscode.ExtensionMode.Production);
-      logger.log("Prod message", { key: "value" });
-
-      assert.equal(logs.length, 1);
-      assert.ok(logs[0].includes("Prod message"));
-      assert.ok(logs[0].includes("key"));
-    });
-
-    test("logger.error prefixes messages with ERROR", () => {
-      const logs: string[] = [];
-      const mockChannel = {
-        appendLine: (msg: string) => logs.push(msg),
-      } as unknown as vscode.OutputChannel;
-
-      logger.initialize(mockChannel, vscode.ExtensionMode.Production);
-      logger.error("Error message", { error: "details" });
-
-      assert.equal(logs.length, 1);
-      assert.ok(logs[0].includes("ERROR:"));
-      assert.ok(logs[0].includes("Error message"));
-      assert.ok(logs[0].includes("error"));
-      assert.ok(logs[0].includes("details"));
-    });
-
-    test("logger formats objects as JSON", () => {
-      const logs: string[] = [];
-      const mockChannel = {
-        appendLine: (msg: string) => logs.push(msg),
-      } as unknown as vscode.OutputChannel;
+        debug: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "debug" }),
+        error: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "error" }),
+        info: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "info" }),
+        trace: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "trace" }),
+        warn: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "warn" }),
+      } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Development);
-      logger.log("Object test", { nested: { key: "value" } });
+
+      logger.trace("Trace message");
+      logger.debug("Debug message");
+      logger.info("Info message");
+      logger.warn("Warn message");
+      logger.error("Error message");
+
+      assert.equal(logs.length, 5);
+      assert.equal(logs[0].level, "trace");
+      assert.equal(logs[0].args[0], "Trace message");
+      assert.equal(logs[1].level, "debug");
+      assert.equal(logs[1].args[0], "Debug message");
+      assert.equal(logs[2].level, "info");
+      assert.equal(logs[2].args[0], "Info message");
+      assert.equal(logs[3].level, "warn");
+      assert.equal(logs[3].args[0], "Warn message");
+      assert.equal(logs[4].level, "error");
+      assert.equal(logs[4].args[0], "Error message");
+    });
+
+    test("logger.log (deprecated) uses info level", () => {
+      const logs: Array<{ args: unknown[]; level: string }> = [];
+      const mockChannel = {
+        debug: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "debug" }),
+        error: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "error" }),
+        info: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "info" }),
+        trace: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "trace" }),
+        warn: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "warn" }),
+      } as unknown as vscode.LogOutputChannel;
+
+      logger.initialize(mockChannel, vscode.ExtensionMode.Production);
+      logger.log("Deprecated log message", { key: "value" });
 
       assert.equal(logs.length, 1);
-      // Should contain formatted JSON
-      assert.ok(logs[0].includes("nested"));
-      assert.ok(logs[0].includes("key"));
-      assert.ok(logs[0].includes("value"));
+      assert.equal(logs[0].level, "info");
+      assert.equal(logs[0].args[0], "Deprecated log message");
+      assert.deepStrictEqual(logs[0].args[1], { key: "value" });
+    });
+
+    test("logger passes structured data directly", () => {
+      const logs: Array<{ args: unknown[]; level: string }> = [];
+      const mockChannel = {
+        debug: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "debug" }),
+        error: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "error" }),
+        info: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "info" }),
+        trace: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "trace" }),
+        warn: (msg: string, ...args: unknown[]) =>
+          logs.push({ args: [msg, ...args], level: "warn" }),
+      } as unknown as vscode.LogOutputChannel;
+
+      logger.initialize(mockChannel, vscode.ExtensionMode.Development);
+      logger.info("Object test", { nested: { key: "value" } });
+
+      assert.equal(logs.length, 1);
+      assert.equal(logs[0].args[0], "Object test");
+      // Structured data is preserved as an object, not formatted
+      assert.deepStrictEqual(logs[0].args[1], { nested: { key: "value" } });
     });
   });
 });

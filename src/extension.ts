@@ -6,8 +6,14 @@ import { logger } from "./logger";
 import { BedrockChatModelProvider } from "./provider";
 
 export function activate(context: vscode.ExtensionContext) {
-  const outputChannel = vscode.window.createOutputChannel("Bedrock Chat");
+  const outputChannel = vscode.window.createOutputChannel("Bedrock Chat", { log: true });
   logger.initialize(outputChannel, context.extensionMode);
+
+  // Log activation message with debugging tips
+  // TODO: Remove debug logging recommendation at 1.0.0 release
+  logger.info(
+    "Amazon Bedrock extension activated. For verbose debugging (0.x versions), set log level to Debug via the output channel dropdown menu.",
+  );
 
   context.subscriptions.push(outputChannel);
 
