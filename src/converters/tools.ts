@@ -26,7 +26,7 @@ export function convertTools(
     toolSpec: {
       description: tool.description,
       inputSchema: {
-        json: convertSchema(tool.inputSchema),
+        json: convertSchema(tool.inputSchema) as any, // AWS SDK uses __DocumentType which is too strict
       },
       name: tool.name,
     },
