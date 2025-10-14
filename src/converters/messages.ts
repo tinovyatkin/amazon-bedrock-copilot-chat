@@ -23,6 +23,7 @@ interface ConvertedMessages {
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   modelId: string,
+  options?: { extendedThinkingEnabled?: boolean },
 ): ConvertedMessages {
   const profile = getModelProfile(modelId);
   const bedrockMessages: BedrockMessage[] = [];
@@ -200,6 +201,36 @@ export function convertMessages(
       const message = bedrockMessages[idx];
       if (message && message.content) {
         message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
+      }
+    }
+  }
+
+  // When extended thinking is enabled, ensure the last assistant message starts with a thinking block
+  // This is required by the Bedrock API when using interleaved thinking
+  if (options?.extendedThinkingEnabled) {
+    // Find the last assistant message
+    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+      const message = bedrockMessages[i];
+      if (
+        message.role === ConversationRole.ASSISTANT &&
+        message.content &&
+        message.content.length > 0
+      ) {
+        // Check if the first content block is a thinking block
+        const firstBlock = message.content[0];
+        const hasThinking = "thinking" in firstBlock || "redacted_thinking" in firstBlock;
+
+        if (!hasThinking) {
+          // Insert a placeholder thinking block at the start
+          // We use an empty/minimal thinking block since we don't have the actual thinking content
+          logger.debug(
+            "[Message Converter] Adding placeholder thinking block to last assistant message for extended thinking compatibility",
+          );
+          // Type assertion needed because thinking blocks are not yet in the official AWS SDK types
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          message.content.unshift({ thinking: { text: "" } } as any as ContentBlock);
+        }
+        break; // Only process the last assistant message
       }
     }
   }

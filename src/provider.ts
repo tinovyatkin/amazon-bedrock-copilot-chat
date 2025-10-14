@@ -308,7 +308,21 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         });
       });
 
-      const converted = convertMessages(messages, model.id);
+      // Check if extended thinking will be enabled for this request
+      // We need this information before converting messages
+      const settings = getBedrockSettings(this.globalState);
+      const modelProfile = getModelProfile(model.id);
+      const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
+      const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
+      const maxTokensForRequest =
+        typeof options.modelOptions?.max_tokens === "number"
+          ? options.modelOptions.max_tokens
+          : 4096;
+      const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
+      const extendedThinkingEnabled =
+        settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
+
+      const converted = convertMessages(messages, model.id, { extendedThinkingEnabled });
 
       logger.debug(
         "[Bedrock Model Provider] Converted to Bedrock messages:",
@@ -318,7 +332,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         const contentTypes = msg.content?.map((c) => {
           if ("text" in c) return "text";
           if ("toolUse" in c) return "toolUse";
-          return "toolResult";
+          if ("toolResult" in c) return "toolResult";
+          if ("thinking" in c || "redacted_thinking" in c) return "thinking";
+          return "unknown";
         });
         logger.debug(
           `[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`,
@@ -384,65 +400,55 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         requestInput.toolConfig = toolConfig;
       }
 
-      // Add thinking configuration for supported models
-      const settings = getBedrockSettings(this.globalState);
-      const modelProfile = getModelProfile(model.id);
-      if (settings.thinking.enabled && modelProfile.supportsThinking) {
-        // For Anthropic models, calculate thinking budget as 20% of maxOutputTokens
-        // This ensures the budget scales appropriately with the model's capabilities
-        const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
-        const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
+      // Add thinking configuration if enabled
+      if (extendedThinkingEnabled) {
+        // Extended thinking requires temperature 1.0
+        requestInput.inferenceConfig!.temperature = 1.0;
 
-        // Validate thinking budget is less than configured maxTokens for this request
-        const maxTokens = requestInput.inferenceConfig?.maxTokens ?? 4096;
-        const budgetTokens = Math.min(dynamicBudget, maxTokens - 100); // Reserve 100 tokens for output
+        // Add thinking configuration to additionalModelRequestFields
+        requestInput.additionalModelRequestFields = {
+          thinking: {
+            budget_tokens: budgetTokens,
+            type: "enabled",
+          },
+        };
 
-        if (budgetTokens >= 1024) {
-          // Extended thinking requires temperature 1.0
-          requestInput.inferenceConfig!.temperature = 1.0;
+        // Build anthropic_beta array with required features
+        const anthropicBeta: string[] = [];
 
-          // Add thinking configuration to additionalModelRequestFields
-          requestInput.additionalModelRequestFields = {
-            thinking: {
-              budget_tokens: budgetTokens,
-              type: "enabled",
-            },
-          };
-
-          // Build anthropic_beta array with required features
-          const anthropicBeta: string[] = [];
-
-          // Add interleaved-thinking beta header for Claude 4 models
-          if (modelProfile.requiresInterleavedThinkingHeader) {
-            anthropicBeta.push("interleaved-thinking-2025-05-14");
-          }
-
-          // Add 1M context beta header for models that support it and setting is enabled
-          if (modelProfile.supports1MContext && settings.context1M.enabled) {
-            anthropicBeta.push("context-1m-2025-08-07");
-          }
-
-          if (anthropicBeta.length > 0) {
-            requestInput.additionalModelRequestFields.anthropic_beta = anthropicBeta;
-          }
-
-          logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
-            anthropicBeta: anthropicBeta.length > 0 ? anthropicBeta : undefined,
-            budgetTokens,
-            interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
-            modelId: model.id,
-            supports1MContext: modelProfile.supports1MContext,
-            temperature: 1.0,
-          });
+        // Add interleaved-thinking beta header for Claude 4 models
+        if (modelProfile.requiresInterleavedThinkingHeader) {
+          anthropicBeta.push("interleaved-thinking-2025-05-14");
         }
+
+        // Add 1M context beta header for models that support it and setting is enabled
+        if (modelProfile.supports1MContext && settings.context1M.enabled) {
+          anthropicBeta.push("context-1m-2025-08-07");
+        }
+
+        if (anthropicBeta.length > 0) {
+          requestInput.additionalModelRequestFields.anthropic_beta = anthropicBeta;
+        }
+
+        logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+          anthropicBeta: anthropicBeta.length > 0 ? anthropicBeta : undefined,
+          budgetTokens,
+          interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
+          modelId: model.id,
+          supports1MContext: modelProfile.supports1MContext,
+          temperature: 1.0,
+        });
       } else if (modelProfile.supports1MContext && settings.context1M.enabled) {
         // Even if thinking is not enabled, add 1M context beta header for supported models when setting is enabled
-        const existingBeta = (requestInput.additionalModelRequestFields as Record<string, unknown>)
-          ?.anthropic_beta;
-        const betaArray = Array.isArray(existingBeta) ? existingBeta : [];
+        const existingFields = (requestInput.additionalModelRequestFields ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const existingBeta = existingFields.anthropic_beta;
+        const betaArray = Array.isArray(existingBeta) ? (existingBeta as string[]) : [];
 
         requestInput.additionalModelRequestFields = {
-          ...(requestInput.additionalModelRequestFields as Record<string, unknown>),
+          ...existingFields,
           anthropic_beta: [...betaArray, "context-1m-2025-08-07"],
         };
 
@@ -473,6 +479,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
                   return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
                 }
                 if (c.toolUse) return `toolUse(${c.toolUse.name})`;
+                if ("thinking" in c) return "thinking";
+                if ("redacted_thinking" in c) return "redacted_thinking";
                 return "unknown";
               })
             : undefined,
