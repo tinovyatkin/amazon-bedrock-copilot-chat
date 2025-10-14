@@ -81,6 +81,19 @@
           "default": null,
           "description": "Preferred Amazon Bedrock model ID to use by default (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0'). Leave empty to let Copilot choose.",
           "scope": "resource"
+        },
+        "bedrock.thinking.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable extended thinking for supported Anthropic Claude models (Opus 4.1, Opus 4, Sonnet 4.5, Sonnet 4, Sonnet 3.7). Allows models to reason through complex tasks before responding.",
+          "scope": "resource"
+        },
+        "bedrock.thinking.budgetTokens": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1024,
+          "description": "Number of tokens allocated for thinking. Minimum 1024. Note: For Anthropic Claude models, this is automatically calculated as 20% of the model's maximum output tokens and this setting is ignored.",
+          "scope": "resource"
         }
       }
     }

@@ -9,6 +9,7 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities
 - **Cross-Region Inference**: Automatic support for cross-region inference profiles
+- **Extended Thinking**: Automatic support for extended thinking in Claude Opus 4+, Sonnet 4+, and Sonnet 3.7 for enhanced reasoning on complex tasks
 - **Prompt Caching**: Automatic caching of system prompts, tool definitions, and conversation history for faster responses and reduced costs (Claude and Nova models)
 - **Vision Support**: Work with models that support image inputs
 

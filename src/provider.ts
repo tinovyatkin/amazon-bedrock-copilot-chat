@@ -14,12 +14,10 @@ import { BedrockAPIClient } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
+import { getModelProfile, getModelTokenLimits } from "./profiles";
 import { getBedrockSettings } from "./settings";
 import { StreamProcessor } from "./stream-processor";
 import { validateBedrockMessages } from "./validation";
-
-const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
-const DEFAULT_CONTEXT_LENGTH = 200000;
 
 /**
  * Patterns for models that do not support tool calling.
@@ -185,9 +183,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               continue;
             }
 
-            const contextLen = DEFAULT_CONTEXT_LENGTH;
-            const maxOutput = DEFAULT_MAX_OUTPUT_TOKENS;
-            const maxInput = Math.max(1, contextLen - maxOutput);
+            const limits = getModelTokenLimits(modelIdToUse);
+            const maxInput = limits.maxInputTokens;
+            const maxOutput = limits.maxOutputTokens;
             const vision = m.inputModalities.includes("IMAGE");
 
             const modelInfo: LanguageModelChatInformation = {
@@ -384,6 +382,51 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       if (toolConfig) {
         requestInput.toolConfig = toolConfig;
+      }
+
+      // Add thinking configuration for supported models
+      const settings = getBedrockSettings(this.globalState);
+      const modelProfile = getModelProfile(model.id);
+      if (settings.thinking.enabled && modelProfile.supportsThinking) {
+        // For Anthropic models, calculate thinking budget as 20% of maxOutputTokens
+        // This ensures the budget scales appropriately with the model's capabilities
+        const modelLimits = getModelTokenLimits(model.id);
+        const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
+
+        // Validate thinking budget is less than configured maxTokens for this request
+        const maxTokens = requestInput.inferenceConfig?.maxTokens ?? 4096;
+        const budgetTokens = Math.min(dynamicBudget, maxTokens - 100); // Reserve 100 tokens for output
+
+        if (budgetTokens >= 1024) {
+          // Extended thinking requires temperature 1.0
+          requestInput.inferenceConfig!.temperature = 1.0;
+
+          requestInput.performanceConfig = {
+            latency: "optimized",
+          };
+
+          // Add thinking configuration to additionalModelRequestFields
+          requestInput.additionalModelRequestFields = {
+            thinking: {
+              budget_tokens: budgetTokens,
+              type: "enabled",
+            },
+          };
+
+          // Add interleaved-thinking beta header for Claude 4 models
+          if (modelProfile.requiresInterleavedThinkingHeader) {
+            requestInput.additionalModelRequestFields.anthropic_beta = [
+              "interleaved-thinking-2025-05-14",
+            ];
+          }
+
+          logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+            budgetTokens,
+            interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
+            modelId: model.id,
+            temperature: 1.0,
+          });
+        }
       }
 
       logger.info("[Bedrock Model Provider] Starting streaming request", {
