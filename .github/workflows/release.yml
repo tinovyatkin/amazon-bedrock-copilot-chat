@@ -1,11 +1,16 @@
 name: release
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
 
@@ -26,6 +31,8 @@ jobs:
     needs: [package]
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
 
