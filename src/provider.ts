@@ -323,6 +323,11 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       const extendedThinkingEnabled =
         settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
+      // Check if we'll inject thinking blocks without signatures
+      // This affects cache point behavior throughout the request
+      const willInjectThinkingWithoutSignature =
+        extendedThinkingEnabled && this.lastThinkingBlock && !this.lastThinkingBlock.signature;
+
       const converted = convertMessages(messages, model.id, {
         extendedThinkingEnabled,
         lastThinkingBlock: this.lastThinkingBlock,
@@ -352,7 +357,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // System messages are extracted separately and don't count in the alternating pattern
       validateBedrockMessages(converted.messages);
 
-      const toolConfig = convertTools(options, model.id);
+      const toolConfig = convertTools(options, model.id, willInjectThinkingWithoutSignature);
 
       if (options.tools && options.tools.length > 128) {
         throw new Error("Cannot have more than 128 tools per request.");
