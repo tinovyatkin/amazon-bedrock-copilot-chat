@@ -15,6 +15,7 @@ export class StreamProcessor {
     let hasEmittedContent = false;
     let toolCallCount = 0;
     let textChunkCount = 0;
+    let stopReason: string | undefined;
 
     // Clear any previous state from the buffer
     toolBuffer.clear();
@@ -140,8 +141,9 @@ export class StreamProcessor {
             logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
           }
         } else if (event.messageStop) {
+          stopReason = event.messageStop.stopReason;
           logger.info("[Stream Processor] Message stop event received", {
-            stopReason: event.messageStop.stopReason,
+            stopReason,
           });
         } else if (event.metadata) {
           logger.info("[Stream Processor] Metadata received:", event.metadata);
@@ -152,9 +154,28 @@ export class StreamProcessor {
 
       logger.info("[Stream Processor] Stream processing completed", {
         hasEmittedContent,
+        stopReason,
         textChunkCount,
         toolCallCount,
       });
+
+      // Handle cases where no content was emitted
+      if (!hasEmittedContent) {
+        if (stopReason === "max_tokens") {
+          throw new Error(
+            "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
+          );
+        } else if (stopReason === "content_filtered") {
+          throw new Error(
+            "The response was filtered due to content policy. Please rephrase your request.",
+          );
+        } else if (!token.isCancellationRequested) {
+          // Only throw if not cancelled by user
+          throw new Error(
+            `No response content was generated. ${stopReason ? `Stop reason: ${stopReason}` : "Please try rephrasing your request."}`,
+          );
+        }
+      }
     } catch (error) {
       logger.error("[Stream Processor] Error during stream processing:", error);
       throw error;
