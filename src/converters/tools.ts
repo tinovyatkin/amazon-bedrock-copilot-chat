@@ -1,5 +1,7 @@
 import type * as bedrockRuntime from "@aws-sdk/client-bedrock-runtime";
+import type { LanguageModelChatTool } from "vscode";
 import { LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
+import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
 import { convertSchema } from "./schema";
 
@@ -14,8 +16,13 @@ export function convertTools(
     return undefined;
   }
 
+  logger.log(`Converting ${options.tools.length} tools for model ${modelId}`);
+
   const profile = getModelProfile(modelId);
-  const tools: bedrockRuntime.Tool[] = options.tools.map((tool: any) => ({
+
+  // Convert tools to Bedrock format
+  // VSCode already provides tools in the correct format, we just need to wrap them
+  const tools: bedrockRuntime.Tool[] = options.tools.map((tool: LanguageModelChatTool) => ({
     toolSpec: {
       description: tool.description,
       inputSchema: {
@@ -43,5 +50,6 @@ export function convertTools(
     }
   }
 
+  logger.log("Tool configuration created successfully");
   return config;
 }
