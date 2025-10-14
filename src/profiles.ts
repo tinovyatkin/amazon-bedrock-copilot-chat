@@ -77,6 +77,14 @@ export function getModelProfile(modelId: string): ModelProfile {
         toolResultFormat: "json",
       };
 
+    case "openai":
+      // OpenAI models support tool choice but not prompt caching
+      return {
+        supportsPromptCaching: false,
+        supportsToolChoice: true,
+        toolResultFormat: "text",
+      };
+
     default:
       return defaultProfile;
   }

@@ -60,6 +60,14 @@ export function convertMessages(
             textContent = JSON.stringify(part.content);
           }
 
+          logger.debug("[Message Converter] Processing tool result:", {
+            callId: part.callId,
+            contentType: typeof part.content,
+            isArray: Array.isArray(part.content),
+            textLength: textContent.length,
+            textPreview: textContent.substring(0, 200),
+          });
+
           const partContent = part.content;
           const isJson =
             profile.toolResultFormat === "json" &&
@@ -70,6 +78,13 @@ export function convertMessages(
             ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
             : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
           const status = "isError" in part && part.isError ? "error" : undefined;
+
+          logger.debug("[Message Converter] Created Bedrock tool result:", {
+            format: isJson ? "json" : "text",
+            hasContent: contentBlock ? true : false,
+            status,
+            toolUseId: part.callId,
+          });
 
           content.push({
             toolResult: {
