@@ -1,3 +1,6 @@
+import type { ToolInputSchema } from "@aws-sdk/client-bedrock-runtime";
+import type { LanguageModelChatTool } from "vscode";
+
 import { logger } from "../logger";
 
 /**
@@ -6,14 +9,17 @@ import { logger } from "../logger";
  * VSCode already provides schemas in JSON Schema format, so we just need to
  * ensure we have a valid default if the schema is missing.
  */
-export function convertSchema(schema: unknown): unknown {
+export function convertSchema(
+  schema: LanguageModelChatTool["inputSchema"],
+): NonNullable<ToolInputSchema["json"]> {
   // Log the input schema for debugging
-  if (schema) {
+  if (schema != null) {
     logger.log("Tool schema:", JSON.stringify(schema, null, 2));
   } else {
     logger.log("Tool schema is null/undefined, using default");
+    return { type: "object" };
   }
 
   // Return the schema as-is if provided, otherwise use a default empty object schema
-  return schema ?? { type: "object" };
+  return schema as NonNullable<ToolInputSchema["json"]>;
 }

@@ -191,14 +191,39 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
+      logger.log("[Bedrock Model Provider] === NEW REQUEST ===");
       logger.log("[Bedrock Model Provider] Converting messages, count:", messages.length);
       messages.forEach((msg, idx) => {
         const partTypes = msg.content.map((p) => {
           if (p instanceof vscode.LanguageModelTextPart) return "text";
-          if (p instanceof vscode.LanguageModelToolCallPart) return "toolCall";
-          return "toolResult";
+          if (p instanceof vscode.LanguageModelToolCallPart) {
+            return `toolCall(${p.name})`;
+          }
+          if (p instanceof vscode.LanguageModelToolResultPart) {
+            return `toolResult(${p.callId})`;
+          }
+          return "unknown";
         });
         logger.log(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
+        // Log tool result details
+        msg.content.forEach((part) => {
+          if (part instanceof vscode.LanguageModelToolResultPart) {
+            let contentPreview = "[Unable to preview]";
+            try {
+              const contentStr =
+                typeof part.content === "string" ? part.content : JSON.stringify(part.content);
+              contentPreview = contentStr.substring(0, 100);
+            } catch {
+              // Keep default
+            }
+            logger.log(`[Bedrock Model Provider]   Tool Result:`, {
+              callId: part.callId,
+              contentPreview,
+              contentType: typeof part.content,
+              isError: "isError" in part ? part.isError : false,
+            });
+          }
+        });
       });
 
       const converted = convertMessages(messages, model.id);
@@ -239,15 +264,23 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       const requestInput: ConverseStreamCommandInput = {
         inferenceConfig: {
-          maxTokens: Math.min(options.modelOptions?.max_tokens || 4096, model.maxOutputTokens),
-          temperature: options.modelOptions?.temperature ?? 0.7,
+          maxTokens: Math.min(
+            typeof options.modelOptions?.max_tokens === "number"
+              ? options.modelOptions.max_tokens
+              : 4096,
+            model.maxOutputTokens,
+          ),
+          temperature:
+            typeof options.modelOptions?.temperature === "number"
+              ? options.modelOptions?.temperature
+              : 0.7,
         },
-        messages: converted.messages as any,
+        messages: converted.messages,
         modelId: model.id,
       };
 
       if (converted.system.length > 0) {
-        requestInput.system = converted.system as any;
+        requestInput.system = converted.system;
       }
 
       if (options.modelOptions) {
@@ -263,10 +296,32 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       }
 
       if (toolConfig) {
-        requestInput.toolConfig = toolConfig as any;
+        requestInput.toolConfig = toolConfig;
       }
 
-      logger.log("[Bedrock Model Provider] Starting streaming request");
+      logger.log("[Bedrock Model Provider] Starting streaming request", {
+        hasTools: !!toolConfig,
+        messageCount: requestInput.messages?.length,
+        modelId: model.id,
+        systemMessageCount: requestInput.system?.length,
+        toolCount: toolConfig?.tools?.length,
+      });
+
+      // Log the actual request for debugging
+      logger.log("[Bedrock Model Provider] Request details:", {
+        messages: requestInput.messages?.map((m) => ({
+          contentBlocks: Array.isArray(m.content)
+            ? m.content.map((c) => {
+                if (c.text) return "text";
+                if (c.toolResult) return `toolResult(${c.toolResult.toolUseId})`;
+                if (c.toolUse) return `toolUse(${c.toolUse.name})`;
+                return "unknown";
+              })
+            : undefined,
+          role: m.role,
+        })),
+      });
+
       const stream = await this.client.startConversationStream(requestInput);
 
       logger.log("[Bedrock Model Provider] Processing stream events");
