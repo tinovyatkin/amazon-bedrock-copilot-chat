@@ -70,7 +70,10 @@ Once configured, Bedrock models will appear in GitHub Copilot Chat's model selec
 
 ## Supported Models
 
-The extension automatically filters and displays only models that support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations.
+The extension automatically filters and displays only models that:
+
+- Support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations
+- Are **enabled** in your Amazon Bedrock console (models must be authorized and available in your selected region)
 
 ### Supported Model Families
 
@@ -135,16 +138,27 @@ The following models are filtered out as they don't support the Converse API too
 
 1. Verify your AWS credentials are correctly configured
 2. Check that you've selected the correct AWS profile and region
-3. Ensure your AWS account has access to Bedrock in the selected region
-4. Check the "Bedrock Chat" output channel for error messages
+3. **Enable models in the Amazon Bedrock console**: Go to the [Bedrock Model Access page](https://console.aws.amazon.com/bedrock/home#/modelaccess) and request access to the models you want to use
+4. Ensure your AWS account has access to Bedrock in the selected region
+5. Check the "Bedrock Chat" output channel for error messages
 
 ### Authentication errors
 
 1. Verify your AWS credentials are valid and not expired
 2. Check that your IAM user/role has the necessary Bedrock permissions:
-   - `bedrock:ListFoundationModels`
-   - `bedrock:InvokeModel`
-   - `bedrock:InvokeModelWithResponseStream`
+
+   **Option 1: Use AWS Managed Policy (Recommended)**
+
+   Attach the [`AmazonBedrockLimitedAccess`](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonBedrockLimitedAccess.html) managed policy to your IAM user or role. This policy includes all required permissions for using this extension.
+
+   **Option 2: Custom Policy with Specific Permissions**
+
+   If you prefer granular control, ensure your policy includes:
+   - `bedrock:ListFoundationModels` - List available models
+   - `bedrock:GetFoundationModelAvailability` - Check model access status
+   - `bedrock:ListInferenceProfiles` - List cross-region inference profiles
+   - `bedrock:InvokeModel` - Invoke models
+   - `bedrock:InvokeModelWithResponseStream` - Stream model responses
 
 ## Credits
 

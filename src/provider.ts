@@ -106,8 +106,14 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         this.client.fetchInferenceProfiles(),
       ]);
 
-      const infos: LanguageModelChatInformation[] = [];
       const regionPrefix = settings.region.split("-")[0];
+
+      // First, filter models by basic requirements and build candidate list
+      const candidates: Array<{
+        hasInferenceProfile: boolean;
+        model: (typeof models)[0];
+        modelIdToUse: string;
+      }> = [];
 
       for (const m of models) {
         if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
@@ -122,6 +128,35 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         // Exclude models that don't support tool calling
         if (isToolIncapableModel(modelIdToUse)) {
           logger.log(`[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`);
+          continue;
+        }
+
+        candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
+      }
+
+      // Check model accessibility in parallel using allSettled to handle failures gracefully
+      const accessibilityChecks = await Promise.allSettled(
+        candidates.map(async (candidate) => {
+          const isAccessible = await this.client.isModelAccessible(candidate.model.modelId);
+          return { ...candidate, isAccessible };
+        }),
+      );
+
+      // Build final list of accessible models
+      const infos: LanguageModelChatInformation[] = [];
+      for (const result of accessibilityChecks) {
+        // If the check failed, treat as inaccessible
+        if (result.status === "rejected") {
+          logger.error("[Bedrock Model Provider] Accessibility check failed", result.reason);
+          continue;
+        }
+
+        const { hasInferenceProfile, isAccessible, model: m, modelIdToUse } = result.value;
+
+        if (!isAccessible) {
+          logger.log(
+            `[Bedrock Model Provider] Excluding inaccessible model: ${modelIdToUse} (not authorized or not available)`,
+          );
           continue;
         }
 
