@@ -12,7 +12,7 @@ A VSCode extension that integrates AWS Bedrock foundation models (Claude, Llama,
 
 ```bash
 bun install              # Install dependencies (also downloads VSCode API definitions)
-bun run compile          # Compile TypeScript to out/ directory
+bun run check-types      # Run TypeScript type checking (no emit)
 bun run lint             # Run ESLint
 bun run format           # Format code with Prettier
 ```
@@ -24,13 +24,6 @@ bun run format           # Format code with Prettier
 # Or use Run and Debug panel -> "Run Extension"
 
 bun run test             # Run tests (requires compilation first)
-```
-
-### Build & Package
-
-```bash
-bun run vscode:prepublish  # Prepare for publishing (runs compile)
-bunx vsce package               # Create .vsix package (requires @vscode/vsce)
 ```
 
 ## Architecture Overview
@@ -196,11 +189,11 @@ See TESTING.md and IMPLEMENTATION.md for detailed testing procedures.
 ## Development Workflow
 
 1. Make code changes
-2. `npm run compile` or use watch mode
+2. `bun run compile` or use watch mode
 3. Press F5 to launch Extension Development Host
 4. Test in Copilot Chat
 5. Check "Bedrock Chat" output channel for logs
-6. Run `npm run lint` and `npm run format` before committing
+6. Run `bun run check-types`, `bun run lint`, and `bun run format` before committing
 
 ## 📑 MANDATORY: Handling GitHub PR Review Comment(s)
 
