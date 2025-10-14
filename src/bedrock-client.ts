@@ -24,7 +24,7 @@ export class BedrockAPIClient {
     this.profileName = profileName;
   }
 
-  async fetchInferenceProfiles(): Promise<Set<string>> {
+  async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
     try {
       const client = new BedrockClient({
         credentials: this.getCredentials(),
@@ -35,6 +35,13 @@ export class BedrockAPIClient {
       const paginator = paginateListInferenceProfiles({ client }, {});
 
       for await (const page of paginator) {
+        // Check if the operation was cancelled
+        if (abortSignal?.aborted) {
+          const error = new Error("Operation cancelled");
+          error.name = "AbortError";
+          throw error;
+        }
+
         for (const profile of page.inferenceProfileSummaries ?? []) {
           if (profile.inferenceProfileId) {
             profileIds.add(profile.inferenceProfileId);
@@ -49,7 +56,7 @@ export class BedrockAPIClient {
     }
   }
 
-  async fetchModels(): Promise<BedrockModelSummary[]> {
+  async fetchModels(abortSignal?: AbortSignal): Promise<BedrockModelSummary[]> {
     try {
       const client = new BedrockClient({
         credentials: this.getCredentials(),
@@ -57,7 +64,7 @@ export class BedrockAPIClient {
       });
 
       const command = new ListFoundationModelsCommand({});
-      const response = await client.send(command);
+      const response = await client.send(command, { abortSignal });
 
       return (response.modelSummaries ?? []).map((summary) => ({
         customizationsSupported: summary.customizationsSupported,
@@ -80,9 +87,10 @@ export class BedrockAPIClient {
   /**
    * Check if a model is accessible (authorized and available in the region).
    * @param modelId The model ID to check
+   * @param abortSignal Optional AbortSignal to cancel the request
    * @returns true if the model is accessible, false otherwise
    */
-  async isModelAccessible(modelId: string): Promise<boolean> {
+  async isModelAccessible(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
     try {
       const client = new BedrockClient({
         credentials: this.getCredentials(),
@@ -90,7 +98,7 @@ export class BedrockAPIClient {
       });
 
       const command = new GetFoundationModelAvailabilityCommand({ modelId });
-      const response = await client.send(command);
+      const response = await client.send(command, { abortSignal });
 
       // Model is accessible if it's authorized and available in the region
       return (

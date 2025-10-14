@@ -71,7 +71,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
   async prepareLanguageModelChatInformation(
     options: { silent: boolean },
-    _token: CancellationToken,
+    token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
     const settings = getBedrockSettings(this.globalState);
 
@@ -101,93 +101,142 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     this.client.setProfile(settings.profile);
 
     try {
-      const [models, availableProfileIds] = await Promise.all([
-        this.client.fetchModels(),
-        this.client.fetchInferenceProfiles(),
-      ]);
+      // Create AbortController for cancellation support
+      const abortController = new AbortController();
 
-      const regionPrefix = settings.region.split("-")[0];
+      // Set up cancellation handling
+      const cancellationListener = token.onCancellationRequested(() => {
+        abortController.abort();
+      });
 
-      // First, filter models by basic requirements and build candidate list
-      const candidates: Array<{
-        hasInferenceProfile: boolean;
-        model: (typeof models)[0];
-        modelIdToUse: string;
-      }> = [];
+      try {
+        const fetchModels = async (
+          progress?: vscode.Progress<{ message?: string }>,
+        ): Promise<LanguageModelChatInformation[]> => {
+          progress?.report({ message: "Fetching model list..." });
 
-      for (const m of models) {
-        if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
-          continue;
-        }
+          const [models, availableProfileIds] = await Promise.all([
+            this.client.fetchModels(abortController.signal),
+            this.client.fetchInferenceProfiles(abortController.signal),
+          ]);
 
-        // Determine which model ID to use (with or without inference profile)
-        const inferenceProfileId = `${regionPrefix}.${m.modelId}`;
-        const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
-        const modelIdToUse = hasInferenceProfile ? inferenceProfileId : m.modelId;
+          const regionPrefix = settings.region.split("-")[0];
 
-        // Exclude models that don't support tool calling
-        if (isToolIncapableModel(modelIdToUse)) {
-          logger.debug(`[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`);
-          continue;
-        }
+          // First, filter models by basic requirements and build candidate list
+          const candidates: Array<{
+            hasInferenceProfile: boolean;
+            model: (typeof models)[0];
+            modelIdToUse: string;
+          }> = [];
 
-        candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
-      }
+          for (const m of models) {
+            if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
+              continue;
+            }
 
-      // Check model accessibility in parallel using allSettled to handle failures gracefully
-      const accessibilityChecks = await Promise.allSettled(
-        candidates.map(async (candidate) => {
-          const isAccessible = await this.client.isModelAccessible(candidate.model.modelId);
-          return { ...candidate, isAccessible };
-        }),
-      );
+            // Determine which model ID to use (with or without inference profile)
+            const inferenceProfileId = `${regionPrefix}.${m.modelId}`;
+            const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
+            const modelIdToUse = hasInferenceProfile ? inferenceProfileId : m.modelId;
 
-      // Build final list of accessible models
-      const infos: LanguageModelChatInformation[] = [];
-      for (const result of accessibilityChecks) {
-        // If the check failed, treat as inaccessible
-        if (result.status === "rejected") {
-          logger.error("[Bedrock Model Provider] Accessibility check failed", result.reason);
-          continue;
-        }
+            // Exclude models that don't support tool calling
+            if (isToolIncapableModel(modelIdToUse)) {
+              logger.debug(
+                `[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`,
+              );
+              continue;
+            }
 
-        const { hasInferenceProfile, isAccessible, model: m, modelIdToUse } = result.value;
+            candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
+          }
 
-        if (!isAccessible) {
-          logger.debug(
-            `[Bedrock Model Provider] Excluding inaccessible model: ${modelIdToUse} (not authorized or not available)`,
+          progress?.report({
+            message: `Checking availability of ${candidates.length} models...`,
+          });
+
+          // Check model accessibility in parallel using allSettled to handle failures gracefully
+          const accessibilityChecks = await Promise.allSettled(
+            candidates.map(async (candidate) => {
+              const isAccessible = await this.client.isModelAccessible(
+                candidate.model.modelId,
+                abortController.signal,
+              );
+              return { ...candidate, isAccessible };
+            }),
           );
-          continue;
+
+          progress?.report({ message: "Building model list..." });
+
+          // Build final list of accessible models
+          const infos: LanguageModelChatInformation[] = [];
+          for (const result of accessibilityChecks) {
+            // If the check failed, treat as inaccessible
+            if (result.status === "rejected") {
+              logger.error("[Bedrock Model Provider] Accessibility check failed", result.reason);
+              continue;
+            }
+
+            const { hasInferenceProfile, isAccessible, model: m, modelIdToUse } = result.value;
+
+            if (!isAccessible) {
+              logger.debug(
+                `[Bedrock Model Provider] Excluding inaccessible model: ${modelIdToUse} (not authorized or not available)`,
+              );
+              continue;
+            }
+
+            const contextLen = DEFAULT_CONTEXT_LENGTH;
+            const maxOutput = DEFAULT_MAX_OUTPUT_TOKENS;
+            const maxInput = Math.max(1, contextLen - maxOutput);
+            const vision = m.inputModalities.includes("IMAGE");
+
+            const modelInfo: LanguageModelChatInformation = {
+              capabilities: {
+                imageInput: vision,
+                toolCalling: true,
+              },
+              family: "bedrock",
+              id: modelIdToUse,
+              maxInputTokens: maxInput,
+              maxOutputTokens: maxOutput,
+              name: m.modelName,
+              tooltip: `Amazon Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
+              version: "1.0.0",
+            };
+            infos.push(modelInfo);
+          }
+
+          this.chatEndpoints = infos.map((info) => ({
+            model: info.id,
+            modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
+          }));
+
+          return infos;
+        };
+
+        // Show progress notification only if not silent
+        if (options.silent) {
+          return await fetchModels();
         }
 
-        const contextLen = DEFAULT_CONTEXT_LENGTH;
-        const maxOutput = DEFAULT_MAX_OUTPUT_TOKENS;
-        const maxInput = Math.max(1, contextLen - maxOutput);
-        const vision = m.inputModalities.includes("IMAGE");
-
-        const modelInfo: LanguageModelChatInformation = {
-          capabilities: {
-            imageInput: vision,
-            toolCalling: true,
+        return await vscode.window.withProgress(
+          {
+            cancellable: true,
+            location: vscode.ProgressLocation.Notification,
+            title: "Loading Bedrock models",
           },
-          family: "bedrock",
-          id: modelIdToUse,
-          maxInputTokens: maxInput,
-          maxOutputTokens: maxOutput,
-          name: m.modelName,
-          tooltip: `Amazon Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
-          version: "1.0.0",
-        };
-        infos.push(modelInfo);
+          fetchModels,
+        );
+      } finally {
+        cancellationListener.dispose();
+      }
+    } catch (error) {
+      // Don't log or show errors if the operation was cancelled by the user
+      if (error instanceof Error && error.name === "AbortError") {
+        logger.info("[Bedrock Model Provider] Model fetch cancelled by user");
+        return [];
       }
 
-      this.chatEndpoints = infos.map((info) => ({
-        model: info.id,
-        modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
-      }));
-
-      return infos;
-    } catch (error) {
       if (!options.silent) {
         logger.error("[Bedrock Model Provider] Failed to fetch models", error);
         vscode.window.showErrorMessage(
@@ -200,9 +249,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
   async provideLanguageModelChatInformation(
     options: { silent: boolean },
-    _token: CancellationToken,
+    token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
-    return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, _token);
+    return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
   async provideLanguageModelChatResponse(
