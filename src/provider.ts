@@ -333,7 +333,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           if ("text" in c) return "text";
           if ("toolUse" in c) return "toolUse";
           if ("toolResult" in c) return "toolResult";
+          if ("reasoningContent" in c) return "reasoningContent";
           if ("thinking" in c || "redacted_thinking" in c) return "thinking";
+          if ("cachePoint" in c) return "cachePoint";
           return "unknown";
         });
         logger.debug(
@@ -479,8 +481,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
                   return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
                 }
                 if (c.toolUse) return `toolUse(${c.toolUse.name})`;
+                if ("reasoningContent" in c) return "reasoningContent";
                 if ("thinking" in c) return "thinking";
                 if ("redacted_thinking" in c) return "redacted_thinking";
+                if ("cachePoint" in c) return "cachePoint";
                 return "unknown";
               })
             : undefined,
