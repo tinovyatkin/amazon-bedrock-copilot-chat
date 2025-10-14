@@ -213,35 +213,45 @@ export function convertMessages(
     }
   }
 
-  // CRITICAL DISCOVERY: We cannot manually inject thinking blocks
-  //
-  // When we inject { thinking: { signature, text } } as any as ContentBlock:
-  // 1. SDK's ContentBlock.visit doesn't recognize "thinking" property
-  // 2. Falls back to unknown handler: visitor._(value.$unknown[0], value.$unknown[1])
-  // 3. Our object lacks $unknown property (required for unknown union types)
-  // 4. value.$unknown is undefined
-  // 5. undefined[0] throws: "Cannot read properties of undefined (reading '0')"
-  //
-  // Stack trace shows the exact failure point:
-  //   at Object.ContentBlock.visit (client-bedrock-runtime/dist-cjs/index.js:585:32)
-  //   -> return visitor._(value.$unknown[0], value.$unknown[1]);
-  //
-  // The AWS SDK uses typed union discriminators. Proprietary "thinking" format
-  // is NOT part of ContentBlock union, and cannot be safely injected.
-  //
-  // Conclusion: Extended thinking + tool use is NOT currently possible with this approach.
-  // The API requires thinking blocks in subsequent assistant messages, but we cannot
-  // construct them in a way the SDK's serializer accepts.
-  //
-  // Potential solutions (for future investigation):
-  // - Disable extended thinking when tools are present
-  // - Use standard reasoningContent format instead (but lacks signatures)
-  // - Wait for AWS SDK to officially support thinking blocks in the type system
-  // - Bypass SDK serialization entirely (not recommended)
+  // Inject thinking blocks using SDK's $unknown format for proprietary types
+  // Discovery: SDK's ContentBlock.visit falls back to visitor._($unknown[0], $unknown[1])
+  // for unrecognized types. We use this to pass proprietary thinking format.
+  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+      const message = bedrockMessages[i];
+      if (
+        message.role === ConversationRole.ASSISTANT &&
+        message.content &&
+        message.content.length > 0
+      ) {
+        const hasThinking = message.content.some(
+          (block) => "thinking" in block || "redacted_thinking" in block || "$unknown" in block,
+        );
 
-  logger.debug(
-    "[Message Converter] Extended thinking + tool use not yet supported - skipping thinking block injection",
-  );
+        if (!hasThinking) {
+          logger.debug("[Message Converter] Injecting thinking block via $unknown format", {
+            hasSignature: !!options.lastThinkingBlock.signature,
+            textLength: options.lastThinkingBlock.text.length,
+          });
+
+          // Use SDK's $unknown tuple format: [typeName, value]
+          const thinkingBlock = {
+            $unknown: [
+              "thinking",
+              {
+                signature: options.lastThinkingBlock.signature || "",
+                text: options.lastThinkingBlock.text,
+              },
+            ],
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any as ContentBlock;
+
+          message.content.unshift(thinkingBlock);
+        }
+        break;
+      }
+    }
+  }
 
   return { messages: bedrockMessages, system: systemMessages };
 }
