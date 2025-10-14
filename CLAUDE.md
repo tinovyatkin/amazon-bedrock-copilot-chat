@@ -11,10 +11,10 @@ A VSCode extension that integrates AWS Bedrock foundation models (Claude, Llama,
 ### Development
 
 ```bash
-bun install              # Install dependencies (also downloads VSCode API definitions)
-bun run check-types      # Run TypeScript type checking (no emit)
-bun run lint             # Run ESLint
-bun run format           # Format code with Prettier
+bun install                        # Install dependencies (also downloads VSCode API definitions)
+bun run check-types                # Run TypeScript type checking (no emit)
+bunx eslint --fix FILENAME.ts      # Run ESLint
+bunx prettier --write FILENAME.ts  # Format code with Prettier
 ```
 
 ### Testing
