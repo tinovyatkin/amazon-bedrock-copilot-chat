@@ -16,7 +16,7 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
 import { getBedrockSettings } from "./settings";
-import { StreamProcessor } from "./stream-processor";
+import { StreamProcessor, ThinkingBlock } from "./stream-processor";
 import { validateBedrockMessages } from "./validation";
 
 /**
@@ -56,6 +56,7 @@ const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private client: BedrockAPIClient;
+  private lastThinkingBlock?: ThinkingBlock;
   private streamProcessor: StreamProcessor;
 
   constructor(
@@ -322,7 +323,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       const extendedThinkingEnabled =
         settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
-      const converted = convertMessages(messages, model.id, { extendedThinkingEnabled });
+      const converted = convertMessages(messages, model.id, {
+        extendedThinkingEnabled,
+        lastThinkingBlock: this.lastThinkingBlock,
+      });
 
       logger.debug(
         "[Bedrock Model Provider] Converted to Bedrock messages:",
@@ -348,7 +352,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // System messages are extracted separately and don't count in the alternating pattern
       validateBedrockMessages(converted.messages);
 
-      const toolConfig = convertTools(options, model.id, extendedThinkingEnabled);
+      const toolConfig = convertTools(options, model.id);
 
       if (options.tools && options.tools.length > 128) {
         throw new Error("Cannot have more than 128 tools per request.");
@@ -495,7 +499,17 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       const stream = await this.client.startConversationStream(requestInput);
 
       logger.info("[Bedrock Model Provider] Processing stream events");
-      await this.streamProcessor.processStream(stream, trackingProgress, token);
+      const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
+
+      // Store thinking block for next request if extended thinking was enabled
+      if (extendedThinkingEnabled && result.thinkingBlock) {
+        this.lastThinkingBlock = result.thinkingBlock;
+        logger.debug("[Bedrock Model Provider] Stored thinking block for next request:", {
+          hasSignature: !!result.thinkingBlock.signature,
+          textLength: result.thinkingBlock.text.length,
+        });
+      }
+
       logger.info("[Bedrock Model Provider] Finished processing stream");
     } catch (err) {
       logger.error("[Bedrock Model Provider] Chat request failed", {

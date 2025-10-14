@@ -12,7 +12,6 @@ import { convertSchema } from "./schema";
 export function convertTools(
   options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
   modelId: string,
-  extendedThinkingEnabled?: boolean,
 ): bedrockRuntime.ToolConfiguration | undefined {
   if (!options.tools || options.tools.length === 0) {
     return undefined;
@@ -39,8 +38,7 @@ export function convertTools(
   // Add cache point after tool definitions if prompt caching is supported
   // This is one of three strategic cache points: after system messages,
   // after tool definitions, and after tool results (within 4-point limit)
-  // Note: Cache points are incompatible with extended thinking's proprietary format
-  if (profile.supportsPromptCaching && tools.length > 0 && !extendedThinkingEnabled) {
+  if (profile.supportsPromptCaching && tools.length > 0) {
     tools.push({ cachePoint: { type: "default" } });
   }
 
