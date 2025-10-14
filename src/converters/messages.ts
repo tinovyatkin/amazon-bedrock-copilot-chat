@@ -11,6 +11,7 @@ import * as vscode from "vscode";
 
 import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
+import type { ThinkingBlock } from "../stream-processor";
 
 interface ConvertedMessages {
   messages: BedrockMessage[];
@@ -23,7 +24,7 @@ interface ConvertedMessages {
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   modelId: string,
-  options?: { extendedThinkingEnabled?: boolean },
+  options?: { extendedThinkingEnabled?: boolean; lastThinkingBlock?: ThinkingBlock },
 ): ConvertedMessages {
   const profile = getModelProfile(modelId);
   const bedrockMessages: BedrockMessage[] = [];
@@ -181,12 +182,7 @@ export function convertMessages(
   }
 
   // Add cache point after system messages if prompt caching is supported
-  // Note: Cache points are incompatible with extended thinking's proprietary format
-  if (
-    profile.supportsPromptCaching &&
-    systemMessages.length > 0 &&
-    !options?.extendedThinkingEnabled
-  ) {
+  if (profile.supportsPromptCaching && systemMessages.length > 0) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
@@ -195,12 +191,7 @@ export function convertMessages(
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
   // 3-4. After last 2 tool result messages
-  // Note: Cache points are incompatible with extended thinking's proprietary format
-  if (
-    profile.supportsPromptCaching &&
-    userMessageIndicesWithToolResults.length > 0 &&
-    !options?.extendedThinkingEnabled
-  ) {
+  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
     logger.debug(
@@ -215,10 +206,47 @@ export function convertMessages(
     }
   }
 
-  // Note: When extended thinking is enabled, we don't need to add placeholder thinking blocks
-  // The model returns reasoning in standard reasoningContent format, and we don't emit it to VSCode
-  // When assistant messages come back from VSCode without reasoning blocks, that's acceptable
-  // Adding placeholder thinking blocks in proprietary format causes SDK serialization errors
+  // When extended thinking is enabled, inject the captured thinking block into the last assistant message
+  // This is required by the API when using interleaved thinking with tool use
+  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+    // Find the last assistant message
+    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+      const message = bedrockMessages[i];
+      if (
+        message.role === ConversationRole.ASSISTANT &&
+        message.content &&
+        message.content.length > 0
+      ) {
+        // Check if it already has a thinking block
+        const hasThinking = message.content.some(
+          (block) => "thinking" in block || "redacted_thinking" in block,
+        );
+
+        if (!hasThinking) {
+          // Inject the captured thinking block at the start
+          logger.debug(
+            "[Message Converter] Injecting captured thinking block into last assistant message",
+            {
+              hasSignature: !!options.lastThinkingBlock.signature,
+              textLength: options.lastThinkingBlock.text.length,
+            },
+          );
+
+          // Use proprietary format required by extended thinking API
+          const thinkingBlock = {
+            thinking: {
+              signature: options.lastThinkingBlock.signature || "",
+              text: options.lastThinkingBlock.text,
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any as ContentBlock;
+
+          message.content.unshift(thinkingBlock);
+        }
+        break; // Only process the last assistant message
+      }
+    }
+  }
 
   return { messages: bedrockMessages, system: systemMessages };
 }

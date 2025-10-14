@@ -5,17 +5,27 @@ import { CancellationToken, LanguageModelResponsePart, Progress } from "vscode";
 import { logger } from "./logger";
 import { ToolBuffer } from "./tool-buffer";
 
+export interface StreamProcessingResult {
+  thinkingBlock?: ThinkingBlock;
+}
+
+export interface ThinkingBlock {
+  signature?: string;
+  text: string;
+}
+
 export class StreamProcessor {
   async processStream(
     stream: AsyncIterable<ConverseStreamOutput>,
     progress: Progress<LanguageModelResponsePart>,
     token: CancellationToken,
-  ): Promise<void> {
+  ): Promise<StreamProcessingResult> {
     const toolBuffer = new ToolBuffer();
     let hasEmittedContent = false;
     let toolCallCount = 0;
     let textChunkCount = 0;
     let stopReason: string | undefined;
+    let capturedThinkingBlock: ThinkingBlock | undefined;
 
     // Clear any previous state from the buffer
     toolBuffer.clear();
@@ -50,9 +60,20 @@ export class StreamProcessor {
               name: toolUse.name,
             });
           }
-          // Log thinking block start if present
+          // Capture thinking block with signature if present
           if (hasThinking) {
-            logger.debug("[Stream Processor] Thinking block started");
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            const thinkingData = startData.thinking;
+
+            const signature =
+              typeof thinkingData === "object" && thinkingData && "signature" in thinkingData
+                ? String(thinkingData.signature)
+                : undefined;
+
+            capturedThinkingBlock = { signature, text: "" };
+            logger.debug("[Stream Processor] Thinking block started, capturing with signature:", {
+              hasSignature: !!signature,
+            });
           }
         } else if (event.contentBlockDelta) {
           const delta = event.contentBlockDelta;
@@ -76,9 +97,14 @@ export class StreamProcessor {
             const reasoningText = delta.delta?.reasoningContent?.text;
             if (reasoningText) {
               logger.trace(
-                "[Stream Processor] Reasoning content delta received (not emitting), length:",
+                "[Stream Processor] Reasoning content delta received (capturing), length:",
                 reasoningText.length,
               );
+              // Accumulate reasoning text into thinking block
+              if (!capturedThinkingBlock) {
+                capturedThinkingBlock = { text: "" };
+              }
+              capturedThinkingBlock.text += reasoningText;
             } else {
               logger.trace(
                 "[Stream Processor] Reasoning content delta with empty text (initialization)",
@@ -98,9 +124,13 @@ export class StreamProcessor {
                 : undefined;
             if (thinkingText && typeof thinkingText === "string") {
               logger.trace(
-                "[Stream Processor] Thinking content delta received (not emitting), length:",
+                "[Stream Processor] Thinking content delta received (capturing), length:",
                 thinkingText.length,
               );
+              // Accumulate thinking text
+              if (capturedThinkingBlock) {
+                capturedThinkingBlock.text += thinkingText;
+              }
             } else {
               logger.trace(
                 "[Stream Processor] Thinking content delta with empty text (initialization)",
@@ -179,15 +209,50 @@ export class StreamProcessor {
           });
         } else if (event.metadata) {
           logger.info("[Stream Processor] Metadata received:", event.metadata);
+
+          // Extract thinking blocks from metadata for extended thinking
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const metadata = event.metadata as any;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (metadata?.additionalModelResponseFields?.thinkingResponse) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+            const thinkingResponse = metadata.additionalModelResponseFields.thinkingResponse;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            if (thinkingResponse.reasoning && Array.isArray(thinkingResponse.reasoning)) {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              for (const reasoningBlock of thinkingResponse.reasoning) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                if (reasoningBlock.text) {
+                  if (!capturedThinkingBlock) {
+                    capturedThinkingBlock = { text: "" };
+                  }
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                  capturedThinkingBlock.text += reasoningBlock.text;
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                  if (reasoningBlock.signature && !capturedThinkingBlock.signature) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+                    capturedThinkingBlock.signature = reasoningBlock.signature;
+                  }
+                }
+              }
+              logger.debug("[Stream Processor] Captured thinking blocks from metadata:", {
+                blockCount: thinkingResponse.reasoning.length,
+                hasSignature: !!capturedThinkingBlock?.signature,
+                textLength: capturedThinkingBlock?.text.length,
+              });
+            }
+          }
         } else {
           logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
         }
       }
 
       logger.info("[Stream Processor] Stream processing completed", {
+        capturedThinkingBlock: !!capturedThinkingBlock,
         hasEmittedContent,
         stopReason,
         textChunkCount,
+        thinkingLength: capturedThinkingBlock?.text.length,
         toolCallCount,
       });
 
@@ -208,6 +273,8 @@ export class StreamProcessor {
           );
         }
       }
+
+      return { thinkingBlock: capturedThinkingBlock };
     } catch (error) {
       logger.error("[Stream Processor] Error during stream processing:", error);
       throw error;
