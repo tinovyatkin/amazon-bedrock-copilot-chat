@@ -213,61 +213,35 @@ export function convertMessages(
     }
   }
 
-  // When extended thinking is enabled, inject the captured thinking block into the last assistant message
-  // This is required by the API when using interleaved thinking with tool use
-  // CRITICAL: Only inject if we have a valid signature - the SDK rejects empty/missing signatures
-  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
-    if (options.lastThinkingBlock.signature) {
-      // Find the last assistant message
-      for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-        const message = bedrockMessages[i];
-        if (
-          message.role === ConversationRole.ASSISTANT &&
-          message.content &&
-          message.content.length > 0
-        ) {
-          // Check if it already has a thinking block
-          const hasThinking = message.content.some(
-            (block) => "thinking" in block || "redacted_thinking" in block,
-          );
+  // CRITICAL DISCOVERY: We cannot manually inject thinking blocks
+  //
+  // When we inject { thinking: { signature, text } } as any as ContentBlock:
+  // 1. SDK's ContentBlock.visit doesn't recognize "thinking" property
+  // 2. Falls back to unknown handler: visitor._(value.$unknown[0], value.$unknown[1])
+  // 3. Our object lacks $unknown property (required for unknown union types)
+  // 4. value.$unknown is undefined
+  // 5. undefined[0] throws: "Cannot read properties of undefined (reading '0')"
+  //
+  // Stack trace shows the exact failure point:
+  //   at Object.ContentBlock.visit (client-bedrock-runtime/dist-cjs/index.js:585:32)
+  //   -> return visitor._(value.$unknown[0], value.$unknown[1]);
+  //
+  // The AWS SDK uses typed union discriminators. Proprietary "thinking" format
+  // is NOT part of ContentBlock union, and cannot be safely injected.
+  //
+  // Conclusion: Extended thinking + tool use is NOT currently possible with this approach.
+  // The API requires thinking blocks in subsequent assistant messages, but we cannot
+  // construct them in a way the SDK's serializer accepts.
+  //
+  // Potential solutions (for future investigation):
+  // - Disable extended thinking when tools are present
+  // - Use standard reasoningContent format instead (but lacks signatures)
+  // - Wait for AWS SDK to officially support thinking blocks in the type system
+  // - Bypass SDK serialization entirely (not recommended)
 
-          if (!hasThinking) {
-            // Inject the captured thinking block at the start
-            logger.debug(
-              "[Message Converter] Injecting captured thinking block into last assistant message",
-              {
-                hasSignature: true,
-                signatureLength: options.lastThinkingBlock.signature.length,
-                textLength: options.lastThinkingBlock.text.length,
-              },
-            );
-
-            // Use proprietary format required by extended thinking API
-            const thinkingBlock = {
-              thinking: {
-                signature: options.lastThinkingBlock.signature,
-                text: options.lastThinkingBlock.text,
-              },
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            } as any as ContentBlock;
-
-            message.content.unshift(thinkingBlock);
-          }
-          break; // Only process the last assistant message
-        }
-      }
-    } else {
-      logger.warn(
-        "[Message Converter] Skipping thinking block injection - no signature available",
-        {
-          textLength: options.lastThinkingBlock.text.length,
-        },
-      );
-      logger.warn(
-        "[Message Converter] Extended thinking + tool use requires signatures from metadata.additionalModelResponseFields.thinkingResponse",
-      );
-    }
-  }
+  logger.debug(
+    "[Message Converter] Extended thinking + tool use not yet supported - skipping thinking block injection",
+  );
 
   return { messages: bedrockMessages, system: systemMessages };
 }
