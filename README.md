@@ -8,14 +8,14 @@ A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profile
 - **AWS Profile Support**: Uses AWS named profiles from your `~/.aws/credentials` and `~/.aws/config` files
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities
-- **Vision Support**: Work with models that support image inputs
 - **Cross-Region Inference**: Automatic support for cross-region inference profiles
 - **Prompt Caching**: Automatic caching of system prompts, tool definitions, and conversation history for faster responses and reduced costs (Claude and Nova models)
+- **Vision Support**: Work with models that support image inputs
 
 ## Prerequisites
 
 - Visual Studio Code version 1.104.0 or higher
-- GitHub Copilot subscription
+- GitHub Copilot extension
 - AWS credentials configured in `~/.aws/credentials` or `~/.aws/config`
 - Access to Amazon Bedrock in your AWS account
 
