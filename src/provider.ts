@@ -401,10 +401,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           // Extended thinking requires temperature 1.0
           requestInput.inferenceConfig!.temperature = 1.0;
 
-          requestInput.performanceConfig = {
-            latency: "optimized",
-          };
-
           // Add thinking configuration to additionalModelRequestFields
           requestInput.additionalModelRequestFields = {
             thinking: {
