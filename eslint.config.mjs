@@ -71,6 +71,6 @@ export default defineConfig([
 	stylistic.configs.recommended,
 	prettierConfig,
 	{
-		ignores: ["out", "node_modules", ".vscode-test", "**/vscode.d.ts"],
+		ignores: ["out", "dist", "node_modules", ".vscode-test", "**/vscode.d.ts"],
 	},
 ]);
