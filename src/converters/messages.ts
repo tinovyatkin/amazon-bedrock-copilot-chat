@@ -25,6 +25,7 @@ export function convertMessages(
   const profile = getModelProfile(modelId);
   const bedrockMessages: BedrockMessage[] = [];
   const systemMessages: SystemContentBlock[] = [];
+  const userMessageIndicesWithToolResults: number[] = [];
 
   for (const msg of messages) {
     if (msg.role === vscode.LanguageModelChatMessageRole.User) {
@@ -53,11 +54,6 @@ export function convertMessages(
         }
       }
 
-      // Add cache point after tool results if prompt caching is supported
-      if (profile.supportsPromptCaching && hasToolResults) {
-        content.push({ cachePoint: { type: CachePointType.DEFAULT } });
-      }
-
       if (content.length > 0) {
         // Check if last message was also a user message - if so, merge content
         const lastMessage = bedrockMessages[bedrockMessages.length - 1];
@@ -65,8 +61,18 @@ export function convertMessages(
           // Merge content into the last user message
           logger.log("[Message Converter] Merging consecutive USER messages");
           lastMessage.content.push(...content);
+          // Update hasToolResults tracking for merged message
+          if (hasToolResults) {
+            const lastIndex = bedrockMessages.length - 1;
+            if (!userMessageIndicesWithToolResults.includes(lastIndex)) {
+              userMessageIndicesWithToolResults.push(lastIndex);
+            }
+          }
         } else {
           bedrockMessages.push({ content, role: ConversationRole.USER });
+          if (hasToolResults) {
+            userMessageIndicesWithToolResults.push(bedrockMessages.length - 1);
+          }
         }
       }
     } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
@@ -108,6 +114,26 @@ export function convertMessages(
   // Add cache point after system messages if prompt caching is supported
   if (profile.supportsPromptCaching && systemMessages.length > 0) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
+  }
+
+  // Add cache points to the last 2 user messages with tool results
+  // This ensures we stay within the 4 cache point limit:
+  // 1. After system messages
+  // 2. After tool definitions (in tools.ts)
+  // 3-4. After last 2 tool result messages
+  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
+    // Get the last 2 indices
+    const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
+    logger.log(
+      `[Message Converter] Adding cache points to last ${indicesToCache.length} tool result messages (indices: ${indicesToCache.join(", ")})`,
+    );
+
+    for (const idx of indicesToCache) {
+      const message = bedrockMessages[idx];
+      if (message && message.content) {
+        message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
+      }
+    }
   }
 
   return { messages: bedrockMessages, system: systemMessages };
