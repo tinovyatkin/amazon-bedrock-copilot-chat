@@ -2,6 +2,7 @@ import * as assert from "assert";
 import * as vscode from "vscode";
 import { convertMessages } from "../converters/messages";
 import { convertTools } from "../converters/tools";
+import { logger } from "../logger";
 import { BedrockChatModelProvider } from "../provider";
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
@@ -273,4 +274,64 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   });
 
   // Note: validation tests skipped - validateBedrockMessages now validates converted messages
+
+  suite("logger", () => {
+    test("logger.log outputs messages in both Development and Production modes", () => {
+      const logs: string[] = [];
+      const mockChannel = {
+        appendLine: (msg: string) => logs.push(msg),
+      } as unknown as vscode.OutputChannel;
+
+      // Test Development mode
+      logger.initialize(mockChannel, vscode.ExtensionMode.Development);
+      logger.log("Dev message", { key: "value" });
+
+      assert.equal(logs.length, 1);
+      assert.ok(logs[0].includes("Dev message"));
+      assert.ok(logs[0].includes("key"));
+
+      // Clear logs
+      logs.length = 0;
+
+      // Test Production mode (should also log in 0.0.x)
+      logger.initialize(mockChannel, vscode.ExtensionMode.Production);
+      logger.log("Prod message", { key: "value" });
+
+      assert.equal(logs.length, 1);
+      assert.ok(logs[0].includes("Prod message"));
+      assert.ok(logs[0].includes("key"));
+    });
+
+    test("logger.error prefixes messages with ERROR", () => {
+      const logs: string[] = [];
+      const mockChannel = {
+        appendLine: (msg: string) => logs.push(msg),
+      } as unknown as vscode.OutputChannel;
+
+      logger.initialize(mockChannel, vscode.ExtensionMode.Production);
+      logger.error("Error message", { error: "details" });
+
+      assert.equal(logs.length, 1);
+      assert.ok(logs[0].includes("ERROR:"));
+      assert.ok(logs[0].includes("Error message"));
+      assert.ok(logs[0].includes("error"));
+      assert.ok(logs[0].includes("details"));
+    });
+
+    test("logger formats objects as JSON", () => {
+      const logs: string[] = [];
+      const mockChannel = {
+        appendLine: (msg: string) => logs.push(msg),
+      } as unknown as vscode.OutputChannel;
+
+      logger.initialize(mockChannel, vscode.ExtensionMode.Development);
+      logger.log("Object test", { nested: { key: "value" } });
+
+      assert.equal(logs.length, 1);
+      // Should contain formatted JSON
+      assert.ok(logs[0].includes("nested"));
+      assert.ok(logs[0].includes("key"));
+      assert.ok(logs[0].includes("value"));
+    });
+  });
 });
