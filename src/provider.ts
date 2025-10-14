@@ -351,7 +351,13 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           contentBlocks: Array.isArray(m.content)
             ? m.content.map((c) => {
                 if (c.text) return "text";
-                if (c.toolResult) return `toolResult(${c.toolResult.toolUseId})`;
+                if (c.toolResult) {
+                  const preview =
+                    c.toolResult.content?.[0]?.text?.substring(0, 100) ||
+                    JSON.stringify(c.toolResult.content?.[0]?.json)?.substring(0, 100) ||
+                    "[empty]";
+                  return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
+                }
                 if (c.toolUse) return `toolUse(${c.toolUse.name})`;
                 return "unknown";
               })

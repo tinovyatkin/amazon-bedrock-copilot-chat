@@ -59,16 +59,15 @@ export class StreamProcessor {
             }
           }
           // Handle reasoning content deltas
+          // Note: We don't emit reasoning content as it interferes with tool call display
+          // and differs from native Copilot behavior with OpenAI models
           else if ("reasoningContent" in (delta.delta || {})) {
             const reasoningText = delta.delta?.reasoningContent?.text;
             if (reasoningText) {
-              textChunkCount++;
               logger.trace(
-                "[Stream Processor] Reasoning content delta received, length:",
+                "[Stream Processor] Reasoning content delta received (not emitting), length:",
                 reasoningText.length,
               );
-              progress.report(new vscode.LanguageModelTextPart(reasoningText));
-              hasEmittedContent = true;
             } else {
               logger.trace(
                 "[Stream Processor] Reasoning content delta with empty text (initialization)",
