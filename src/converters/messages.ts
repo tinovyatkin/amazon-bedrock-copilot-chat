@@ -215,36 +215,10 @@ export function convertMessages(
     }
   }
 
-  // When extended thinking is enabled, ensure the last assistant message starts with a thinking block
-  // This is required by the Bedrock API when using interleaved thinking
-  if (options?.extendedThinkingEnabled) {
-    // Find the last assistant message
-    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-      const message = bedrockMessages[i];
-      if (
-        message.role === ConversationRole.ASSISTANT &&
-        message.content &&
-        message.content.length > 0
-      ) {
-        // Check if the first content block is a thinking block
-        // Extended thinking uses proprietary format that must be preserved (with signature field)
-        const firstBlock = message.content[0];
-        const hasThinking = "thinking" in firstBlock || "redacted_thinking" in firstBlock;
-
-        if (!hasThinking) {
-          // Insert a placeholder thinking block at the start with empty signature
-          // The signature field is required by the extended thinking API
-          logger.debug(
-            "[Message Converter] Adding placeholder thinking block to last assistant message for extended thinking compatibility",
-          );
-          // Type assertion needed because thinking blocks use proprietary format not in AWS SDK types
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          message.content.unshift({ thinking: { signature: "", text: "" } } as any as ContentBlock);
-        }
-        break; // Only process the last assistant message
-      }
-    }
-  }
+  // Note: When extended thinking is enabled, we don't need to add placeholder thinking blocks
+  // The model returns reasoning in standard reasoningContent format, and we don't emit it to VSCode
+  // When assistant messages come back from VSCode without reasoning blocks, that's acceptable
+  // Adding placeholder thinking blocks in proprietary format causes SDK serialization errors
 
   return { messages: bedrockMessages, system: systemMessages };
 }
