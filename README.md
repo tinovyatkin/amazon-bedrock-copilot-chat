@@ -1,4 +1,4 @@
-# Amazon Bedrock Provider in GitHub Copilot Chat
+# Amazon Bedrock Provider for GitHub Copilot Chat
 
 A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profiles.
 
