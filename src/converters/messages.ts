@@ -181,8 +181,21 @@ export function convertMessages(
     }
   }
 
+  // Determine if we'll inject a thinking block without signature
+  // This affects cache point behavior - thinking blocks without signatures
+  // are incompatible with cache points due to SDK serialization issues
+  const willInjectThinkingWithoutSignature =
+    options?.extendedThinkingEnabled &&
+    options.lastThinkingBlock &&
+    !options.lastThinkingBlock.signature;
+
   // Add cache point after system messages if prompt caching is supported
-  if (profile.supportsPromptCaching && systemMessages.length > 0) {
+  // Skip if we'll inject thinking block without signature (causes serialization errors)
+  if (
+    profile.supportsPromptCaching &&
+    systemMessages.length > 0 &&
+    !willInjectThinkingWithoutSignature
+  ) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
@@ -191,7 +204,12 @@ export function convertMessages(
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
   // 3-4. After last 2 tool result messages
-  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
+  // Skip if we'll inject thinking block without signature (causes serialization errors)
+  if (
+    profile.supportsPromptCaching &&
+    userMessageIndicesWithToolResults.length > 0 &&
+    !willInjectThinkingWithoutSignature
+  ) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
     logger.debug(
@@ -233,6 +251,7 @@ export function convertMessages(
           );
 
           // Use proprietary format required by extended thinking API
+          // Note: Signature may be empty if captured from reasoningContent (standard format)
           const thinkingBlock = {
             thinking: {
               signature: options.lastThinkingBlock.signature || "",
