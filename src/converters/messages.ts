@@ -181,7 +181,12 @@ export function convertMessages(
   }
 
   // Add cache point after system messages if prompt caching is supported
-  if (profile.supportsPromptCaching && systemMessages.length > 0) {
+  // Note: Cache points are incompatible with extended thinking's proprietary format
+  if (
+    profile.supportsPromptCaching &&
+    systemMessages.length > 0 &&
+    !options?.extendedThinkingEnabled
+  ) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
@@ -190,7 +195,12 @@ export function convertMessages(
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
   // 3-4. After last 2 tool result messages
-  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
+  // Note: Cache points are incompatible with extended thinking's proprietary format
+  if (
+    profile.supportsPromptCaching &&
+    userMessageIndicesWithToolResults.length > 0 &&
+    !options?.extendedThinkingEnabled
+  ) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
     logger.debug(
@@ -205,7 +215,7 @@ export function convertMessages(
     }
   }
 
-  // When extended thinking is enabled, ensure the last assistant message starts with a reasoning block
+  // When extended thinking is enabled, ensure the last assistant message starts with a thinking block
   // This is required by the Bedrock API when using interleaved thinking
   if (options?.extendedThinkingEnabled) {
     // Find the last assistant message
@@ -216,52 +226,20 @@ export function convertMessages(
         message.content &&
         message.content.length > 0
       ) {
-        // Convert any proprietary "thinking" blocks to standard "reasoningContent" format
-        // Extended thinking uses a proprietary format that must be converted for API requests
-        for (let j = 0; j < message.content.length; j++) {
-          const block = message.content[j];
-
-          if ("thinking" in block || "redacted_thinking" in block) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-            const thinkingData = (block as any).thinking || (block as any).redacted_thinking;
-            // Extract text from thinking data, handling different formats
-            let thinkingText = "";
-            if (typeof thinkingData === "object" && thinkingData !== null) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              thinkingText = "text" in thinkingData ? String(thinkingData.text || "") : "";
-            }
-
-            logger.debug(
-              "[Message Converter] Converting proprietary thinking block to standard reasoningContent format",
-            );
-
-            // Convert to standard AWS SDK format
-            message.content[j] = {
-              reasoningContent: {
-                reasoningText: {
-                  text: thinkingText,
-                },
-              },
-            } satisfies ContentBlock.ReasoningContentMember;
-          }
-        }
-
-        // Check if the first content block is now a reasoning block
+        // Check if the first content block is a thinking block
+        // Extended thinking uses proprietary format that must be preserved (with signature field)
         const firstBlock = message.content[0];
-        const hasReasoning = "reasoningContent" in firstBlock;
+        const hasThinking = "thinking" in firstBlock || "redacted_thinking" in firstBlock;
 
-        if (!hasReasoning) {
-          // Insert a placeholder reasoning block at the start
+        if (!hasThinking) {
+          // Insert a placeholder thinking block at the start with empty signature
+          // The signature field is required by the extended thinking API
           logger.debug(
-            "[Message Converter] Adding placeholder reasoning block to last assistant message for extended thinking compatibility",
+            "[Message Converter] Adding placeholder thinking block to last assistant message for extended thinking compatibility",
           );
-          message.content.unshift({
-            reasoningContent: {
-              reasoningText: {
-                text: "",
-              },
-            },
-          } satisfies ContentBlock.ReasoningContentMember);
+          // Type assertion needed because thinking blocks use proprietary format not in AWS SDK types
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          message.content.unshift({ thinking: { signature: "", text: "" } } as any as ContentBlock);
         }
         break; // Only process the last assistant message
       }
