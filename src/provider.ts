@@ -276,6 +276,26 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     try {
       logger.info("[Bedrock Model Provider] === NEW REQUEST ===");
       logger.info("[Bedrock Model Provider] Converting messages, count:", messages.length);
+
+      // Log full incoming VSCode messages at trace level for reproduction
+      logger.trace("[Bedrock Model Provider] Full VSCode messages for reproduction:", {
+        messages: messages.map((msg) => ({
+          content: msg.content.map((part) => {
+            if (part instanceof vscode.LanguageModelTextPart) {
+              return { type: "text", value: part.value };
+            }
+            if (part instanceof vscode.LanguageModelToolCallPart) {
+              return { callId: part.callId, input: part.input, name: part.name, type: "toolCall" };
+            }
+            if (part instanceof vscode.LanguageModelToolResultPart) {
+              return { callId: part.callId, content: part.content, type: "toolResult" };
+            }
+            return { type: "unknown" };
+          }),
+          role: msg.role,
+        })),
+      });
+
       messages.forEach((msg, idx) => {
         const partTypes = msg.content.map((p) => {
           if (p instanceof vscode.LanguageModelTextPart) return "text";
@@ -499,6 +519,18 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             : undefined,
           role: m.role,
         })),
+      });
+
+      // Log full message structures at trace level for detailed debugging
+      logger.trace("[Bedrock Model Provider] Full request structure for reproduction:", {
+        messages: requestInput.messages,
+        system: requestInput.system,
+        toolConfig: requestInput.toolConfig
+          ? {
+              toolChoice: requestInput.toolConfig.toolChoice,
+              toolCount: requestInput.toolConfig.tools?.length,
+            }
+          : undefined,
       });
 
       const stream = await this.client.startConversationStream(requestInput);
