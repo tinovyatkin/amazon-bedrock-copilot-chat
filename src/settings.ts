@@ -12,6 +12,10 @@ export interface BedrockSettings {
   preferredModel: string | undefined;
   profile: string | undefined;
   region: string;
+  thinking: {
+    budgetTokens: number;
+    enabled: boolean;
+  };
 }
 
 /**
@@ -53,10 +57,18 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
     preferredModel = undefined;
   }
 
+  // Read thinking settings with defaults
+  const thinkingEnabled = config.get<boolean>("thinking.enabled") ?? true;
+  const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10000;
+
   return {
     preferredModel,
     profile,
     region,
+    thinking: {
+      budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024
+      enabled: thinkingEnabled,
+    },
   };
 }
 

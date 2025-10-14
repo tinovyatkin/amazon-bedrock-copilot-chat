@@ -32,7 +32,13 @@ export class StreamProcessor {
           logger.info("[Stream Processor] Message start:", event.messageStart.role);
         } else if (event.contentBlockStart) {
           const start = event.contentBlockStart;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+          const startData = start.start as any;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const hasThinking = startData && "thinking" in startData;
+
           logger.debug("[Stream Processor] Content block start:", {
+            hasThinking,
             hasToolUse: !!start.start?.toolUse,
             index: start.contentBlockIndex,
           });
@@ -43,6 +49,10 @@ export class StreamProcessor {
               id: toolUse.toolUseId,
               name: toolUse.name,
             });
+          }
+          // Log thinking block start if present
+          if (hasThinking) {
+            logger.debug("[Stream Processor] Thinking block started");
           }
         } else if (event.contentBlockDelta) {
           const delta = event.contentBlockDelta;
@@ -60,7 +70,7 @@ export class StreamProcessor {
             }
           }
           // Handle reasoning content deltas
-          // Note: We don't emit reasoning content as it interferes with tool call display
+          // Note: We don't emit reasoning/thinking content as it interferes with tool call display
           // and differs from native Copilot behavior with OpenAI models
           else if ("reasoningContent" in (delta.delta || {})) {
             const reasoningText = delta.delta?.reasoningContent?.text;
@@ -72,6 +82,28 @@ export class StreamProcessor {
             } else {
               logger.trace(
                 "[Stream Processor] Reasoning content delta with empty text (initialization)",
+              );
+            }
+          }
+          // Handle thinking content deltas (extended thinking from Claude models)
+          else if ("thinking" in (delta.delta || {})) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+            const deltaData = delta.delta as any;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+            const thinkingObj = deltaData?.thinking;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const thinkingText =
+              thinkingObj && typeof thinkingObj === "object" && "text" in thinkingObj
+                ? thinkingObj.text
+                : undefined;
+            if (thinkingText && typeof thinkingText === "string") {
+              logger.trace(
+                "[Stream Processor] Thinking content delta received (not emitting), length:",
+                thinkingText.length,
+              );
+            } else {
+              logger.trace(
+                "[Stream Processor] Thinking content delta with empty text (initialization)",
               );
             }
           }
