@@ -31,6 +31,13 @@ export function convertMessages(
   const systemMessages: SystemContentBlock[] = [];
   const userMessageIndicesWithToolResults: number[] = [];
 
+  logger.trace("[Message Converter] Starting conversion with options:", {
+    extendedThinkingEnabled: options?.extendedThinkingEnabled,
+    hasLastThinkingBlock: !!options?.lastThinkingBlock,
+    lastThinkingBlockSignature: options?.lastThinkingBlock?.signature,
+    lastThinkingBlockTextLength: options?.lastThinkingBlock?.text.length,
+  });
+
   for (const msg of messages) {
     if (msg.role === vscode.LanguageModelChatMessageRole.User) {
       const content: ContentBlock[] = [];
