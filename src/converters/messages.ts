@@ -60,14 +60,14 @@ export function convertMessages(
             textContent = JSON.stringify(part.content);
           }
 
-          const content = part.content;
+          const partContent = part.content;
           const isJson =
             profile.toolResultFormat === "json" &&
-            typeof content === "object" &&
-            content !== null &&
-            !Array.isArray(content);
+            typeof partContent === "object" &&
+            partContent !== null &&
+            !Array.isArray(partContent);
           const contentBlock: ToolResultContentBlock = isJson
-            ? ({ json: content } satisfies ToolResultContentBlock.JsonMember)
+            ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
             : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
           const status = "isError" in part && part.isError ? "error" : undefined;
 
