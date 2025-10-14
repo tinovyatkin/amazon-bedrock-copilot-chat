@@ -1,5 +1,6 @@
 import {
   BedrockClient,
+  GetFoundationModelAvailabilityCommand,
   ListFoundationModelsCommand,
   paginateListInferenceProfiles,
 } from "@aws-sdk/client-bedrock";
@@ -73,6 +74,31 @@ export class BedrockAPIClient {
     } catch (err) {
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", err);
       throw err;
+    }
+  }
+
+  /**
+   * Check if a model is accessible (authorized and available in the region).
+   * @param modelId The model ID to check
+   * @returns true if the model is accessible, false otherwise
+   */
+  async isModelAccessible(modelId: string): Promise<boolean> {
+    try {
+      const client = new BedrockClient({
+        credentials: this.getCredentials(),
+        region: this.region,
+      });
+
+      const command = new GetFoundationModelAvailabilityCommand({ modelId });
+      const response = await client.send(command);
+
+      // Model is accessible if it's authorized and available in the region
+      return (
+        response.authorizationStatus === "AUTHORIZED" && response.regionAvailability === "AVAILABLE"
+      );
+    } catch (err) {
+      logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, err);
+      return false;
     }
   }
 
