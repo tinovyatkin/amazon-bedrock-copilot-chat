@@ -37,6 +37,7 @@
     ],
     "deny": []
   },
+  "model": "sonnet[1m]",
   "hooks": {},
   "enableAllProjectMcpServers": true
 }
