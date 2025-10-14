@@ -1,44 +1,37 @@
-import * as util from "node:util";
 import * as vscode from "vscode";
 
 class Logger {
   private extensionMode: vscode.ExtensionMode = vscode.ExtensionMode.Production;
-  private outputChannel: undefined | vscode.OutputChannel;
+  private outputChannel: undefined | vscode.LogOutputChannel;
 
-  error(message: string, ...args: unknown[]) {
-    const formattedMessage = this.formatMessage(message, args);
-    this.outputChannel?.appendLine(`ERROR: ${formattedMessage}`);
+  debug(message: string, ...args: unknown[]) {
+    this.outputChannel?.debug(message, ...args);
   }
 
-  initialize(outputChannel: vscode.OutputChannel, extensionMode: vscode.ExtensionMode) {
+  error(message: string, ...args: unknown[]) {
+    this.outputChannel?.error(message, ...args);
+  }
+
+  info(message: string, ...args: unknown[]) {
+    this.outputChannel?.info(message, ...args);
+  }
+
+  initialize(outputChannel: vscode.LogOutputChannel, extensionMode: vscode.ExtensionMode) {
     this.outputChannel = outputChannel;
     this.extensionMode = extensionMode;
   }
 
   log(message: string, ...args: unknown[]) {
-    // For now, always log regardless of extension mode (0.0.x debugging)
-    // In the future, we may use extensionMode to control verbosity
-    const formattedMessage = this.formatMessage(message, args);
-    this.outputChannel?.appendLine(formattedMessage);
+    // Deprecated: Use info(), debug(), trace(), warn(), or error() instead
+    this.outputChannel?.info(message, ...args);
   }
 
-  private formatMessage(message: string, args: unknown[]): string {
-    if (args.length === 0) {
-      return message;
-    }
-    const argsStr = args
-      .map((arg) => {
-        if (typeof arg === "object") {
-          try {
-            return JSON.stringify(arg, null, 2);
-          } catch {
-            return util.format(arg);
-          }
-        }
-        return util.format(arg);
-      })
-      .join(" ");
-    return `${message} ${argsStr}`;
+  trace(message: string, ...args: unknown[]) {
+    this.outputChannel?.trace(message, ...args);
+  }
+
+  warn(message: string, ...args: unknown[]) {
+    this.outputChannel?.warn(message, ...args);
   }
 }
 

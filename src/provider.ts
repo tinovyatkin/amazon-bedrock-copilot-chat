@@ -127,7 +127,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
         // Exclude models that don't support tool calling
         if (isToolIncapableModel(modelIdToUse)) {
-          logger.log(`[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`);
+          logger.debug(`[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`);
           continue;
         }
 
@@ -154,7 +154,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         const { hasInferenceProfile, isAccessible, model: m, modelIdToUse } = result.value;
 
         if (!isAccessible) {
-          logger.log(
+          logger.debug(
             `[Bedrock Model Provider] Excluding inaccessible model: ${modelIdToUse} (not authorized or not available)`,
           );
           continue;
@@ -217,7 +217,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         try {
           progress.report(part);
         } catch (e) {
-          logger.error("[Bedrock Model Provider] Progress.report failed", {
+          logger.warn("[Bedrock Model Provider] Progress.report failed", {
             error: e instanceof Error ? { message: e.message, name: e.name } : String(e),
             modelId: model.id,
           });
@@ -226,8 +226,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
-      logger.log("[Bedrock Model Provider] === NEW REQUEST ===");
-      logger.log("[Bedrock Model Provider] Converting messages, count:", messages.length);
+      logger.info("[Bedrock Model Provider] === NEW REQUEST ===");
+      logger.info("[Bedrock Model Provider] Converting messages, count:", messages.length);
       messages.forEach((msg, idx) => {
         const partTypes = msg.content.map((p) => {
           if (p instanceof vscode.LanguageModelTextPart) return "text";
@@ -239,7 +239,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           }
           return "unknown";
         });
-        logger.log(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
+        logger.debug(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
         // Log tool result details
         msg.content.forEach((part) => {
           if (part instanceof vscode.LanguageModelToolResultPart) {
@@ -251,7 +251,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             } catch {
               // Keep default
             }
-            logger.log(`[Bedrock Model Provider]   Tool Result:`, {
+            logger.debug(`[Bedrock Model Provider]   Tool Result:`, {
               callId: part.callId,
               contentPreview,
               contentType: typeof part.content,
@@ -263,7 +263,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       const converted = convertMessages(messages, model.id);
 
-      logger.log(
+      logger.debug(
         "[Bedrock Model Provider] Converted to Bedrock messages:",
         converted.messages.length,
       );
@@ -273,7 +273,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           if ("toolUse" in c) return "toolUse";
           return "toolResult";
         });
-        logger.log(`[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`, contentTypes);
+        logger.debug(
+          `[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`,
+          contentTypes,
+        );
       });
 
       // Validate the converted Bedrock messages, not the original VSCode messages
@@ -334,7 +337,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         requestInput.toolConfig = toolConfig;
       }
 
-      logger.log("[Bedrock Model Provider] Starting streaming request", {
+      logger.info("[Bedrock Model Provider] Starting streaming request", {
         hasTools: !!toolConfig,
         messageCount: requestInput.messages?.length,
         modelId: model.id,
@@ -343,7 +346,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       });
 
       // Log the actual request for debugging
-      logger.log("[Bedrock Model Provider] Request details:", {
+      logger.debug("[Bedrock Model Provider] Request details:", {
         messages: requestInput.messages?.map((m) => ({
           contentBlocks: Array.isArray(m.content)
             ? m.content.map((c) => {
@@ -359,9 +362,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       const stream = await this.client.startConversationStream(requestInput);
 
-      logger.log("[Bedrock Model Provider] Processing stream events");
+      logger.info("[Bedrock Model Provider] Processing stream events");
       await this.streamProcessor.processStream(stream, trackingProgress, token);
-      logger.log("[Bedrock Model Provider] Finished processing stream");
+      logger.info("[Bedrock Model Provider] Finished processing stream");
     } catch (err) {
       logger.error("[Bedrock Model Provider] Chat request failed", {
         error: err instanceof Error ? { message: err.message, name: err.name } : String(err),

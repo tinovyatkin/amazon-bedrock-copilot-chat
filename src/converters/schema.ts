@@ -14,9 +14,9 @@ export function convertSchema(
 ): NonNullable<ToolInputSchema["json"]> {
   // Log the input schema for debugging
   if (schema != null) {
-    logger.log("Tool schema:", JSON.stringify(schema, null, 2));
+    logger.debug("Tool schema:", JSON.stringify(schema, null, 2));
   } else {
-    logger.log("Tool schema is null/undefined, using default");
+    logger.debug("Tool schema is null/undefined, using default");
     return { type: "object" };
   }
 

@@ -72,6 +72,38 @@ bun run test             # Run tests (requires compilation first)
 - `listAwsProfiles()`: Parses ~/.aws/credentials and ~/.aws/config files
 - Settings persisted in VSCode `globalState` (Memento)
 
+**Logging** (src/logger.ts)
+
+- Uses `LogOutputChannel` for structured logging with severity levels
+- Passes structured data directly to VSCode (objects remain objects, not stringified)
+- Integrates with VSCode's "Export Logs..." feature for log export
+- Log levels (from most to least verbose):
+  - `trace()`: Very verbose stream processing details (deltas, indices)
+  - `debug()`: Debugging information (tool calls, message conversions)
+  - `info()`: Normal operational flow (requests, completions)
+  - `warn()`: Non-critical issues (progress report failures)
+  - `error()`: Error conditions requiring attention
+- Automatically manages log files for debugging
+- Legacy `log()` method deprecated (forwards to `info()`)
+
+**Setting Log Level for Debugging (0.x versions)**
+
+To see debug and trace logs:
+
+1. Open "Bedrock Chat" output channel
+2. Click the dropdown menu (⚙️ icon) on the right side of the output panel
+3. Select "Set Log Level..." → "Debug" or "Trace"
+
+Alternatively, add to your VSCode settings:
+
+```json
+{
+  "bedrock.logLevel": "Debug" // or "Trace" for maximum verbosity
+}
+```
+
+Note: At 1.0.0 release, default will be "Info" level.
+
 ### Model Capabilities (src/profiles.ts)
 
 Different Bedrock models have varying capabilities:

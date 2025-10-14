@@ -86,7 +86,7 @@ export function convertMessages(
         const lastMessage = bedrockMessages[bedrockMessages.length - 1];
         if (lastMessage && lastMessage.role === ConversationRole.USER && lastMessage.content) {
           // Merge content into the last user message
-          logger.log("[Message Converter] Merging consecutive USER messages");
+          logger.debug("[Message Converter] Merging consecutive USER messages");
           lastMessage.content.push(...content);
           // Update hasToolResults tracking for merged message
           if (hasToolResults) {
@@ -122,7 +122,7 @@ export function convertMessages(
         const lastMessage = bedrockMessages[bedrockMessages.length - 1];
         if (lastMessage && lastMessage.role === ConversationRole.ASSISTANT && lastMessage.content) {
           // Merge content into the last assistant message
-          logger.log("[Message Converter] Merging consecutive ASSISTANT messages");
+          logger.debug("[Message Converter] Merging consecutive ASSISTANT messages");
           lastMessage.content.push(...content);
         } else {
           bedrockMessages.push({ content, role: ConversationRole.ASSISTANT });
@@ -151,7 +151,7 @@ export function convertMessages(
   if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
-    logger.log(
+    logger.debug(
       `[Message Converter] Adding cache points to last ${indicesToCache.length} tool result messages (indices: ${indicesToCache.join(", ")})`,
     );
 
