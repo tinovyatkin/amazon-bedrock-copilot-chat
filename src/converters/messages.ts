@@ -60,10 +60,16 @@ export function convertMessages(
             textContent = JSON.stringify(part.content);
           }
 
-          logger.debug("[Message Converter] Processing tool result:", {
+          // Log complete VSCode tool result part
+          logger.debug("[Message Converter] Processing VSCode tool result:", {
+            // Log all properties of the part for debugging
+            allProperties: Object.keys(part),
             callId: part.callId,
             contentType: typeof part.content,
+            hasIsError: "isError" in part,
             isArray: Array.isArray(part.content),
+            // Check for isError property (not in VSCode API, but logging for debugging)
+            isError: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
             textLength: textContent.length,
             textPreview: textContent.substring(0, 200),
           });
@@ -77,7 +83,27 @@ export function convertMessages(
           const contentBlock: ToolResultContentBlock = isJson
             ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
             : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
-          const status = "isError" in part && part.isError ? "error" : undefined;
+
+          // Since VSCode API doesn't provide isError property, detect errors from content
+          // Look for common error patterns in the text content
+          const lowerContent = textContent.toLowerCase();
+          const isLikelyError =
+            lowerContent.startsWith("error") ||
+            lowerContent.startsWith("error while calling tool:") ||
+            lowerContent.includes("error while calling tool:") ||
+            lowerContent.includes("invalid terminal id") ||
+            lowerContent.includes("please check your input");
+
+          const status = isLikelyError ? "error" : undefined;
+
+          logger.debug("[Message Converter] Error status decision:", {
+            contentPreview: textContent.substring(0, 100),
+            detectedFromContent: isLikelyError,
+            hasIsErrorProperty: "isError" in part,
+            // Check for isError property (not in VSCode API, but logging for debugging)
+            isErrorValue: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
+            resultingStatus: status,
+          });
 
           logger.debug("[Message Converter] Created Bedrock tool result:", {
             format: isJson ? "json" : "text",
