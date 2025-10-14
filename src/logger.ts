@@ -16,10 +16,10 @@ class Logger {
   }
 
   log(message: string, ...args: unknown[]) {
-    if (this.extensionMode === vscode.ExtensionMode.Development) {
-      const formattedMessage = this.formatMessage(message, args);
-      this.outputChannel?.appendLine(formattedMessage);
-    }
+    // For now, always log regardless of extension mode (0.0.x debugging)
+    // In the future, we may use extensionMode to control verbosity
+    const formattedMessage = this.formatMessage(message, args);
+    this.outputChannel?.appendLine(formattedMessage);
   }
 
   private formatMessage(message: string, args: unknown[]): string {
