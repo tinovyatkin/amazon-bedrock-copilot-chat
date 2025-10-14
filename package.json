@@ -106,7 +106,7 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "pretest": "bun run compile",
+    "pretest": "tsgo",
     "test": "vscode-test",
     "package": "bun run compile",
     "vsce:package": "bunx @vscode/vsce package -o dist/extension.vsix"
