@@ -45,49 +45,76 @@ export class StreamProcessor {
           }
         } else if (event.contentBlockDelta) {
           const delta = event.contentBlockDelta;
-          if (delta.delta?.text) {
-            textChunkCount++;
-            logger.log("[Stream Processor] Text delta received, length:", delta.delta.text.length);
-            progress.report(new vscode.LanguageModelTextPart(delta.delta.text));
-            hasEmittedContent = true;
-          } else if (delta.delta?.reasoningContent?.text) {
-            textChunkCount++;
-            logger.log(
-              "[Stream Processor] Reasoning content delta received, length:",
-              delta.delta.reasoningContent.text.length,
-            );
-            progress.report(new vscode.LanguageModelTextPart(delta.delta.reasoningContent.text));
-            hasEmittedContent = true;
-          } else if (delta.delta?.toolUse && delta.contentBlockIndex && delta.delta.toolUse.input) {
-            logger.log(
-              "[Stream Processor] Tool use delta received for block:",
-              delta.contentBlockIndex,
-            );
-            toolBuffer.appendInput(delta.contentBlockIndex, delta.delta.toolUse.input);
 
-            // Try early emission - emit as soon as JSON is valid for better perceived performance
-            // This is inspired by HuggingFace's approach
-            if (!toolBuffer.isEmitted(delta.contentBlockIndex)) {
-              const validTool = toolBuffer.tryGetValidTool(delta.contentBlockIndex);
-              if (validTool) {
-                toolCallCount++;
-                logger.log("[Stream Processor] Tool call emitted early (valid JSON):", {
-                  id: validTool.id,
-                  input: validTool.input,
-                  name: validTool.name,
-                });
-                progress.report(
-                  new vscode.LanguageModelToolCallPart(
-                    validTool.id,
-                    validTool.name,
-                    validTool.input as object,
-                  ),
-                );
-                toolBuffer.markEmitted(delta.contentBlockIndex);
-                hasEmittedContent = true;
-              }
+          // Handle text deltas (check for key existence, not just truthy value)
+          if ("text" in (delta.delta || {})) {
+            const text = delta.delta?.text;
+            if (text) {
+              textChunkCount++;
+              logger.log("[Stream Processor] Text delta received, length:", text.length);
+              progress.report(new vscode.LanguageModelTextPart(text));
+              hasEmittedContent = true;
+            } else {
+              logger.log("[Stream Processor] Text delta with empty content (initialization)");
             }
-          } else {
+          }
+          // Handle reasoning content deltas
+          else if ("reasoningContent" in (delta.delta || {})) {
+            const reasoningText = delta.delta?.reasoningContent?.text;
+            if (reasoningText) {
+              textChunkCount++;
+              logger.log(
+                "[Stream Processor] Reasoning content delta received, length:",
+                reasoningText.length,
+              );
+              progress.report(new vscode.LanguageModelTextPart(reasoningText));
+              hasEmittedContent = true;
+            } else {
+              logger.log(
+                "[Stream Processor] Reasoning content delta with empty text (initialization)",
+              );
+            }
+          }
+          // Handle tool use deltas
+          else if ("toolUse" in (delta.delta || {})) {
+            const toolUse = delta.delta?.toolUse;
+            if (delta.contentBlockIndex && toolUse?.input) {
+              logger.log(
+                "[Stream Processor] Tool use delta received for block:",
+                delta.contentBlockIndex,
+              );
+              toolBuffer.appendInput(delta.contentBlockIndex, toolUse.input);
+
+              // Try early emission - emit as soon as JSON is valid for better perceived performance
+              // This is inspired by HuggingFace's approach
+              if (!toolBuffer.isEmitted(delta.contentBlockIndex)) {
+                const validTool = toolBuffer.tryGetValidTool(delta.contentBlockIndex);
+                if (validTool) {
+                  toolCallCount++;
+                  logger.log("[Stream Processor] Tool call emitted early (valid JSON):", {
+                    id: validTool.id,
+                    input: validTool.input,
+                    name: validTool.name,
+                  });
+                  progress.report(
+                    new vscode.LanguageModelToolCallPart(
+                      validTool.id,
+                      validTool.name,
+                      validTool.input as object,
+                    ),
+                  );
+                  toolBuffer.markEmitted(delta.contentBlockIndex);
+                  hasEmittedContent = true;
+                }
+              }
+            } else {
+              logger.log(
+                "[Stream Processor] Tool use delta without input or index (initialization)",
+              );
+            }
+          }
+          // Truly unknown delta types
+          else {
             logger.log("[Stream Processor] Unknown delta type:", Object.keys(delta.delta || {}));
           }
         } else if (event.contentBlockStop) {
