@@ -340,8 +340,14 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           ? options.modelOptions.max_tokens
           : 4096;
       const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
+      const hasTools = options.tools && options.tools.length > 0;
+      // Disable extended thinking when tools are present due to SDK serialization limitations
+      // See convertMessages for detailed explanation of why thinking + tools don't work together
       const extendedThinkingEnabled =
-        settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
+        settings.thinking.enabled &&
+        modelProfile.supportsThinking &&
+        budgetTokens >= 1024 &&
+        !hasTools;
 
       const converted = convertMessages(messages, model.id, {
         extendedThinkingEnabled,
