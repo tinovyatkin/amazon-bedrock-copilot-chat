@@ -95,6 +95,8 @@ export class StreamProcessor {
           // and differs from native Copilot behavior with OpenAI models
           else if ("reasoningContent" in (delta.delta || {})) {
             const reasoningText = delta.delta?.reasoningContent?.text;
+            const reasoningSignature = delta.delta?.reasoningContent?.signature;
+
             if (reasoningText) {
               logger.trace(
                 "[Stream Processor] Reasoning content delta received (capturing), length:",
@@ -105,9 +107,24 @@ export class StreamProcessor {
                 capturedThinkingBlock = { text: "" };
               }
               capturedThinkingBlock.text += reasoningText;
-            } else {
+            }
+
+            // Capture signature from reasoning content delta
+            if (reasoningSignature && typeof reasoningSignature === "string") {
+              if (!capturedThinkingBlock) {
+                capturedThinkingBlock = { text: "" };
+              }
+              capturedThinkingBlock.signature =
+                (capturedThinkingBlock.signature || "") + reasoningSignature;
               logger.trace(
-                "[Stream Processor] Reasoning content delta with empty text (initialization)",
+                "[Stream Processor] Reasoning signature delta received, total length:",
+                capturedThinkingBlock.signature.length,
+              );
+            }
+
+            if (!reasoningText && !reasoningSignature) {
+              logger.trace(
+                "[Stream Processor] Reasoning content delta with empty content (initialization)",
               );
             }
           }
@@ -122,6 +139,12 @@ export class StreamProcessor {
               thinkingObj && typeof thinkingObj === "object" && "text" in thinkingObj
                 ? thinkingObj.text
                 : undefined;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const signatureDelta =
+              thinkingObj && typeof thinkingObj === "object" && "signature_delta" in thinkingObj
+                ? thinkingObj.signature_delta
+                : undefined;
+
             if (thinkingText && typeof thinkingText === "string") {
               logger.trace(
                 "[Stream Processor] Thinking content delta received (capturing), length:",
@@ -135,6 +158,18 @@ export class StreamProcessor {
               logger.trace(
                 "[Stream Processor] Thinking content delta with empty text (initialization)",
               );
+            }
+
+            // Capture signature deltas (streamed incrementally)
+            if (signatureDelta && typeof signatureDelta === "string") {
+              if (capturedThinkingBlock) {
+                capturedThinkingBlock.signature =
+                  (capturedThinkingBlock.signature || "") + signatureDelta;
+                logger.trace(
+                  "[Stream Processor] Signature delta received, total length:",
+                  capturedThinkingBlock.signature.length,
+                );
+              }
             }
           }
           // Handle tool use deltas
