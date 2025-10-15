@@ -373,7 +373,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // System messages are extracted separately and don't count in the alternating pattern
       validateBedrockMessages(converted.messages);
 
-      const toolConfig = convertTools(options, model.id);
+      // Extended thinking + tool use requires tool_choice: any per AWS documentation
+      const toolConfig = convertTools(options, model.id, extendedThinkingEnabled);
 
       if (options.tools && options.tools.length > 128) {
         throw new Error("Cannot have more than 128 tools per request.");
