@@ -45,7 +45,10 @@ export function convertMessages(
 
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
-          content.push({ text: part.value });
+          // Skip empty text parts - Bedrock API rejects blank text fields
+          if (part.value.trim()) {
+            content.push({ text: part.value });
+          }
         } else if (part instanceof vscode.LanguageModelToolResultPart) {
           hasToolResults = true;
 
@@ -156,7 +159,10 @@ export function convertMessages(
       const content: ContentBlock[] = [];
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
-          content.push({ text: part.value });
+          // Skip empty text parts - Bedrock API rejects blank text fields
+          if (part.value.trim()) {
+            content.push({ text: part.value });
+          }
         } else if (part instanceof vscode.LanguageModelToolCallPart) {
           content.push({
             toolUse: {
@@ -182,7 +188,10 @@ export function convertMessages(
       // System messages
       for (const part of msg.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
-          systemMessages.push({ text: part.value });
+          // Skip empty text parts - Bedrock API rejects blank text fields
+          if (part.value.trim()) {
+            systemMessages.push({ text: part.value });
+          }
         }
       }
     }
