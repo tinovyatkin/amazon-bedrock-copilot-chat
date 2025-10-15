@@ -213,17 +213,16 @@ export function convertMessages(
     }
   }
 
-  // Inject captured thinking as reasoningContent (official SDK format)
+  // Inject captured thinking as reasoningContent into ALL assistant messages
   // CRITICAL: When anthropic_beta: ["interleaved-thinking-2025-05-14"] is present,
-  // the API transforms reasoningContent → thinking and requires a signature.
-  // Only inject if we have a signature (from metadata.thinkingResponse)
+  // the API requires ALL assistant messages to have thinking blocks, not just the last one
   if (
     options?.extendedThinkingEnabled &&
     options.lastThinkingBlock &&
     options.lastThinkingBlock.signature
   ) {
-    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-      const message = bedrockMessages[i];
+    let injectedCount = 0;
+    for (const message of bedrockMessages) {
       if (
         message.role === ConversationRole.ASSISTANT &&
         message.content &&
@@ -234,11 +233,6 @@ export function convertMessages(
         );
 
         if (!hasReasoning) {
-          logger.info("[Message Converter] Injecting thinking as reasoningContent with signature", {
-            signatureLength: options.lastThinkingBlock.signature.length,
-            textLength: options.lastThinkingBlock.text.length,
-          });
-
           // Use official SDK reasoningContent format
           const reasoningBlock: ContentBlock.ReasoningContentMember = {
             reasoningContent: {
@@ -250,9 +244,17 @@ export function convertMessages(
           };
 
           message.content.unshift(reasoningBlock);
+          injectedCount++;
         }
-        break;
       }
+    }
+
+    if (injectedCount > 0) {
+      logger.debug("[Message Converter] Injected thinking into assistant messages", {
+        count: injectedCount,
+        signatureLength: options.lastThinkingBlock.signature.length,
+        textLength: options.lastThinkingBlock.text.length,
+      });
     }
   } else if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
     logger.warn(
