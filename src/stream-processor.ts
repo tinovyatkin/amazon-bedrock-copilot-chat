@@ -285,6 +285,8 @@ export class StreamProcessor {
       logger.info("[Stream Processor] Stream processing completed", {
         capturedThinkingBlock: !!capturedThinkingBlock,
         hasEmittedContent,
+        hasSignature: !!capturedThinkingBlock?.signature,
+        signatureLength: capturedThinkingBlock?.signature?.length,
         stopReason,
         textChunkCount,
         thinkingLength: capturedThinkingBlock?.text.length,
