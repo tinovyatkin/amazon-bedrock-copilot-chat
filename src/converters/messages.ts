@@ -213,45 +213,23 @@ export function convertMessages(
     }
   }
 
-  // Inject thinking blocks using SDK's $unknown format for proprietary types
-  // Discovery: SDK's ContentBlock.visit falls back to visitor._($unknown[0], $unknown[1])
-  // for unrecognized types. We use this to pass proprietary thinking format.
-  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
-    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-      const message = bedrockMessages[i];
-      if (
-        message.role === ConversationRole.ASSISTANT &&
-        message.content &&
-        message.content.length > 0
-      ) {
-        const hasThinking = message.content.some(
-          (block) => "thinking" in block || "redacted_thinking" in block || "$unknown" in block,
-        );
-
-        if (!hasThinking) {
-          logger.debug("[Message Converter] Injecting thinking block via $unknown format", {
-            hasSignature: !!options.lastThinkingBlock.signature,
-            textLength: options.lastThinkingBlock.text.length,
-          });
-
-          // Use SDK's $unknown tuple format: [typeName, value]
-          const thinkingBlock = {
-            $unknown: [
-              "thinking",
-              {
-                signature: options.lastThinkingBlock.signature || "",
-                text: options.lastThinkingBlock.text,
-              },
-            ],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any as ContentBlock;
-
-          message.content.unshift(thinkingBlock);
-        }
-        break;
-      }
-    }
-  }
+  // Extended thinking + tool use limitation
+  // =======================================
+  // The API requires thinking blocks in subsequent assistant messages when extended
+  // thinking is enabled, but we cannot inject them due to two blockers:
+  //
+  // 1. Direct injection { thinking: {...} } fails:
+  //    - SDK's ContentBlock.visit doesn't recognize "thinking"
+  //    - Falls back to visitor._($unknown[0], $unknown[1])
+  //    - Our object lacks $unknown property → undefined[0] crash
+  //
+  // 2. $unknown workaround { $unknown: ["thinking", {...}] } fails:
+  //    - SDK serialization succeeds (no crash)
+  //    - API validation rejects: "ContentBlock must set one of: text, image, toolUse, etc."
+  //    - thinking is not in the allowed ContentBlock keys
+  //
+  // Conclusion: Extended thinking is disabled when tools are present (see provider.ts)
+  // This gives users: tool use (yes) + extended thinking (no) OR extended thinking (yes) + tools (no)
 
   return { messages: bedrockMessages, system: systemMessages };
 }
