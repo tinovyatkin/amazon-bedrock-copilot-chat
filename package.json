@@ -137,6 +137,7 @@
     "ini": "^5.0.0"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",
     "@eslint/js": "^9.13.0",
     "@eslint/markdown": "^7.4.0",
     "@eslint/mcp": "^0.1.1",

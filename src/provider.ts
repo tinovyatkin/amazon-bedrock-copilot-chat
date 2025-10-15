@@ -539,7 +539,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // API requires signatures for interleaved thinking, so we only store blocks we can inject
       if (extendedThinkingEnabled && result.thinkingBlock && result.thinkingBlock.signature) {
         this.lastThinkingBlock = result.thinkingBlock;
-        logger.debug(
+        logger.info(
           "[Bedrock Model Provider] Stored thinking block with signature for next request:",
           {
             signatureLength: result.thinkingBlock.signature.length,
@@ -547,7 +547,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           },
         );
       } else if (extendedThinkingEnabled && result.thinkingBlock) {
-        logger.debug(
+        logger.info(
           "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
           {
             textLength: result.thinkingBlock.text.length,

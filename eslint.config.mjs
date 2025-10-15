@@ -8,6 +8,8 @@ import stylistic from "@stylistic/eslint-plugin";
 import prettierConfig from "eslint-config-prettier";
 import perfectionist from "eslint-plugin-perfectionist";
 import tseslint from "typescript-eslint";
+import comments from "@eslint-community/eslint-plugin-eslint-comments/configs"
+
 
 export default defineConfig([
 	{
@@ -29,6 +31,7 @@ export default defineConfig([
 		...perfectionist.configs["recommended-natural"],
 		files: ["**/*.ts"],
 	},
+  comments.recommended,
 	{
 		rules: {
 			"@typescript-eslint/no-unused-vars": [
@@ -49,6 +52,8 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-member-access":"warn",
       "no-fallthrough": ["error", { "allowEmptyCase": true }],
 			"perfectionist/sort-imports": "off",
+      "@eslint-community/eslint-comments/require-description": "warn",
+      "@eslint-community/eslint-comments/no-restricted-disable": ["warn", "@typescript-eslint/no-explicit-any"]
 		},
 	},
 	{

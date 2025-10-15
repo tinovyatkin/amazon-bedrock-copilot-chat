@@ -234,13 +234,10 @@ export function convertMessages(
         );
 
         if (!hasReasoning) {
-          logger.debug(
-            "[Message Converter] Injecting thinking as reasoningContent with signature",
-            {
-              signatureLength: options.lastThinkingBlock.signature.length,
-              textLength: options.lastThinkingBlock.text.length,
-            },
-          );
+          logger.info("[Message Converter] Injecting thinking as reasoningContent with signature", {
+            signatureLength: options.lastThinkingBlock.signature.length,
+            textLength: options.lastThinkingBlock.text.length,
+          });
 
           // Use official SDK reasoningContent format
           const reasoningBlock: ContentBlock.ReasoningContentMember = {
