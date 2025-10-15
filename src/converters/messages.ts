@@ -213,23 +213,42 @@ export function convertMessages(
     }
   }
 
-  // Extended thinking + tool use limitation
-  // =======================================
-  // The API requires thinking blocks in subsequent assistant messages when extended
-  // thinking is enabled, but we cannot inject them due to two blockers:
-  //
-  // 1. Direct injection { thinking: {...} } fails:
-  //    - SDK's ContentBlock.visit doesn't recognize "thinking"
-  //    - Falls back to visitor._($unknown[0], $unknown[1])
-  //    - Our object lacks $unknown property → undefined[0] crash
-  //
-  // 2. $unknown workaround { $unknown: ["thinking", {...}] } fails:
-  //    - SDK serialization succeeds (no crash)
-  //    - API validation rejects: "ContentBlock must set one of: text, image, toolUse, etc."
-  //    - thinking is not in the allowed ContentBlock keys
-  //
-  // Conclusion: Extended thinking is disabled when tools are present (see provider.ts)
-  // This gives users: tool use (yes) + extended thinking (no) OR extended thinking (yes) + tools (no)
+  // Inject captured thinking as reasoningContent (official SDK format)
+  // AWS docs show proprietary "thinking" format, but SDK uses reasoningContent
+  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+    for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+      const message = bedrockMessages[i];
+      if (
+        message.role === ConversationRole.ASSISTANT &&
+        message.content &&
+        message.content.length > 0
+      ) {
+        const hasReasoning = message.content.some(
+          (block) => "reasoningContent" in block || "thinking" in block,
+        );
+
+        if (!hasReasoning) {
+          logger.debug("[Message Converter] Injecting thinking as reasoningContent", {
+            hasSignature: !!options.lastThinkingBlock.signature,
+            textLength: options.lastThinkingBlock.text.length,
+          });
+
+          // Use official SDK reasoningContent format
+          const reasoningBlock: ContentBlock.ReasoningContentMember = {
+            reasoningContent: {
+              reasoningText: {
+                signature: options.lastThinkingBlock.signature,
+                text: options.lastThinkingBlock.text,
+              },
+            },
+          };
+
+          message.content.unshift(reasoningBlock);
+        }
+        break;
+      }
+    }
+  }
 
   return { messages: bedrockMessages, system: systemMessages };
 }

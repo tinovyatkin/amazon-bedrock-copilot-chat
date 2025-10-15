@@ -340,7 +340,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           ? options.modelOptions.max_tokens
           : 4096;
       const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
-      // Re-enabled extended thinking with tools using $unknown format workaround
+      // Extended thinking enabled using official reasoningContent format
       const extendedThinkingEnabled =
         settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
