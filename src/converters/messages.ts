@@ -214,8 +214,14 @@ export function convertMessages(
   }
 
   // Inject captured thinking as reasoningContent (official SDK format)
-  // AWS docs show proprietary "thinking" format, but SDK uses reasoningContent
-  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+  // CRITICAL: When anthropic_beta: ["interleaved-thinking-2025-05-14"] is present,
+  // the API transforms reasoningContent → thinking and requires a signature.
+  // Only inject if we have a signature (from metadata.thinkingResponse)
+  if (
+    options?.extendedThinkingEnabled &&
+    options.lastThinkingBlock &&
+    options.lastThinkingBlock.signature
+  ) {
     for (let i = bedrockMessages.length - 1; i >= 0; i--) {
       const message = bedrockMessages[i];
       if (
@@ -228,10 +234,13 @@ export function convertMessages(
         );
 
         if (!hasReasoning) {
-          logger.debug("[Message Converter] Injecting thinking as reasoningContent", {
-            hasSignature: !!options.lastThinkingBlock.signature,
-            textLength: options.lastThinkingBlock.text.length,
-          });
+          logger.debug(
+            "[Message Converter] Injecting thinking as reasoningContent with signature",
+            {
+              signatureLength: options.lastThinkingBlock.signature.length,
+              textLength: options.lastThinkingBlock.text.length,
+            },
+          );
 
           // Use official SDK reasoningContent format
           const reasoningBlock: ContentBlock.ReasoningContentMember = {
@@ -248,6 +257,14 @@ export function convertMessages(
         break;
       }
     }
+  } else if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+    logger.warn(
+      "[Message Converter] Cannot inject thinking block - signature required for interleaved thinking",
+      {
+        capturedFromDeltas: !options.lastThinkingBlock.signature,
+        textLength: options.lastThinkingBlock.text.length,
+      },
+    );
   }
 
   return { messages: bedrockMessages, system: systemMessages };
