@@ -534,13 +534,24 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       logger.info("[Bedrock Model Provider] Processing stream events");
       const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
 
-      // Store thinking block for next request if extended thinking was enabled
-      if (extendedThinkingEnabled && result.thinkingBlock) {
+      // Store thinking block for next request ONLY if it has a signature
+      // API requires signatures for interleaved thinking, so we only store blocks we can inject
+      if (extendedThinkingEnabled && result.thinkingBlock && result.thinkingBlock.signature) {
         this.lastThinkingBlock = result.thinkingBlock;
-        logger.debug("[Bedrock Model Provider] Stored thinking block for next request:", {
-          hasSignature: !!result.thinkingBlock.signature,
-          textLength: result.thinkingBlock.text.length,
-        });
+        logger.debug(
+          "[Bedrock Model Provider] Stored thinking block with signature for next request:",
+          {
+            signatureLength: result.thinkingBlock.signature.length,
+            textLength: result.thinkingBlock.text.length,
+          },
+        );
+      } else if (extendedThinkingEnabled && result.thinkingBlock) {
+        logger.debug(
+          "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
+          {
+            textLength: result.thinkingBlock.text.length,
+          },
+        );
       }
 
       logger.info("[Bedrock Model Provider] Finished processing stream");
