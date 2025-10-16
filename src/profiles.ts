@@ -24,6 +24,12 @@ export interface ModelProfile {
    */
   supportsToolChoice: boolean;
   /**
+   * Whether the model supports the status field in tool results (error/success)
+   * Reference: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolResultBlock.html
+   * Currently only Claude models support this field
+   */
+  supportsToolResultStatus: boolean;
+  /**
    * Format to use for tool result content ('text' or 'json')
    */
   toolResultFormat: "json" | "text";
@@ -47,6 +53,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supportsPromptCaching: false,
     supportsThinking: false,
     supportsToolChoice: false,
+    supportsToolResultStatus: false,
     toolResultFormat: "text",
   };
 
@@ -82,6 +89,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supportsPromptCaching: true,
           supportsThinking: false,
           supportsToolChoice: true,
+          supportsToolResultStatus: false,
           toolResultFormat: "text",
         };
       }
@@ -105,6 +113,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsPromptCaching: true,
         supportsThinking,
         supportsToolChoice: true,
+        supportsToolResultStatus: true, // Claude models support status field in tool results
         toolResultFormat: "text",
       };
     }
@@ -116,6 +125,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: false,
+        supportsToolResultStatus: false,
         toolResultFormat: "json",
       };
 
@@ -127,6 +137,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: true,
+        supportsToolResultStatus: false,
         toolResultFormat: "text",
       };
 
