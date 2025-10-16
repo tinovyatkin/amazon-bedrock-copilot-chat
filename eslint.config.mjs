@@ -53,7 +53,7 @@ export default defineConfig([
       "no-fallthrough": ["error", { "allowEmptyCase": true }],
 			"perfectionist/sort-imports": "off",
       "@eslint-community/eslint-comments/require-description": "warn",
-      "@eslint-community/eslint-comments/no-restricted-disable": ["warn", "@typescript-eslint/no-explicit-any"],
+      "@eslint-community/eslint-comments/no-restricted-disable": ["error", "@typescript-eslint/no-explicit-any"],
       "@typescript-eslint/strict-boolean-expressions": ["error", {"allowAny": true, "allowNullableString": true, "allowNullableBoolean": true, "allowNullableObject": true, "allowNullableNumber": false}]
 		},
 	},

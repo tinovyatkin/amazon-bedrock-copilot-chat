@@ -213,14 +213,10 @@ export class StreamProcessor {
 
           // Check for guardrail traces in metadata
           // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L806-L812
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Bedrock metadata has undocumented fields
-          const metadata = event.metadata as any;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
+          const metadata = event.metadata;
           if (metadata?.trace?.guardrail) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
             const guardrailData = metadata.trace.guardrail;
             logger.debug("[Stream Processor] Guardrail trace detected in metadata:", {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Logging undocumented metadata
               guardrailData,
             });
 
@@ -233,7 +229,6 @@ export class StreamProcessor {
               logger.error(
                 "[Stream Processor] ⚠️ GUARDRAIL BLOCKED - Content was blocked by AWS Bedrock Guardrails",
                 {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Logging undocumented metadata
                   guardrailData,
                   message:
                     "This could be due to account-level or organization-level guardrail policies. " +
