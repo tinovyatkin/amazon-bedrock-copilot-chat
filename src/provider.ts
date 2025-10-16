@@ -386,6 +386,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       const converted = convertMessages(messages, model.id, {
         extendedThinkingEnabled,
         lastThinkingBlock: this.lastThinkingBlock,
+        promptCachingEnabled: settings.promptCaching.enabled,
       });
 
       logger.debug(
@@ -413,7 +414,12 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       validateBedrockMessages(converted.messages);
 
       // Pass extendedThinkingEnabled to skip tool_choice (incompatible with thinking)
-      const toolConfig = convertTools(options, model.id, extendedThinkingEnabled);
+      const toolConfig = convertTools(
+        options,
+        model.id,
+        extendedThinkingEnabled,
+        settings.promptCaching.enabled,
+      );
 
       if (options.tools && options.tools.length > 128) {
         throw new Error("Cannot have more than 128 tools per request.");
@@ -684,9 +690,11 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         }
 
         // Convert the message to Bedrock format
+        const settings = getBedrockSettings(this.globalState);
         const converted = convertMessages([text], model.id, {
           extendedThinkingEnabled: false,
           lastThinkingBlock: undefined,
+          promptCachingEnabled: settings.promptCaching.enabled,
         });
 
         // Use the CountTokens API

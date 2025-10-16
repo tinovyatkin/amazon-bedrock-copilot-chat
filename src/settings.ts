@@ -14,6 +14,9 @@ export interface BedrockSettings {
   };
   preferredModel: string | undefined;
   profile: string | undefined;
+  promptCaching: {
+    enabled: boolean;
+  };
   region: string;
   thinking: {
     budgetTokens: number;
@@ -63,6 +66,9 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
   // Read 1M context settings with defaults (enabled by default)
   const context1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
 
+  // Read prompt caching settings with defaults (enabled by default)
+  const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
+
   // Read thinking settings with defaults
   const thinkingEnabled = config.get<boolean>("thinking.enabled") ?? true;
   const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10000;
@@ -73,6 +79,9 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
     },
     preferredModel,
     profile,
+    promptCaching: {
+      enabled: promptCachingEnabled,
+    },
     region,
     thinking: {
       budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024

@@ -100,6 +100,12 @@
           "default": true,
           "description": "Enable 1M context window for Claude Sonnet 4.x models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
           "scope": "resource"
+        },
+        "bedrock.promptCaching.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable prompt caching for supported models to reduce latency and costs. Caches system prompts, tool definitions, and recent tool results. Disable if you need fully fresh responses or want to avoid cache-related costs.",
+          "scope": "resource"
         }
       }
     }

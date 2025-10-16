@@ -13,6 +13,7 @@ export function convertTools(
   options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
   modelId: string,
   extendedThinkingEnabled?: boolean,
+  promptCachingEnabled?: boolean,
 ): bedrockRuntime.ToolConfiguration | undefined {
   if (!options.tools || options.tools.length === 0) {
     return undefined;
@@ -36,10 +37,12 @@ export function convertTools(
     }),
   );
 
-  // Add cache point after tool definitions if prompt caching is supported
+  // Add cache point after tool definitions if prompt caching is supported and enabled
   // This is one of three strategic cache points: after system messages,
   // after tool definitions, and after tool results (within 4-point limit)
-  if (profile.supportsPromptCaching && tools.length > 0) {
+  // promptCachingEnabled defaults to true if not specified
+  const cachingEnabled = promptCachingEnabled ?? true;
+  if (profile.supportsPromptCaching && cachingEnabled && tools.length > 0) {
     tools.push({ cachePoint: { type: "default" } });
   }
 

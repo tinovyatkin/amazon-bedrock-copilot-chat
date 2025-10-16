@@ -24,7 +24,11 @@ interface ConvertedMessages {
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   modelId: string,
-  options?: { extendedThinkingEnabled?: boolean; lastThinkingBlock?: ThinkingBlock },
+  options?: {
+    extendedThinkingEnabled?: boolean;
+    lastThinkingBlock?: ThinkingBlock;
+    promptCachingEnabled?: boolean;
+  },
 ): ConvertedMessages {
   const profile = getModelProfile(modelId);
   const bedrockMessages: BedrockMessage[] = [];
@@ -201,8 +205,11 @@ export function convertMessages(
     }
   }
 
-  // Add cache point after system messages if prompt caching is supported
-  if (profile.supportsPromptCaching && systemMessages.length > 0) {
+  // Check if prompt caching should be enabled (defaults to true)
+  const promptCachingEnabled = options?.promptCachingEnabled ?? true;
+
+  // Add cache point after system messages if prompt caching is supported and enabled
+  if (profile.supportsPromptCaching && promptCachingEnabled && systemMessages.length > 0) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
@@ -211,7 +218,11 @@ export function convertMessages(
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
   // 3-4. After last 2 tool result messages
-  if (profile.supportsPromptCaching && userMessageIndicesWithToolResults.length > 0) {
+  if (
+    profile.supportsPromptCaching &&
+    promptCachingEnabled &&
+    userMessageIndicesWithToolResults.length > 0
+  ) {
     // Get the last 2 indices
     const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
     logger.debug(
