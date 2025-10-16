@@ -245,38 +245,6 @@ export class StreamProcessor {
               // The guardrail might have allowed partial content through
             }
           }
-
-          // Extract thinking blocks from metadata for extended thinking
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
-          if (metadata?.additionalModelResponseFields?.thinkingResponse) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
-            const thinkingResponse = metadata.additionalModelResponseFields.thinkingResponse;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Checking undocumented metadata structure
-            if (thinkingResponse.reasoning && Array.isArray(thinkingResponse.reasoning)) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Iterating undocumented metadata
-              for (const reasoningBlock of thinkingResponse.reasoning) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
-                if (reasoningBlock.text) {
-                  if (!capturedThinkingBlock) {
-                    capturedThinkingBlock = { text: "" };
-                  }
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
-                  capturedThinkingBlock.text += reasoningBlock.text;
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
-                  if (reasoningBlock.signature && !capturedThinkingBlock.signature) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
-                    capturedThinkingBlock.signature = reasoningBlock.signature;
-                  }
-                }
-              }
-              logger.debug("[Stream Processor] Captured thinking blocks from metadata:", {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
-                blockCount: thinkingResponse.reasoning.length,
-                hasSignature: !!capturedThinkingBlock?.signature,
-                textLength: capturedThinkingBlock?.text.length,
-              });
-            }
-          }
         } else {
           logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
         }
