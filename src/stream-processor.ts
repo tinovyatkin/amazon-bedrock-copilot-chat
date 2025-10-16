@@ -128,50 +128,6 @@ export class StreamProcessor {
               );
             }
           }
-          // Handle thinking content deltas (extended thinking from Claude models)
-          else if ("thinking" in (delta.delta || {})) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-            const deltaData = delta.delta as any;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-            const thinkingObj = deltaData?.thinking;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const thinkingText =
-              thinkingObj && typeof thinkingObj === "object" && "text" in thinkingObj
-                ? thinkingObj.text
-                : undefined;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const signatureDelta =
-              thinkingObj && typeof thinkingObj === "object" && "signature_delta" in thinkingObj
-                ? thinkingObj.signature_delta
-                : undefined;
-
-            if (thinkingText && typeof thinkingText === "string") {
-              logger.trace(
-                "[Stream Processor] Thinking content delta received (capturing), length:",
-                thinkingText.length,
-              );
-              // Accumulate thinking text
-              if (capturedThinkingBlock) {
-                capturedThinkingBlock.text += thinkingText;
-              }
-            } else {
-              logger.trace(
-                "[Stream Processor] Thinking content delta with empty text (initialization)",
-              );
-            }
-
-            // Capture signature deltas (streamed incrementally)
-            if (signatureDelta && typeof signatureDelta === "string") {
-              if (capturedThinkingBlock) {
-                capturedThinkingBlock.signature =
-                  (capturedThinkingBlock.signature || "") + signatureDelta;
-                logger.trace(
-                  "[Stream Processor] Signature delta received, total length:",
-                  capturedThinkingBlock.signature.length,
-                );
-              }
-            }
-          }
           // Handle tool use deltas
           else if ("toolUse" in (delta.delta || {})) {
             const toolUse = delta.delta?.toolUse;
@@ -257,14 +213,14 @@ export class StreamProcessor {
 
           // Check for guardrail traces in metadata
           // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L806-L812
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Bedrock metadata has undocumented fields
           const metadata = event.metadata as any;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
           if (metadata?.trace?.guardrail) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
             const guardrailData = metadata.trace.guardrail;
             logger.debug("[Stream Processor] Guardrail trace detected in metadata:", {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Logging undocumented metadata
               guardrailData,
             });
 
@@ -277,7 +233,7 @@ export class StreamProcessor {
               logger.error(
                 "[Stream Processor] ⚠️ GUARDRAIL BLOCKED - Content was blocked by AWS Bedrock Guardrails",
                 {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Logging undocumented metadata
                   guardrailData,
                   message:
                     "This could be due to account-level or organization-level guardrail policies. " +
@@ -291,29 +247,30 @@ export class StreamProcessor {
           }
 
           // Extract thinking blocks from metadata for extended thinking
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
           if (metadata?.additionalModelResponseFields?.thinkingResponse) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
             const thinkingResponse = metadata.additionalModelResponseFields.thinkingResponse;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Checking undocumented metadata structure
             if (thinkingResponse.reasoning && Array.isArray(thinkingResponse.reasoning)) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Iterating undocumented metadata
               for (const reasoningBlock of thinkingResponse.reasoning) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
                 if (reasoningBlock.text) {
                   if (!capturedThinkingBlock) {
                     capturedThinkingBlock = { text: "" };
                   }
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
                   capturedThinkingBlock.text += reasoningBlock.text;
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
                   if (reasoningBlock.signature && !capturedThinkingBlock.signature) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Accessing undocumented reasoning block fields
                     capturedThinkingBlock.signature = reasoningBlock.signature;
                   }
                 }
               }
               logger.debug("[Stream Processor] Captured thinking blocks from metadata:", {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Accessing undocumented metadata fields
                 blockCount: thinkingResponse.reasoning.length,
                 hasSignature: !!capturedThinkingBlock?.signature,
                 textLength: capturedThinkingBlock?.text.length,
