@@ -7,6 +7,7 @@
     "source.removeUnusedImports": "always"
   },
   "files.exclude": {
+    ".eslintcache": true,
     "out": false,
     ".vscode-test": true
   },
