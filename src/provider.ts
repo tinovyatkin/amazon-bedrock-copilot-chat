@@ -36,28 +36,33 @@ import { validateBedrockMessages } from "./validation";
  * - AI21 Jurassic 2 models don't support tool calling
  * - Meta Llama 2 and Llama 3.0 don't support tools (but 3.1+ do)
  * - Embedding models don't support conversational tool use
+ *
+ * Patterns support both regular model IDs and inference profiles (regional/global):
+ * - Regular: anthropic.claude-...
+ * - Regional: us.anthropic.claude-...
+ * - Global: global.anthropic.claude-...
  */
 const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
   // Amazon Titan Text (legacy models)
-  /^([a-z]{2}\.)?amazon\.titan-text-/,
+  /^(global|[a-z]{2,3}\.)?amazon\.titan-text-/,
 
   // Stability AI (image generation)
-  /^([a-z]{2}\.)?stability\./,
+  /^(global|[a-z]{2,3}\.)?stability\./,
 
   // AI21 Jurassic 2 (older models)
-  /^([a-z]{2}\.)?ai21\.j2-/,
+  /^(global|[a-z]{2,3}\.)?ai21\.j2-/,
 
   // Meta Llama 2 (doesn't support tools)
-  /^([a-z]{2}\.)?meta\.llama-?2/,
+  /^(global|[a-z]{2,3}\.)?meta\.llama-?2/,
 
   // Meta Llama 3.0 (only 3.1+ supports tools)
-  /^([a-z]{2}\.)?meta\.llama-?3\.0/,
+  /^(global|[a-z]{2,3}\.)?meta\.llama-?3\.0/,
 
   // Cohere Embed (embedding models)
-  /^([a-z]{2}\.)?cohere\.embed-/,
+  /^(global|[a-z]{2,3}\.)?cohere\.embed-/,
 
   // Amazon Titan Embed (embedding models)
-  /^([a-z]{2}\.)?amazon\.titan-embed-/,
+  /^(global|[a-z]{2,3}\.)?amazon\.titan-embed-/,
 ];
 
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
@@ -141,9 +146,26 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             }
 
             // Determine which model ID to use (with or without inference profile)
-            const inferenceProfileId = `${regionPrefix}.${m.modelId}`;
-            const hasInferenceProfile = availableProfileIds.has(inferenceProfileId);
-            const modelIdToUse = hasInferenceProfile ? inferenceProfileId : m.modelId;
+            // Prefer global inference profiles for best availability, then regional, then base model
+            const globalProfileId = `global.${m.modelId}`;
+            const regionalProfileId = `${regionPrefix}.${m.modelId}`;
+
+            let modelIdToUse = m.modelId;
+            let hasInferenceProfile = false;
+
+            if (availableProfileIds.has(globalProfileId)) {
+              modelIdToUse = globalProfileId;
+              hasInferenceProfile = true;
+              logger.trace(
+                `[Bedrock Model Provider] Using global inference profile for ${m.modelId}`,
+              );
+            } else if (availableProfileIds.has(regionalProfileId)) {
+              modelIdToUse = regionalProfileId;
+              hasInferenceProfile = true;
+              logger.trace(
+                `[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`,
+              );
+            }
 
             // Exclude models that don't support tool calling
             if (isToolIncapableModel(modelIdToUse)) {
@@ -196,6 +218,16 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             const maxOutput = limits.maxOutputTokens;
             const vision = m.inputModalities.includes("IMAGE");
 
+            // Determine tooltip suffix based on inference profile type
+            let tooltipSuffix = "";
+            if (hasInferenceProfile) {
+              if (modelIdToUse.startsWith("global.")) {
+                tooltipSuffix = " (Global Inference Profile)";
+              } else {
+                tooltipSuffix = " (Regional Inference Profile)";
+              }
+            }
+
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
@@ -206,7 +238,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: m.modelName,
-              tooltip: `Amazon Bedrock - ${m.providerName}${hasInferenceProfile ? " (Cross-Region)" : ""}`,
+              tooltip: `Amazon Bedrock - ${m.providerName}${tooltipSuffix}`,
               version: "1.0.0",
             };
             infos.push(modelInfo);
