@@ -9,6 +9,8 @@ import {
   ConverseStreamCommand,
   ConverseStreamCommandInput,
   ConverseStreamOutput,
+  CountTokensCommand,
+  CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
 
@@ -26,6 +28,33 @@ export class BedrockAPIClient {
     this.profileName = profileName;
     this.bedrockClient = new BedrockClient(this.getClientConfig());
     this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
+  }
+
+  /**
+   * Count tokens using the Bedrock CountTokens API.
+   * @param modelId The model ID to count tokens for
+   * @param input The input to count tokens for (Converse format)
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns The number of input tokens, or undefined if the API is not supported
+   */
+  async countTokens(
+    modelId: string,
+    input: CountTokensCommandInput["input"],
+    abortSignal?: AbortSignal,
+  ): Promise<number | undefined> {
+    try {
+      const command = new CountTokensCommand({
+        input,
+        modelId,
+      });
+      const response = await this.bedrockRuntimeClient.send(command, { abortSignal });
+      return response.inputTokens;
+    } catch (err) {
+      // If the CountTokens API is not supported for this model/region, return undefined
+      // The caller should fall back to estimation
+      logger.debug(`[Bedrock API Client] CountTokens not available for model ${modelId}`, err);
+      return undefined;
+    }
   }
 
   async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
@@ -111,9 +140,10 @@ export class BedrockAPIClient {
 
   async startConversationStream(
     input: ConverseStreamCommandInput,
+    abortSignal?: AbortSignal,
   ): Promise<AsyncIterable<ConverseStreamOutput>> {
     const command = new ConverseStreamCommand(input);
-    const response = await this.bedrockRuntimeClient.send(command);
+    const response = await this.bedrockRuntimeClient.send(command, { abortSignal });
 
     if (!response.stream) {
       throw new Error("No stream in response");
