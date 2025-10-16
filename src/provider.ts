@@ -1,4 +1,10 @@
-import { ConverseStreamCommandInput, ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
+import {
+  ConverseStreamCommandInput,
+  CountTokensCommandInput,
+  Message,
+  SystemContentBlock,
+  ToolConfiguration,
+} from "@aws-sdk/client-bedrock-runtime";
 import { inspect } from "node:util";
 import * as vscode from "vscode";
 import {
@@ -381,17 +387,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         throw new Error("Cannot have more than 128 tools per request.");
       }
 
-      const inputTokenCount = this.estimateMessagesTokens(messages);
-      const toolTokenCount = this.estimateToolTokens(toolConfig);
-      const tokenLimit = Math.max(1, model.maxInputTokens);
-      if (inputTokenCount + toolTokenCount > tokenLimit) {
-        logger.error("[Bedrock Model Provider] Message exceeds token limit", {
-          tokenLimit,
-          total: inputTokenCount + toolTokenCount,
-        });
-        throw new Error("Message exceeds token limit.");
-      }
-
       const requestInput: ConverseStreamCommandInput = {
         inferenceConfig: {
           maxTokens: Math.min(
@@ -529,6 +524,33 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               toolCount: requestInput.toolConfig.tools?.length,
             }
           : undefined,
+      });
+
+      // Count tokens and validate against model limits before sending request
+      const inputTokenCount = await this.countRequestTokens(
+        model.id,
+        {
+          messages: requestInput.messages!,
+          system: requestInput.system,
+          toolConfig: requestInput.toolConfig,
+        },
+        token,
+      );
+
+      const tokenLimit = Math.max(1, model.maxInputTokens);
+      if (inputTokenCount > tokenLimit) {
+        logger.error("[Bedrock Model Provider] Message exceeds token limit", {
+          inputTokenCount,
+          tokenLimit,
+        });
+        throw new Error(
+          `Message exceeds token limit. Input: ${inputTokenCount} tokens, Limit: ${tokenLimit} tokens.`,
+        );
+      }
+
+      logger.debug("[Bedrock Model Provider] Token count validation passed", {
+        inputTokenCount,
+        tokenLimit,
       });
 
       // Create AbortController for cancellation support
@@ -670,27 +692,104 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     }
   }
 
-  private estimateMessagesTokens(msgs: readonly vscode.LanguageModelChatMessage[]): number {
-    let total = 0;
-    for (const m of msgs) {
-      for (const part of m.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          total += Math.ceil(part.value.length / 4);
+  /**
+   * Count tokens for a complete request using the CountTokens API.
+   * Falls back to estimation if the API is unavailable or fails.
+   * @param modelId The model ID to count tokens for
+   * @param input The complete input structure (messages, system, toolConfig)
+   * @param token Cancellation token
+   * @returns The number of input tokens
+   */
+  private async countRequestTokens(
+    modelId: string,
+    input: {
+      messages: Message[];
+      system?: SystemContentBlock[];
+      toolConfig?: ToolConfiguration;
+    },
+    token: CancellationToken,
+  ): Promise<number> {
+    // Fallback estimation function
+    const estimateTokens = (): number => {
+      let total = 0;
+
+      // Estimate messages tokens
+      for (const msg of input.messages) {
+        for (const content of msg.content ?? []) {
+          if ("text" in content && content.text) {
+            total += Math.ceil(content.text.length / 4);
+          }
         }
       }
-    }
-    return total;
-  }
 
-  private estimateToolTokens(toolConfig: ToolConfiguration | undefined): number {
-    if (!toolConfig || toolConfig?.tools?.length === 0) {
-      return 0;
-    }
+      // Estimate system tokens
+      if (input.system) {
+        for (const sys of input.system) {
+          if ("text" in sys && sys.text) {
+            total += Math.ceil(sys.text.length / 4);
+          }
+        }
+      }
+
+      // Estimate tool tokens
+      if (input.toolConfig?.tools?.length) {
+        try {
+          const json = JSON.stringify(input.toolConfig);
+          total += Math.ceil(json.length / 4);
+        } catch {
+          // Ignore serialization errors
+        }
+      }
+
+      return total;
+    };
+
     try {
-      const json = JSON.stringify(toolConfig);
-      return Math.ceil(json.length / 4);
-    } catch {
-      return 0;
+      // Create AbortController for cancellation support
+      const abortController = new AbortController();
+      const cancellationListener = token.onCancellationRequested(() => {
+        abortController.abort();
+      });
+
+      try {
+        // Build the CountTokens API input
+        const countInput: CountTokensCommandInput["input"] = {
+          converse: {
+            messages: input.messages,
+            ...(input.system && input.system.length > 0 && { system: input.system }),
+            ...(input.toolConfig && { toolConfig: input.toolConfig }),
+          },
+        };
+
+        // Use the CountTokens API
+        const tokenCount = await this.client.countTokens(
+          modelId,
+          countInput,
+          abortController.signal,
+        );
+
+        // If CountTokens API is available, use its result
+        if (tokenCount !== undefined) {
+          logger.debug(`[Bedrock Model Provider] Request token count from API: ${tokenCount}`);
+          return tokenCount;
+        }
+
+        // Fall back to estimation if CountTokens is not available
+        logger.debug(
+          "[Bedrock Model Provider] CountTokens not available for request, using estimation",
+        );
+        return estimateTokens();
+      } finally {
+        cancellationListener.dispose();
+      }
+    } catch (err) {
+      // If there's any error (including cancellation), fall back to estimation
+      if (err instanceof Error && err.name === "AbortError") {
+        logger.debug("[Bedrock Model Provider] Request token count cancelled, using estimation");
+      } else {
+        logger.warn("[Bedrock Model Provider] Request token count failed, using estimation", err);
+      }
+      return estimateTokens();
     }
   }
 }
