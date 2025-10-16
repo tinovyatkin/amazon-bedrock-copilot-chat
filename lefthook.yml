@@ -7,6 +7,9 @@ output:
 assert_lefthook_installed: true
 pre-commit:
   commands:
+    typecheck:
+      glob: "**/*.ts"
+      run: bunx tsgo --noEmit
     lint:
       glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,md,html}"
       run: bunx eslint --cache --fix {staged_files}
