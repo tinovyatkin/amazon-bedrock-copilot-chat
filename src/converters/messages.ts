@@ -279,5 +279,45 @@ export function convertMessages(
     );
   }
 
+  // Deepseek models have issues with reasoningContent in multi-turn conversations
+  // Filter out reasoningContent blocks for Deepseek models
+  // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L306-L309
+  // Deepseek API docs: https://api-docs.deepseek.com/guides/reasoning_model#multi-round-conversation
+  const isDeepseekModel = modelId.toLowerCase().includes("deepseek");
+  if (isDeepseekModel) {
+    let filteredCount = 0;
+    for (const message of bedrockMessages) {
+      if (message.content) {
+        const originalLength = message.content.length;
+        message.content = message.content.filter((block) => {
+          if ("reasoningContent" in block) {
+            filteredCount++;
+            return false;
+          }
+          return true;
+        });
+        // Remove message entirely if all content was filtered out
+        if (message.content.length === 0 && originalLength > 0) {
+          logger.debug(
+            "[Message Converter] Message became empty after filtering reasoningContent, will be removed",
+          );
+        }
+      }
+    }
+    // Remove empty messages
+    const messagesBeforeFilter = bedrockMessages.length;
+    bedrockMessages.splice(
+      0,
+      bedrockMessages.length,
+      ...bedrockMessages.filter((msg) => msg.content && msg.content.length > 0),
+    );
+    if (filteredCount > 0) {
+      logger.debug("[Message Converter] Filtered reasoningContent for Deepseek model", {
+        blocksFiltered: filteredCount,
+        emptyMessagesRemoved: messagesBeforeFilter - bedrockMessages.length,
+      });
+    }
+  }
+
   return { messages: bedrockMessages, system: systemMessages };
 }
