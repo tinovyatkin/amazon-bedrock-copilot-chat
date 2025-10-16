@@ -83,11 +83,12 @@ export function getModelProfile(modelId: string): ModelProfile {
     case "ai21":
 
     case "cohere":
-    case "meta":
+    case "meta": {
       // Older models don't support tool choice
       return defaultProfile;
+    }
 
-    case "amazon":
+    case "amazon": {
       // Amazon Nova models support tool choice and prompt caching
       // Nova does NOT support cachePoint after toolResult blocks
       if (modelId.includes("nova")) {
@@ -103,6 +104,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         };
       }
       return defaultProfile;
+    }
     case "anthropic": {
       // Claude models support tool choice and prompt caching
       // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, and Sonnet 3.7
@@ -131,7 +133,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         toolResultFormat: "text",
       };
     }
-    case "mistral":
+    case "mistral": {
       // Mistral models require JSON format for tool results
       return {
         requiresInterleavedThinkingHeader: false,
@@ -143,8 +145,9 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsToolResultStatus: false,
         toolResultFormat: "json",
       };
+    }
 
-    case "openai":
+    case "openai": {
       // OpenAI models support tool choice but not prompt caching
       return {
         requiresInterleavedThinkingHeader: false,
@@ -156,9 +159,11 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsToolResultStatus: false,
         toolResultFormat: "text",
       };
+    }
 
-    default:
+    default: {
       return defaultProfile;
+    }
   }
 }
 
@@ -174,7 +179,7 @@ export function getModelTokenLimits(
   enable1MContext: boolean = false,
 ): ModelTokenLimits {
   const defaultLimits: ModelTokenLimits = {
-    maxInputTokens: 196000, // 200K context - 4K output
+    maxInputTokens: 196_000, // 200K context - 4K output
     maxOutputTokens: 4096,
   };
 
@@ -192,36 +197,36 @@ export function getModelTokenLimits(
       // Return 1M context if enabled, otherwise 200K
       if (enable1MContext) {
         return {
-          maxInputTokens: 1000000 - 64000,
-          maxOutputTokens: 64000,
+          maxInputTokens: 1_000_000 - 64_000,
+          maxOutputTokens: 64_000,
         };
       }
       return {
-        maxInputTokens: 200000 - 64000,
-        maxOutputTokens: 64000,
+        maxInputTokens: 200_000 - 64_000,
+        maxOutputTokens: 64_000,
       };
     }
 
     // Claude Sonnet 3.7: 200K input, 64K output
     if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
       return {
-        maxInputTokens: 200000 - 64000,
-        maxOutputTokens: 64000,
+        maxInputTokens: 200_000 - 64_000,
+        maxOutputTokens: 64_000,
       };
     }
 
     // Claude Opus 4.1 and 4: 200K input, 32K output
     if (normalizedModelId.includes("opus-4")) {
       return {
-        maxInputTokens: 200000 - 32000,
-        maxOutputTokens: 32000,
+        maxInputTokens: 200_000 - 32_000,
+        maxOutputTokens: 32_000,
       };
     }
 
     // Claude Haiku 3.5: 200K input, 8,192 output
     if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
       return {
-        maxInputTokens: 200000 - 8192,
+        maxInputTokens: 200_000 - 8192,
         maxOutputTokens: 8192,
       };
     }
@@ -229,7 +234,7 @@ export function getModelTokenLimits(
     // Claude Haiku 3: 200K input, 4,096 output
     if (normalizedModelId.includes("haiku-3")) {
       return {
-        maxInputTokens: 200000 - 4096,
+        maxInputTokens: 200_000 - 4096,
         maxOutputTokens: 4096,
       };
     }
@@ -237,7 +242,7 @@ export function getModelTokenLimits(
     // Claude 3.5 Sonnet (older): 200K input, 8,192 output
     if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
       return {
-        maxInputTokens: 200000 - 8192,
+        maxInputTokens: 200_000 - 8192,
         maxOutputTokens: 8192,
       };
     }
@@ -245,7 +250,7 @@ export function getModelTokenLimits(
     // Claude Opus 3: 200K input, 4,096 output
     if (normalizedModelId.includes("opus-3")) {
       return {
-        maxInputTokens: 200000 - 4096,
+        maxInputTokens: 200_000 - 4096,
         maxOutputTokens: 4096,
       };
     }

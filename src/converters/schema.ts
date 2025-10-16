@@ -13,11 +13,11 @@ export function convertSchema(
   schema: LanguageModelChatTool["inputSchema"],
 ): NonNullable<ToolInputSchema["json"]> {
   // Log the input schema for debugging
-  if (schema != null) {
-    logger.debug("Tool schema:", JSON.stringify(schema, null, 2));
-  } else {
+  if (schema == undefined) {
     logger.debug("Tool schema is null/undefined, using default");
     return { type: "object" };
+  } else {
+    logger.debug("Tool schema:", JSON.stringify(schema, undefined, 2));
   }
 
   // Return the schema as-is if provided, otherwise use a default empty object schema

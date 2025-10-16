@@ -87,7 +87,7 @@ export function convertMessages(
             // Check for isError property (not in VSCode API, but logging for debugging)
             isError: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
             textLength: textContent.length,
-            textPreview: textContent.substring(0, 200),
+            textPreview: textContent.slice(0, 200),
           });
 
           const partContent = part.content;
@@ -116,7 +116,7 @@ export function convertMessages(
           const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
 
           logger.debug("[Message Converter] Error status decision:", {
-            contentPreview: textContent.substring(0, 100),
+            contentPreview: textContent.slice(0, 100),
             detectedFromContent: isLikelyError,
             hasIsErrorProperty: "isError" in part,
             // Check for isError property (not in VSCode API, but logging for debugging)
@@ -144,7 +144,7 @@ export function convertMessages(
 
       if (content.length > 0) {
         // Check if last message was also a user message - if so, merge content
-        const lastMessage = bedrockMessages[bedrockMessages.length - 1];
+        const lastMessage = bedrockMessages.at(-1);
         if (lastMessage?.role === ConversationRole.USER && lastMessage.content !== undefined) {
           // Merge content into the last user message
           logger.debug("[Message Converter] Merging consecutive USER messages");
@@ -183,7 +183,7 @@ export function convertMessages(
       }
       if (content.length > 0) {
         // Check if last message was also an assistant message - if so, merge content
-        const lastMessage = bedrockMessages[bedrockMessages.length - 1];
+        const lastMessage = bedrockMessages.at(-1);
         if (lastMessage?.role === ConversationRole.ASSISTANT && lastMessage.content !== undefined) {
           // Merge content into the last assistant message
           logger.debug("[Message Converter] Merging consecutive ASSISTANT messages");
@@ -195,11 +195,11 @@ export function convertMessages(
     } else {
       // System messages
       for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          // Skip empty text parts - Bedrock API rejects blank text fields
-          if (part.value.trim()) {
-            systemMessages.push({ text: part.value });
-          }
+        if (
+          part instanceof vscode.LanguageModelTextPart && // Skip empty text parts - Bedrock API rejects blank text fields
+          part.value.trim()
+        ) {
+          systemMessages.push({ text: part.value });
         }
       }
     }
@@ -234,8 +234,7 @@ export function convertMessages(
       // Model does NOT support caching with tool results: cache messages WITHOUT tool results
       // Find all user message indices that DON'T have tool results
       const userMessagesWithoutToolResults: number[] = [];
-      for (let i = 0; i < bedrockMessages.length; i++) {
-        const message = bedrockMessages[i];
+      for (const [i, message] of bedrockMessages.entries()) {
         if (
           message?.role === ConversationRole.USER &&
           !userMessageIndicesWithToolResults.includes(i)

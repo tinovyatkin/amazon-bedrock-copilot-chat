@@ -35,4 +35,7 @@
   "eslint.runtime": "bun",
   "eslint.useFlatConfig": true,
   "eslint.useESLintClass": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
 }

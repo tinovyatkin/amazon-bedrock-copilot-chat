@@ -175,7 +175,9 @@ export class StreamProcessor {
           logger.info("[Stream Processor] Content block stop, index:", stop.contentBlockIndex);
 
           // Only finalize if we haven't already emitted this tool call
-          if (!toolBuffer.isEmitted(stop.contentBlockIndex!)) {
+          if (toolBuffer.isEmitted(stop.contentBlockIndex!)) {
+            logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
+          } else {
             const tool = toolBuffer.finalizeTool(stop.contentBlockIndex!);
             if (tool?.input) {
               toolCallCount++;
@@ -190,8 +192,6 @@ export class StreamProcessor {
               toolBuffer.markEmitted(stop.contentBlockIndex!);
               hasEmittedContent = true;
             }
-          } else {
-            logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
           }
         } else if (event.messageStop) {
           stopReason = event.messageStop.stopReason;
@@ -320,10 +320,8 @@ function findDetectedAndBlockedPolicy(input: unknown): boolean {
 
     // Recursively check all values in the object
     for (const value of Object.values(obj)) {
-      if (typeof value === "object" && value !== null) {
-        if (findDetectedAndBlockedPolicy(value)) {
-          return true;
-        }
+      if (typeof value === "object" && value !== null && findDetectedAndBlockedPolicy(value)) {
+        return true;
       }
     }
   } else if (Array.isArray(input)) {

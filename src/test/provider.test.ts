@@ -1,4 +1,4 @@
-import * as assert from "assert";
+import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { convertMessages } from "../converters/messages";
 import { convertTools } from "../converters/tools";
@@ -10,7 +10,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
       const provider = new BedrockChatModelProvider(
         {
-          get: async () => undefined,
+          get: async () => {},
           keys: () => [],
           update: async () => {},
         },
@@ -27,7 +27,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("provideTokenCount counts simple string", async () => {
       const provider = new BedrockChatModelProvider(
         {
-          get: async () => undefined,
+          get: async () => {},
           keys: () => [],
           update: async () => {},
         },

@@ -221,11 +221,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             // Determine tooltip suffix based on inference profile type
             let tooltipSuffix = "";
             if (hasInferenceProfile) {
-              if (modelIdToUse.startsWith("global.")) {
-                tooltipSuffix = " (Global Inference Profile)";
-              } else {
-                tooltipSuffix = " (Regional Inference Profile)";
-              }
+              tooltipSuffix = modelIdToUse.startsWith("global.")
+                ? " (Global Inference Profile)"
+                : " (Regional Inference Profile)";
             }
 
             const modelInfo: LanguageModelChatInformation = {
@@ -303,9 +301,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       report: (part) => {
         try {
           progress.report(part);
-        } catch (e) {
+        } catch (error) {
           logger.warn("[Bedrock Model Provider] Progress.report failed", {
-            error: e instanceof Error ? { message: e.message, name: e.name } : String(e),
+            error:
+              error instanceof Error ? { message: error.message, name: error.name } : String(error),
             modelId: model.id,
           });
         }
@@ -335,7 +334,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         })),
       });
 
-      messages.forEach((msg, idx) => {
+      for (const [idx, msg] of messages.entries()) {
         const partTypes = msg.content.map((p) => {
           if (p instanceof vscode.LanguageModelTextPart) return "text";
           if (p instanceof vscode.LanguageModelToolCallPart) {
@@ -348,13 +347,13 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         });
         logger.debug(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
         // Log tool result details
-        msg.content.forEach((part) => {
+        for (const part of msg.content) {
           if (part instanceof vscode.LanguageModelToolResultPart) {
             let contentPreview = "[Unable to preview]";
             try {
               const contentStr =
                 typeof part.content === "string" ? part.content : JSON.stringify(part.content);
-              contentPreview = contentStr.substring(0, 100);
+              contentPreview = contentStr.slice(0, 100);
             } catch {
               // Keep default
             }
@@ -365,8 +364,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               isError: "isError" in part ? part.isError : false,
             });
           }
-        });
-      });
+        }
+      }
 
       // Check if extended thinking will be enabled for this request
       // We need this information before converting messages
@@ -393,7 +392,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         "[Bedrock Model Provider] Converted to Bedrock messages:",
         converted.messages.length,
       );
-      converted.messages.forEach((msg, idx) => {
+      for (const [idx, msg] of converted.messages.entries()) {
         const contentTypes = msg.content?.map((c) => {
           if ("text" in c) return "text";
           if ("toolUse" in c) return "toolUse";
@@ -407,7 +406,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           `[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`,
           contentTypes,
         );
-      });
+      }
 
       // Validate the converted Bedrock messages, not the original VSCode messages
       // System messages are extracted separately and don't count in the alternating pattern
@@ -465,7 +464,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // Add thinking configuration if enabled
       if (extendedThinkingEnabled) {
         // Extended thinking requires temperature 1.0
-        requestInput.inferenceConfig!.temperature = 1.0;
+        requestInput.inferenceConfig!.temperature = 1;
 
         // Add thinking configuration to additionalModelRequestFields
         requestInput.additionalModelRequestFields = {
@@ -498,7 +497,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
           modelId: model.id,
           supports1MContext: modelProfile.supports1MContext,
-          temperature: 1.0,
+          temperature: 1,
         });
       } else if (modelProfile.supports1MContext && settings.context1M.enabled) {
         // Even if thinking is not enabled, add 1M context beta header for supported models when setting is enabled
@@ -535,8 +534,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
                 if (c.text) return "text";
                 if (c.toolResult) {
                   const preview =
-                    c.toolResult.content?.[0]?.text?.substring(0, 100) ||
-                    JSON.stringify(c.toolResult.content?.[0]?.json)?.substring(0, 100) ||
+                    c.toolResult.content?.[0]?.text?.slice(0, 100) ||
+                    JSON.stringify(c.toolResult.content?.[0]?.json)?.slice(0, 100) ||
                     "[empty]";
                   return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
                 }
@@ -630,30 +629,30 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       } finally {
         cancellationListener.dispose();
       }
-    } catch (err) {
+    } catch (error) {
       // Check for context window overflow errors and provide better error messages
       // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L852-L860
-      if (isContextWindowOverflowError(err)) {
+      if (isContextWindowOverflowError(error)) {
         const errorMessage =
           "Input exceeds model context window. " +
           "Consider reducing conversation history, removing tool results, or adjusting model parameters.";
         logger.error("[Bedrock Model Provider] Context window overflow", {
           messageCount: messages.length,
           modelId: model.id,
-          originalError: err instanceof Error ? err.message : String(err),
+          originalError: error instanceof Error ? error.message : String(error),
         });
         throw new Error(errorMessage);
       }
 
       logger.error("[Bedrock Model Provider] Chat request failed", {
         error:
-          err instanceof Error
-            ? { message: err.message, name: err.name, stack: err.stack }
-            : String(err),
+          error instanceof Error
+            ? { message: error.message, name: error.name, stack: error.stack }
+            : String(error),
         messageCount: messages.length,
         modelId: model.id,
       });
-      throw err;
+      throw error;
     }
   }
 
@@ -721,12 +720,12 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       } finally {
         cancellationListener.dispose();
       }
-    } catch (err) {
+    } catch (error) {
       // If there's any error (including cancellation), fall back to estimation
-      if (err instanceof Error && err.name === "AbortError") {
+      if (error instanceof Error && error.name === "AbortError") {
         logger.debug("[Bedrock Model Provider] Token count cancelled, using estimation");
       } else {
-        logger.warn("[Bedrock Model Provider] Token count failed, using estimation", err);
+        logger.warn("[Bedrock Model Provider] Token count failed, using estimation", error);
       }
       return estimateTokens(text);
     }
@@ -822,12 +821,12 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       } finally {
         cancellationListener.dispose();
       }
-    } catch (err) {
+    } catch (error) {
       // If there's any error (including cancellation), fall back to estimation
-      if (err instanceof Error && err.name === "AbortError") {
+      if (error instanceof Error && error.name === "AbortError") {
         logger.debug("[Bedrock Model Provider] Request token count cancelled, using estimation");
       } else {
-        logger.warn("[Bedrock Model Provider] Request token count failed, using estimation", err);
+        logger.warn("[Bedrock Model Provider] Request token count failed, using estimation", error);
       }
       return estimateTokens();
     }

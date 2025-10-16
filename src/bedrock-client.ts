@@ -68,17 +68,17 @@ export class BedrockAPIClient {
       }
 
       return response.inputTokens;
-    } catch (err) {
+    } catch (error) {
       // Log detailed error information at trace level for debugging
       logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
         error:
-          err instanceof Error
+          error instanceof Error
             ? {
-                message: err.message,
-                name: err.name,
-                stack: err.stack,
+                message: error.message,
+                name: error.name,
+                stack: error.stack,
               }
-            : err,
+            : error,
         modelId,
       });
 
@@ -86,7 +86,7 @@ export class BedrockAPIClient {
       // The caller should fall back to estimation
       logger.debug(
         `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
-          err instanceof Error ? err.message : String(err)
+          error instanceof Error ? error.message : String(error)
         }`,
       );
       return undefined;
@@ -114,8 +114,8 @@ export class BedrockAPIClient {
       }
 
       return profileIds;
-    } catch (err) {
-      logger.error("[Bedrock API Client] Failed to fetch inference profiles", err);
+    } catch (error) {
+      logger.error("[Bedrock API Client] Failed to fetch inference profiles", error);
       return new Set();
     }
   }
@@ -137,9 +137,9 @@ export class BedrockAPIClient {
         providerName: summary.providerName || "",
         responseStreamingSupported: summary.responseStreamingSupported || false,
       }));
-    } catch (err) {
-      logger.error("[Bedrock API Client] Failed to fetch Bedrock models", err);
-      throw err;
+    } catch (error) {
+      logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
+      throw error;
     }
   }
 
@@ -158,8 +158,8 @@ export class BedrockAPIClient {
       return (
         response.authorizationStatus === "AUTHORIZED" && response.regionAvailability === "AVAILABLE"
       );
-    } catch (err) {
-      logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, err);
+    } catch (error) {
+      logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);
       return false;
     }
   }
@@ -200,7 +200,7 @@ export class BedrockAPIClient {
       return fromIni({ profile: this.profileName });
     }
     // Use default credentials chain if no profile specified
-    return undefined;
+    return;
   }
 
   private recreateClients(): void {
@@ -269,12 +269,12 @@ export class BedrockAPIClient {
       );
 
       return baseModelId;
-    } catch (err) {
+    } catch (error) {
       // If GetInferenceProfile fails, assume it's a regular model ID
       // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
       logger.trace(
         `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
-        err,
+        error,
       );
       return modelId;
     }

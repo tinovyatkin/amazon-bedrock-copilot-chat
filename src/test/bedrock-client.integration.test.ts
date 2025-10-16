@@ -1,4 +1,4 @@
-import * as assert from "assert";
+import * as assert from "node:assert";
 
 import { BedrockAPIClient } from "../bedrock-client";
 
@@ -29,7 +29,7 @@ suite("BedrockAPIClient Integration Tests", () => {
 
   suite("fetchModels", () => {
     test("should fetch foundation models from Amazon Bedrock", async function () {
-      this.timeout(30000); // Allow 30 seconds for AWS API call
+      this.timeout(30_000); // Allow 30 seconds for AWS API call
 
       const models = await client.fetchModels();
 
@@ -67,7 +67,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should handle different regions", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       const regions = ["us-east-1", "us-west-2"];
 
@@ -83,7 +83,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should fetch models with custom AWS profile if configured", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       const profileName = process.env.AWS_PROFILE;
       if (!profileName) {
@@ -102,7 +102,7 @@ suite("BedrockAPIClient Integration Tests", () => {
 
   suite("fetchInferenceProfiles", () => {
     test("should fetch inference profiles from Amazon Bedrock", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       const profiles = await client.fetchInferenceProfiles();
 
@@ -112,7 +112,7 @@ suite("BedrockAPIClient Integration Tests", () => {
       // Cross-region inference profiles exist in most regions
       // If this region has any, validate them
       if (profiles.size > 0) {
-        const profileArray = Array.from(profiles);
+        const profileArray = [...profiles];
 
         // Validate profile ID format (should look like region.model-id)
         const firstProfile = profileArray[0];
@@ -133,7 +133,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should handle pagination for inference profiles", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       const profiles = await client.fetchInferenceProfiles();
 
@@ -142,7 +142,7 @@ suite("BedrockAPIClient Integration Tests", () => {
       assert.ok(profiles instanceof Set, "Should return a Set");
 
       // Convert to array to check for duplicates
-      const profileArray = Array.from(profiles);
+      const profileArray = [...profiles];
       const uniqueProfiles = new Set(profileArray);
 
       // Ensure no duplicates (pagination should not double-count)
@@ -156,7 +156,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should work with default credentials chain", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       // Client without explicit profile should use default credential chain
       const defaultClient = new BedrockAPIClient(TEST_REGION);
@@ -170,7 +170,7 @@ suite("BedrockAPIClient Integration Tests", () => {
 
   suite("setRegion and setProfile", () => {
     test("should allow changing region after construction", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       client.setRegion("us-west-2");
       const models = await client.fetchModels();
@@ -182,7 +182,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should allow changing profile after construction", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       const profileName = process.env.AWS_PROFILE;
       if (!profileName) {
@@ -199,7 +199,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
 
     test("should allow clearing profile to use default credentials", async function () {
-      this.timeout(30000);
+      this.timeout(30_000);
 
       client.setProfile("some-profile");
       client.setProfile(undefined); // Clear profile
