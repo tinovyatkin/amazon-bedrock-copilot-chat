@@ -772,7 +772,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       }
 
       // Estimate tool tokens
-      if (input.toolConfig?.tools?.length) {
+      if ((input.toolConfig?.tools?.length ?? 0) > 0) {
         try {
           const json = JSON.stringify(input.toolConfig);
           total += Math.ceil(json.length / 4);
