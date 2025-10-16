@@ -134,11 +134,11 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           const regionPrefix = settings.region.split("-")[0];
 
           // First, filter models by basic requirements and build candidate list
-          const candidates: Array<{
+          const candidates: {
             hasInferenceProfile: boolean;
             model: (typeof models)[0];
             modelIdToUse: string;
-          }> = [];
+          }[] = [];
 
           for (const m of models) {
             if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
@@ -534,9 +534,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
                 if (c.text) return "text";
                 if (c.toolResult) {
                   const preview =
-                    c.toolResult.content?.[0]?.text?.slice(0, 100) ||
-                    JSON.stringify(c.toolResult.content?.[0]?.json)?.slice(0, 100) ||
-                    "[empty]";
+                    c.toolResult.content?.[0]?.text?.slice(0, 100) ??
+                    (JSON.stringify(c.toolResult.content?.[0]?.json)?.slice(0, 100) || "[empty]");
                   return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
                 }
                 if (c.toolUse) return `toolUse(${c.toolUse.name})`;
@@ -607,7 +606,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
         // Store thinking block for next request ONLY if it has a signature
         // API requires signatures for interleaved thinking, so we only store blocks we can inject
-        if (extendedThinkingEnabled && result.thinkingBlock && result.thinkingBlock.signature) {
+        if (extendedThinkingEnabled && result.thinkingBlock?.signature) {
           this.lastThinkingBlock = result.thinkingBlock;
           logger.info(
             "[Bedrock Model Provider] Stored thinking block with signature for next request:",

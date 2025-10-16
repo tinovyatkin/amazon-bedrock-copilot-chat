@@ -79,7 +79,7 @@ export class StreamProcessor {
           const delta = event.contentBlockDelta;
 
           // Handle text deltas (check for key existence, not just truthy value)
-          if ("text" in (delta.delta || {})) {
+          if ("text" in (delta.delta ?? {})) {
             const text = delta.delta?.text;
             if (text) {
               textChunkCount++;
@@ -93,7 +93,7 @@ export class StreamProcessor {
           // Handle reasoning content deltas
           // Note: We don't emit reasoning/thinking content as it interferes with tool call display
           // and differs from native Copilot behavior with OpenAI models
-          else if ("reasoningContent" in (delta.delta || {})) {
+          else if ("reasoningContent" in (delta.delta ?? {})) {
             const reasoningText = delta.delta?.reasoningContent?.text;
             const reasoningSignature = delta.delta?.reasoningContent?.signature;
 
@@ -103,19 +103,15 @@ export class StreamProcessor {
                 reasoningText.length,
               );
               // Accumulate reasoning text into thinking block
-              if (!capturedThinkingBlock) {
-                capturedThinkingBlock = { text: "" };
-              }
+              capturedThinkingBlock ??= { text: "" };
               capturedThinkingBlock.text += reasoningText;
             }
 
             // Capture signature from reasoning content delta
             if (reasoningSignature && typeof reasoningSignature === "string") {
-              if (!capturedThinkingBlock) {
-                capturedThinkingBlock = { text: "" };
-              }
+              capturedThinkingBlock ??= { text: "" };
               capturedThinkingBlock.signature =
-                (capturedThinkingBlock.signature || "") + reasoningSignature;
+                (capturedThinkingBlock.signature ?? "") + reasoningSignature;
               logger.trace(
                 "[Stream Processor] Reasoning signature delta received, total length:",
                 capturedThinkingBlock.signature.length,
@@ -129,7 +125,7 @@ export class StreamProcessor {
             }
           }
           // Handle tool use deltas
-          else if ("toolUse" in (delta.delta || {})) {
+          else if ("toolUse" in (delta.delta ?? {})) {
             const toolUse = delta.delta?.toolUse;
             if (delta.contentBlockIndex !== undefined && toolUse?.input) {
               logger.trace(
@@ -168,7 +164,7 @@ export class StreamProcessor {
           }
           // Truly unknown delta types
           else {
-            logger.trace("[Stream Processor] Unknown delta type:", Object.keys(delta.delta || {}));
+            logger.trace("[Stream Processor] Unknown delta type:", Object.keys(delta.delta ?? {}));
           }
         } else if (event.contentBlockStop) {
           const stop = event.contentBlockStop;

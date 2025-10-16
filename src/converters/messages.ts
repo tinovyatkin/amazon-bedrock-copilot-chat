@@ -264,11 +264,7 @@ export function convertMessages(
   // Inject captured thinking as reasoningContent into ALL assistant messages
   // CRITICAL: When anthropic_beta: ["interleaved-thinking-2025-05-14"] is present,
   // the API requires ALL assistant messages to have thinking blocks, not just the last one
-  if (
-    options?.extendedThinkingEnabled &&
-    options.lastThinkingBlock &&
-    options.lastThinkingBlock.signature
-  ) {
+  if (options?.extendedThinkingEnabled && options.lastThinkingBlock?.signature) {
     let injectedCount = 0;
     for (const message of bedrockMessages) {
       if (

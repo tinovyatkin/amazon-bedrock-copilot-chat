@@ -28,7 +28,7 @@ export default defineConfig([
       "unicorn/no-useless-undefined": ["error", { checkArguments: false }],
     },
   },
-  tseslint.configs.recommendedTypeChecked,
+  tseslint.configs.stylisticTypeChecked,
   {
     languageOptions: {
       parserOptions: {
@@ -44,6 +44,7 @@ export default defineConfig([
   comments.recommended,
   {
     rules: {
+      "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -104,6 +105,7 @@ export default defineConfig([
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/strict-boolean-expressions": "off",
+      "@typescript-eslint/no-empty-function": "off",
     },
   },
   {

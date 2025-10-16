@@ -277,7 +277,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
   suite("logger", () => {
     test("logger supports all log levels", () => {
-      const logs: Array<{ args: unknown[]; level: string }> = [];
+      const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (msg: string, ...args: unknown[]) =>
           logs.push({ args: [msg, ...args], level: "debug" }),
@@ -313,7 +313,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("logger.log (deprecated) uses info level", () => {
-      const logs: Array<{ args: unknown[]; level: string }> = [];
+      const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (msg: string, ...args: unknown[]) =>
           logs.push({ args: [msg, ...args], level: "debug" }),
@@ -337,7 +337,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("logger passes structured data directly", () => {
-      const logs: Array<{ args: unknown[]; level: string }> = [];
+      const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (msg: string, ...args: unknown[]) =>
           logs.push({ args: [msg, ...args], level: "debug" }),

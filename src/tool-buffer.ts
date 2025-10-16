@@ -7,11 +7,11 @@ interface ToolCall {
 
 export class ToolBuffer {
   private emittedIndices = new Set<number>();
-  private inputBuffers: Map<number, string> = new Map();
-  private tools: Map<number, ToolCall> = new Map();
+  private inputBuffers = new Map<number, string>();
+  private tools = new Map<number, ToolCall>();
 
   appendInput(index: number, inputChunk: string): void {
-    const current = this.inputBuffers.get(index) || "";
+    const current = this.inputBuffers.get(index) ?? "";
     this.inputBuffers.set(index, current + inputChunk);
   }
 

@@ -23,7 +23,7 @@ export class BedrockAPIClient {
   private bedrockRuntimeClient: BedrockRuntimeClient;
   // Cache for inference profile ID -> base model ID mappings
   // This avoids repeated API calls to GetInferenceProfile
-  private inferenceProfileCache: Map<string, string> = new Map();
+  private inferenceProfileCache = new Map<string, string>();
   private profileName?: string;
 
   private region: string;
@@ -128,14 +128,14 @@ export class BedrockAPIClient {
       return (response.modelSummaries ?? []).map((summary) => ({
         customizationsSupported: summary.customizationsSupported,
         inferenceTypesSupported: summary.inferenceTypesSupported,
-        inputModalities: summary.inputModalities || [],
-        modelArn: summary.modelArn || "",
-        modelId: summary.modelId || "",
+        inputModalities: summary.inputModalities ?? [],
+        modelArn: summary.modelArn ?? "",
+        modelId: summary.modelId ?? "",
         modelLifecycle: summary.modelLifecycle,
-        modelName: summary.modelName || "",
-        outputModalities: summary.outputModalities || [],
-        providerName: summary.providerName || "",
-        responseStreamingSupported: summary.responseStreamingSupported || false,
+        modelName: summary.modelName ?? "",
+        outputModalities: summary.outputModalities ?? [],
+        providerName: summary.providerName ?? "",
+        responseStreamingSupported: summary.responseStreamingSupported ?? false,
       }));
     } catch (error) {
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
@@ -259,7 +259,7 @@ export class BedrockAPIClient {
 
       // Extract the model ID from the models array
       // According to AWS docs, inference profiles can contain multiple models, but we take the first one
-      const baseModelId = response.models?.[0]?.modelArn?.split("/").pop() || modelId;
+      const baseModelId = response.models?.[0]?.modelArn?.split("/").pop() ?? modelId;
 
       // Cache the result
       this.inferenceProfileCache.set(modelId, baseModelId);
