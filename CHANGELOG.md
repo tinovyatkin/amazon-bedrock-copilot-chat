@@ -5,6 +5,35 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2025-10-17
+
+### Added
+
+- **Accurate Token Counting**: Implemented AWS Bedrock CountTokens API for precise, model-specific token counting
+  - Uses official AWS API that matches actual inference tokenization and costs
+  - Automatically converts VSCode messages to Bedrock Converse format for counting
+  - Gracefully falls back to character-based estimation when API is unavailable
+  - CountTokens API calls are free (no charges incurred)
+  - Supported for Claude 3.5/3.7/4 models in all major regions
+
+### Improved
+
+- **Cancellation Support**: Enhanced request cancellation handling across all AWS SDK operations
+  - Added AbortSignal support to `startConversationStream()` for streaming requests
+  - Added AbortSignal support to `countTokens()` for token counting requests
+  - Proper cleanup with AbortController disposal in finally blocks
+  - Prevents resource leaks when operations are cancelled by user
+
+### Technical Details
+
+Per AWS documentation at https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.html:
+
+- Token counting is model-specific using each model's tokenization strategy
+- Returns exact token count that would be charged for the same input in inference
+- Helps estimate costs before sending inference requests
+- Currently supported for Anthropic Claude 3.5 Haiku, 3.5 Sonnet (v1/v2), 3.7 Sonnet, Opus 4, and Sonnet 4 models
+- Available in US East/West, Asia Pacific, Europe, and South America regions
+
 ## [0.1.16] - 2025-10-16
 
 ### Added
