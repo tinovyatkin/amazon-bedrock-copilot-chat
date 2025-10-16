@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CountTokens API calls are free (no charges incurred)
   - Supported for Claude 3.5/3.7/4 models in all major regions
 
+- **Global Inference Profile Support**: Models with global inference profiles now appear in model list
+  - Automatically detects and prefers global inference profiles (e.g., `global.anthropic.claude-sonnet-4-5-...`)
+  - Falls back to regional inference profiles, then base model IDs
+  - Global profiles provide best availability by routing across all AWS regions
+  - Tooltips distinguish between "Global Inference Profile" and "Regional Inference Profile"
+
 ### Improved
 
 - **Request Validation**: Pre-flight token counting now uses CountTokens API for accurate validation
