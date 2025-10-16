@@ -1,4 +1,5 @@
 import type { ConverseStreamOutput } from "@aws-sdk/client-bedrock-runtime";
+import { StopReason } from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
 import { CancellationToken, LanguageModelResponsePart, Progress } from "vscode";
 
@@ -244,11 +245,11 @@ export class StreamProcessor {
 
           // Fix incorrect stop reason: Some Bedrock models report "end_turn" when they actually made tool calls
           // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L815-L825
-          if (hasToolUse && stopReason === "end_turn") {
+          if (hasToolUse && stopReason === StopReason.END_TURN) {
             logger.warn(
-              "[Stream Processor] Correcting stop reason from end_turn to tool_use (model incorrectly reported end_turn)",
+              "[Stream Processor] Correcting stop reason from END_TURN to TOOL_USE (model incorrectly reported end_turn)",
             );
-            stopReason = "tool_use";
+            stopReason = StopReason.TOOL_USE;
           }
 
           logger.info("[Stream Processor] Message stop event received", {
@@ -338,15 +339,20 @@ export class StreamProcessor {
         toolCallCount,
       });
 
-      // Handle cases where no content was emitted
+      // Handle content filtering - ALWAYS throw error when content is filtered
+      // This can happen even if some content was already emitted (partial response before filtering)
+      if (stopReason === StopReason.CONTENT_FILTERED) {
+        const message = hasEmittedContent
+          ? "The response was filtered mid-generation by AWS Bedrock Guardrails. Some content may have been displayed before filtering. Please rephrase your request or check guardrail policies."
+          : "The response was filtered by AWS Bedrock Guardrails before any content was generated. Please rephrase your request or check guardrail policies.";
+        throw new Error(message);
+      }
+
+      // Handle cases where no content was emitted (excluding content_filtered which is handled above)
       if (!hasEmittedContent) {
-        if (stopReason === "max_tokens") {
+        if (stopReason === StopReason.MAX_TOKENS) {
           throw new Error(
             "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
-          );
-        } else if (stopReason === "content_filtered") {
-          throw new Error(
-            "The response was filtered due to content policy. Please rephrase your request.",
           );
         } else if (!token.isCancellationRequested) {
           // Only throw if not cancelled by user
