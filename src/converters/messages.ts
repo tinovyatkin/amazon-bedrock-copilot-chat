@@ -106,7 +106,10 @@ export function convertMessages(
             lowerContent.includes("invalid terminal id") ||
             lowerContent.includes("please check your input");
 
-          const status = isLikelyError ? "error" : undefined;
+          // Only include status field if model supports it
+          // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L333-L347
+          // AWS Docs: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolResultBlock.html
+          const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
 
           logger.debug("[Message Converter] Error status decision:", {
             contentPreview: textContent.substring(0, 100),
@@ -114,6 +117,7 @@ export function convertMessages(
             hasIsErrorProperty: "isError" in part,
             // Check for isError property (not in VSCode API, but logging for debugging)
             isErrorValue: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
+            modelSupportsStatus: profile.supportsToolResultStatus,
             resultingStatus: status,
           });
 
