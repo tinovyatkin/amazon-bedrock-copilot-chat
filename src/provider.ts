@@ -1,4 +1,5 @@
 import { ConverseStreamCommandInput, ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
+import { inspect } from "node:util";
 import * as vscode from "vscode";
 import {
   CancellationToken,
@@ -557,6 +558,20 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       logger.info("[Bedrock Model Provider] Finished processing stream");
     } catch (err) {
+      // Check for context window overflow errors and provide better error messages
+      // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L852-L860
+      if (isContextWindowOverflowError(err)) {
+        const errorMessage =
+          "Input exceeds model context window. " +
+          "Consider reducing conversation history, removing tool results, or adjusting model parameters.";
+        logger.error("[Bedrock Model Provider] Context window overflow", {
+          messageCount: messages.length,
+          modelId: model.id,
+          originalError: err instanceof Error ? err.message : String(err),
+        });
+        throw new Error(errorMessage);
+      }
+
       logger.error("[Bedrock Model Provider] Chat request failed", {
         error:
           err instanceof Error
@@ -610,6 +625,31 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       return 0;
     }
   }
+}
+
+/**
+ * Known error messages that indicate context window overflow from Bedrock API
+ * Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L28-L32
+ */
+const CONTEXT_WINDOW_OVERFLOW_MESSAGES = [
+  "Input is too long for requested model",
+  "input length and `max_tokens` exceed context limit",
+  "too many total text bytes",
+];
+
+/**
+ * Check if an error is due to context window overflow
+ * @param error The error to check
+ * @returns true if the error is due to context window overflow
+ */
+function isContextWindowOverflowError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  const errorMessage =
+    error instanceof Error ? error.message : typeof error === "string" ? error : inspect(error);
+  return CONTEXT_WINDOW_OVERFLOW_MESSAGES.some((msg) => errorMessage.includes(msg));
 }
 
 /**
