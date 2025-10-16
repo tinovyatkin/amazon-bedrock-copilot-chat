@@ -16,23 +16,22 @@ import { logger } from "./logger";
 import type { BedrockModelSummary } from "./types";
 
 export class BedrockAPIClient {
+  private bedrockClient: BedrockClient;
+  private bedrockRuntimeClient: BedrockRuntimeClient;
   private profileName?: string;
   private region: string;
 
   constructor(region: string, profileName?: string) {
     this.region = region;
     this.profileName = profileName;
+    this.bedrockClient = new BedrockClient(this.getClientConfig());
+    this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
   }
 
   async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
     try {
-      const client = new BedrockClient({
-        credentials: this.getCredentials(),
-        region: this.region,
-      });
-
       const profileIds = new Set<string>();
-      const paginator = paginateListInferenceProfiles({ client }, {});
+      const paginator = paginateListInferenceProfiles({ client: this.bedrockClient }, {});
 
       for await (const page of paginator) {
         // Check if the operation was cancelled
@@ -58,13 +57,8 @@ export class BedrockAPIClient {
 
   async fetchModels(abortSignal?: AbortSignal): Promise<BedrockModelSummary[]> {
     try {
-      const client = new BedrockClient({
-        credentials: this.getCredentials(),
-        region: this.region,
-      });
-
       const command = new ListFoundationModelsCommand({});
-      const response = await client.send(command, { abortSignal });
+      const response = await this.bedrockClient.send(command, { abortSignal });
 
       return (response.modelSummaries ?? []).map((summary) => ({
         customizationsSupported: summary.customizationsSupported,
@@ -92,13 +86,8 @@ export class BedrockAPIClient {
    */
   async isModelAccessible(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
     try {
-      const client = new BedrockClient({
-        credentials: this.getCredentials(),
-        region: this.region,
-      });
-
       const command = new GetFoundationModelAvailabilityCommand({ modelId });
-      const response = await client.send(command, { abortSignal });
+      const response = await this.bedrockClient.send(command, { abortSignal });
 
       // Model is accessible if it's authorized and available in the region
       return (
@@ -112,22 +101,19 @@ export class BedrockAPIClient {
 
   setProfile(profileName: string | undefined): void {
     this.profileName = profileName;
+    this.recreateClients();
   }
 
   setRegion(region: string): void {
     this.region = region;
+    this.recreateClients();
   }
 
   async startConversationStream(
     input: ConverseStreamCommandInput,
   ): Promise<AsyncIterable<ConverseStreamOutput>> {
-    const client = new BedrockRuntimeClient({
-      credentials: this.getCredentials(),
-      region: this.region,
-    });
-
     const command = new ConverseStreamCommand(input);
-    const response = await client.send(command);
+    const response = await this.bedrockRuntimeClient.send(command);
 
     if (!response.stream) {
       throw new Error("No stream in response");
@@ -136,11 +122,23 @@ export class BedrockAPIClient {
     return response.stream;
   }
 
+  private getClientConfig() {
+    return {
+      credentials: this.getCredentials(),
+      region: this.region,
+    };
+  }
+
   private getCredentials() {
     if (this.profileName) {
       return fromIni({ profile: this.profileName });
     }
     // Use default credentials chain if no profile specified
     return undefined;
+  }
+
+  private recreateClients(): void {
+    this.bedrockClient = new BedrockClient(this.getClientConfig());
+    this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
   }
 }
