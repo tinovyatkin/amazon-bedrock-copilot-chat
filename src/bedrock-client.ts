@@ -1,6 +1,7 @@
 import {
   BedrockClient,
   GetFoundationModelAvailabilityCommand,
+  GetInferenceProfileCommand,
   ListFoundationModelsCommand,
   paginateListInferenceProfiles,
 } from "@aws-sdk/client-bedrock";
@@ -20,7 +21,11 @@ import type { BedrockModelSummary } from "./types";
 export class BedrockAPIClient {
   private bedrockClient: BedrockClient;
   private bedrockRuntimeClient: BedrockRuntimeClient;
+  // Cache for inference profile ID -> base model ID mappings
+  // This avoids repeated API calls to GetInferenceProfile
+  private inferenceProfileCache: Map<string, string> = new Map();
   private profileName?: string;
+
   private region: string;
 
   constructor(region: string, profileName?: string) {
@@ -32,7 +37,11 @@ export class BedrockAPIClient {
 
   /**
    * Count tokens using the Bedrock CountTokens API.
-   * @param modelId The model ID to count tokens for
+   *
+   * Note: CountTokens API does not support cross-region inference profile IDs.
+   * For inference profiles, this method resolves the base model ID using GetInferenceProfile API.
+   *
+   * @param modelId The model ID or cross-region inference profile ID
    * @param input The input to count tokens for (Converse format)
    * @param abortSignal Optional AbortSignal to cancel the request
    * @returns The number of input tokens, or undefined if the API is not supported
@@ -43,16 +52,43 @@ export class BedrockAPIClient {
     abortSignal?: AbortSignal,
   ): Promise<number | undefined> {
     try {
+      // Resolve the base model ID (uses GetInferenceProfile API for cross-region profiles)
+      const baseModelId = await this.resolveModelId(modelId, abortSignal);
+
       const command = new CountTokensCommand({
         input,
-        modelId,
+        modelId: baseModelId,
       });
       const response = await this.bedrockRuntimeClient.send(command, { abortSignal });
+
+      if (baseModelId !== modelId) {
+        logger.trace(
+          `[Bedrock API Client] CountTokens used base model ID ${baseModelId} for inference profile ${modelId}`,
+        );
+      }
+
       return response.inputTokens;
     } catch (err) {
+      // Log detailed error information at trace level for debugging
+      logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
+        error:
+          err instanceof Error
+            ? {
+                message: err.message,
+                name: err.name,
+                stack: err.stack,
+              }
+            : err,
+        modelId,
+      });
+
       // If the CountTokens API is not supported for this model/region, return undefined
       // The caller should fall back to estimation
-      logger.debug(`[Bedrock API Client] CountTokens not available for model ${modelId}`, err);
+      logger.debug(
+        `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return undefined;
     }
   }
@@ -170,5 +206,74 @@ export class BedrockAPIClient {
   private recreateClients(): void {
     this.bedrockClient = new BedrockClient(this.getClientConfig());
     this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
+
+    // Clear inference profile cache since profiles may differ across regions/credentials
+    this.inferenceProfileCache.clear();
+  }
+
+  /**
+   * Resolve the base model ID for a given model ID or inference profile ID.
+   * For cross-region inference profiles, this uses the GetInferenceProfile API
+   * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
+   *
+   * Cross-region inference profiles have format: {region-code}.{model-id}
+   * Example: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+   * Region codes are 2-3 letter prefixes like: us, eu, ap
+   *
+   * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
+   * start with a region code prefix.
+   *
+   * @param modelId The model ID or inference profile ID
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns The base model ID (may be the same as input if not an inference profile)
+   */
+  private async resolveModelId(modelId: string, abortSignal?: AbortSignal): Promise<string> {
+    // Check cache first
+    const cached = this.inferenceProfileCache.get(modelId);
+    if (cached) {
+      logger.trace(
+        `[Bedrock API Client] Using cached model ID for inference profile ${modelId}: ${cached}`,
+      );
+      return cached;
+    }
+
+    // Check if this looks like a cross-region inference profile
+    // Pattern: starts with 2-3 letter region code followed by a dot
+    // Examples: us.*, eu.*, ap.*, etc.
+    const inferenceProfilePattern = /^[a-z]{2,3}\./;
+    if (!inferenceProfilePattern.test(modelId)) {
+      // Not an inference profile, return as-is
+      return modelId;
+    }
+
+    try {
+      // Try to get the inference profile to resolve the base model ID
+      const command = new GetInferenceProfileCommand({
+        inferenceProfileIdentifier: modelId,
+      });
+
+      const response = await this.bedrockClient.send(command, { abortSignal });
+
+      // Extract the model ID from the models array
+      // According to AWS docs, inference profiles can contain multiple models, but we take the first one
+      const baseModelId = response.models?.[0]?.modelArn?.split("/").pop() || modelId;
+
+      // Cache the result
+      this.inferenceProfileCache.set(modelId, baseModelId);
+
+      logger.trace(
+        `[Bedrock API Client] Resolved inference profile ${modelId} to model ID: ${baseModelId}`,
+      );
+
+      return baseModelId;
+    } catch (err) {
+      // If GetInferenceProfile fails, assume it's a regular model ID
+      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
+      logger.trace(
+        `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
+        err,
+      );
+      return modelId;
+    }
   }
 }
