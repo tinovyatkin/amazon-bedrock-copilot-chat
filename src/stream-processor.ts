@@ -341,14 +341,32 @@ export class StreamProcessor {
 
       // Handle content filtering - ALWAYS throw error when content is filtered
       // This can happen even if some content was already emitted (partial response before filtering)
+      // Note: CONTENT_FILTERED includes both Anthropic's built-in safety filtering (Claude 4.5's AI Safety Level 3)
+      // and any explicit AWS Bedrock Guardrails if configured
       if (stopReason === StopReason.CONTENT_FILTERED) {
         const message = hasEmittedContent
-          ? "The response was filtered mid-generation by AWS Bedrock Guardrails. Some content may have been displayed before filtering. Please rephrase your request or check guardrail policies."
-          : "The response was filtered by AWS Bedrock Guardrails before any content was generated. Please rephrase your request or check guardrail policies.";
+          ? "The response was filtered mid-generation by content safety policies. Some content may have been displayed before filtering. This may be due to Anthropic Claude's built-in safety filtering (common with Claude 4.5) or AWS Bedrock Guardrails. Please rephrase your request."
+          : "The response was filtered by content safety policies before any content was generated. This may be due to Anthropic Claude's built-in safety filtering or AWS Bedrock Guardrails. Please rephrase your request.";
         throw new Error(message);
       }
 
-      // Handle cases where no content was emitted (excluding content_filtered which is handled above)
+      // Handle explicit AWS Bedrock Guardrail intervention
+      // This is different from CONTENT_FILTERED which can be model's built-in filtering
+      if (stopReason === StopReason.GUARDRAIL_INTERVENED) {
+        const message = hasEmittedContent
+          ? "AWS Bedrock Guardrails blocked the response mid-generation. Some content may have been displayed before intervention. Please check your guardrail configuration or rephrase your request."
+          : "AWS Bedrock Guardrails blocked the response before any content was generated. Please check your guardrail configuration or rephrase your request.";
+        throw new Error(message);
+      }
+
+      // Handle context window overflow
+      if (stopReason === StopReason.MODEL_CONTEXT_WINDOW_EXCEEDED) {
+        throw new Error(
+          "The model's context window was exceeded. Try reducing the conversation history, removing tool results, or adjusting model parameters.",
+        );
+      }
+
+      // Handle cases where no content was emitted (excluding filtering/guardrails which are handled above)
       if (!hasEmittedContent) {
         if (stopReason === StopReason.MAX_TOKENS) {
           throw new Error(

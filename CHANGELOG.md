@@ -44,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now throws clear error for both mid-generation and pre-generation filtering
   - Error messages distinguish between partial vs complete filtering
   - Uses official AWS SDK `StopReason` enum instead of string literals for type safety
+  - **Important distinction**: `CONTENT_FILTERED` includes Anthropic Claude's built-in safety filtering (AI Safety Level 3 in Claude 4.5), not just AWS Bedrock Guardrails
+  - Added handling for `GUARDRAIL_INTERVENED` (explicit AWS Bedrock Guardrails) vs `CONTENT_FILTERED` (model's built-in filtering)
+  - Added handling for `MODEL_CONTEXT_WINDOW_EXCEEDED` stop reason
 
 - **Inference Profile Support**: CountTokens API now works correctly with all inference profile types
   - CountTokens API doesn't accept inference profile IDs directly (e.g., `us.anthropic.claude-...`)
