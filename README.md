@@ -1,10 +1,17 @@
 # Amazon Bedrock Provider for GitHub Copilot Chat
 
-A VSCode extension to use Amazon Bedrock in Copilot Chat using AWS named profiles.
+A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat using VSCode's official [Language Model Chat Provider API](https://code.visualstudio.com/api/extension-guides/ai/language-model-chat-provider) and the AWS SDK.
+
+**This is not a hack or workaround** - it's built on two official APIs:
+
+- VSCode's **Language Model Chat Provider API** for integrating custom models into Copilot Chat
+- **AWS SDK for JavaScript** for connecting to Amazon Bedrock
+
+> **Important**: Models provided through the Language Model Chat Provider API are currently only available to users on **individual GitHub Copilot plans**. Organization plans are not yet supported.
 
 ## Features
 
-- **Native Amazon Bedrock Integration**: Access Claude, Opus, DeepSeek, OpenAI OSS, and other models directly in GitHub Copilot Chat
+- **Native Amazon Bedrock Integration**: Access Claude, OpenAI OSS, DeepSeek, and other models directly in GitHub Copilot Chat
 - **AWS Profile Support**: Uses AWS named profiles from your `~/.aws/credentials` and `~/.aws/config` files
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities

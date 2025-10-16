@@ -2,7 +2,7 @@
   "name": "amazon-bedrock-copilot-chat",
   "publisher": "vtkn",
   "displayName": "Amazon Bedrock Provider for GitHub Copilot Chat",
-  "description": "Native Amazon Bedrock integration for GitHub Copilot Chat using AWS named profiles. Brings Claude, Llama, and Mistral models into your editor with streaming, function calling, and vision support.",
+  "description": "Amazon Bedrock integration using VSCode's official Language Model Chat Provider API. Connects AWS Bedrock models (Claude, OpenAI OSS, DeepSeek) to GitHub Copilot Chat via AWS SDK. Supports streaming, tool calling, and vision.",
   "icon": "assets/logo.png",
   "repository": {
     "type": "git",
