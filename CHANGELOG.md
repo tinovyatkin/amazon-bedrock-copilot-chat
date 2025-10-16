@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proper cleanup with AbortController disposal in finally blocks
   - Prevents resource leaks when operations are cancelled by user
 
+### Fixed
+
+- **Cross-Region Inference Profile Support**: CountTokens API now works correctly with inference profiles
+  - CountTokens API doesn't accept inference profile IDs like `us.anthropic.claude-sonnet-4-...`
+  - Uses GetInferenceProfile API to resolve profile IDs to base model IDs
+  - Caches profile → model ID mappings to minimize API calls
+  - Pattern-based detection distinguishes profiles (region prefix like `us.`, `eu.`, `ap.`) from regular model IDs
+  - Enhanced error logging at trace level shows full error details for debugging
+  - Cache automatically cleared when region/profile settings change
+
 ### Technical Details
 
 Per AWS documentation at https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.html:
@@ -39,6 +49,11 @@ Per AWS documentation at https://docs.aws.amazon.com/bedrock/latest/userguide/co
 - Helps estimate costs before sending inference requests
 - Currently supported for Anthropic Claude 3.5 Haiku, 3.5 Sonnet (v1/v2), 3.7 Sonnet, Opus 4, and Sonnet 4 models
 - Available in US East/West, Asia Pacific, Europe, and South America regions
+
+**Inference Profile Resolution**: CountTokens API does not accept cross-region inference profile IDs
+directly. The implementation uses GetInferenceProfile API to retrieve the underlying base model ID
+from the profile's ARN, then passes that to CountTokens. Results are cached in-memory to minimize
+API calls.
 
 ## [0.1.16] - 2025-10-16
 
