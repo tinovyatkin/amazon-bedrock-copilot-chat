@@ -257,9 +257,42 @@ export class StreamProcessor {
         } else if (event.metadata) {
           logger.info("[Stream Processor] Metadata received:", event.metadata);
 
-          // Extract thinking blocks from metadata for extended thinking
+          // Check for guardrail traces in metadata
+          // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L806-L812
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const metadata = event.metadata as any;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (metadata?.trace?.guardrail) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+            const guardrailData = metadata.trace.guardrail;
+            logger.debug("[Stream Processor] Guardrail trace detected in metadata:", {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              guardrailData,
+            });
+
+            // Check if guardrail is blocking
+            if (
+              typeof guardrailData === "object" &&
+              guardrailData !== null &&
+              hasBlockedGuardrail(guardrailData as Record<string, unknown>)
+            ) {
+              logger.error(
+                "[Stream Processor] ⚠️ GUARDRAIL BLOCKED - Content was blocked by AWS Bedrock Guardrails",
+                {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  guardrailData,
+                  message:
+                    "This could be due to account-level or organization-level guardrail policies. " +
+                    "Check your AWS Bedrock Guardrails configuration or contact your AWS administrator.",
+                },
+              );
+
+              // Note: We don't throw here because the API will still return the response
+              // The guardrail might have allowed partial content through
+            }
+          }
+
+          // Extract thinking blocks from metadata for extended thinking
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           if (metadata?.additionalModelResponseFields?.thinkingResponse) {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
@@ -329,4 +362,65 @@ export class StreamProcessor {
       throw error;
     }
   }
+}
+
+/**
+ * Recursively checks if an assessment contains a detected and blocked guardrail policy
+ * Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L950-L977
+ */
+function findDetectedAndBlockedPolicy(input: unknown): boolean {
+  // Check if input is a dictionary/object
+  if (typeof input === "object" && input !== null && !Array.isArray(input)) {
+    const obj = input as Record<string, unknown>;
+    // Check if current object has action: BLOCKED and detected: true
+    if (obj.action === "BLOCKED" && obj.detected === true) {
+      return true;
+    }
+
+    // Recursively check all values in the object
+    for (const value of Object.values(obj)) {
+      if (typeof value === "object" && value !== null) {
+        if (findDetectedAndBlockedPolicy(value)) {
+          return true;
+        }
+      }
+    }
+  } else if (Array.isArray(input)) {
+    // Handle case where input is an array
+    for (const item of input) {
+      if (findDetectedAndBlockedPolicy(item)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if guardrail data contains any blocked policies
+ * Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L637-L650
+ */
+function hasBlockedGuardrail(guardrailData: Record<string, unknown>): boolean {
+  const inputAssessment = guardrailData.inputAssessment as Record<string, unknown> | undefined;
+  const outputAssessments = guardrailData.outputAssessments as Record<string, unknown> | undefined;
+
+  // Check input assessments
+  if (inputAssessment) {
+    for (const assessment of Object.values(inputAssessment)) {
+      if (findDetectedAndBlockedPolicy(assessment)) {
+        return true;
+      }
+    }
+  }
+
+  // Check output assessments
+  if (outputAssessments) {
+    for (const assessment of Object.values(outputAssessments)) {
+      if (findDetectedAndBlockedPolicy(assessment)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
