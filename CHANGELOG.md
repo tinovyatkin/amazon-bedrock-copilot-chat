@@ -32,11 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Cross-Region Inference Profile Support**: CountTokens API now works correctly with inference profiles
-  - CountTokens API doesn't accept inference profile IDs like `us.anthropic.claude-sonnet-4-...`
+- **Inference Profile Support**: CountTokens API now works correctly with all inference profile types
+  - CountTokens API doesn't accept inference profile IDs directly (e.g., `us.anthropic.claude-...`)
   - Uses GetInferenceProfile API to resolve profile IDs to base model IDs
+  - Supports both regional (`us.`, `eu.`, `ap.`) and global (`global.`) inference profiles
   - Caches profile → model ID mappings to minimize API calls
-  - Pattern-based detection distinguishes profiles (region prefix like `us.`, `eu.`, `ap.`) from regular model IDs
+  - Pattern-based detection distinguishes inference profiles from regular model IDs
   - Enhanced error logging at trace level shows full error details for debugging
   - Cache automatically cleared when region/profile settings change
 
