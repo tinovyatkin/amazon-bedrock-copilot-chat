@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Content Filtering Error Visibility**: Users now always see an error when responses are filtered
+  - Previously, if content was partially generated before filtering, no error was shown
+  - This left users confused seeing partial text then silence
+  - Now throws clear error for both mid-generation and pre-generation filtering
+  - Error messages distinguish between partial vs complete filtering
+  - Uses official AWS SDK `StopReason` enum instead of string literals for type safety
+
 - **Inference Profile Support**: CountTokens API now works correctly with all inference profile types
   - CountTokens API doesn't accept inference profile IDs directly (e.g., `us.anthropic.claude-...`)
   - Uses GetInferenceProfile API to resolve profile IDs to base model IDs
