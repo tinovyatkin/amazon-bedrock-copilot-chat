@@ -531,32 +531,45 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           : undefined,
       });
 
-      const stream = await this.client.startConversationStream(requestInput);
+      // Create AbortController for cancellation support
+      const abortController = new AbortController();
+      const cancellationListener = token.onCancellationRequested(() => {
+        abortController.abort();
+      });
 
-      logger.info("[Bedrock Model Provider] Processing stream events");
-      const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
+      try {
+        const stream = await this.client.startConversationStream(
+          requestInput,
+          abortController.signal,
+        );
 
-      // Store thinking block for next request ONLY if it has a signature
-      // API requires signatures for interleaved thinking, so we only store blocks we can inject
-      if (extendedThinkingEnabled && result.thinkingBlock && result.thinkingBlock.signature) {
-        this.lastThinkingBlock = result.thinkingBlock;
-        logger.info(
-          "[Bedrock Model Provider] Stored thinking block with signature for next request:",
-          {
-            signatureLength: result.thinkingBlock.signature.length,
-            textLength: result.thinkingBlock.text.length,
-          },
-        );
-      } else if (extendedThinkingEnabled && result.thinkingBlock) {
-        logger.info(
-          "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
-          {
-            textLength: result.thinkingBlock.text.length,
-          },
-        );
+        logger.info("[Bedrock Model Provider] Processing stream events");
+        const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
+
+        // Store thinking block for next request ONLY if it has a signature
+        // API requires signatures for interleaved thinking, so we only store blocks we can inject
+        if (extendedThinkingEnabled && result.thinkingBlock && result.thinkingBlock.signature) {
+          this.lastThinkingBlock = result.thinkingBlock;
+          logger.info(
+            "[Bedrock Model Provider] Stored thinking block with signature for next request:",
+            {
+              signatureLength: result.thinkingBlock.signature.length,
+              textLength: result.thinkingBlock.text.length,
+            },
+          );
+        } else if (extendedThinkingEnabled && result.thinkingBlock) {
+          logger.info(
+            "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
+            {
+              textLength: result.thinkingBlock.text.length,
+            },
+          );
+        }
+
+        logger.info("[Bedrock Model Provider] Finished processing stream");
+      } finally {
+        cancellationListener.dispose();
       }
-
-      logger.info("[Bedrock Model Provider] Finished processing stream");
     } catch (err) {
       // Check for context window overflow errors and provide better error messages
       // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L852-L860
@@ -585,20 +598,75 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   }
 
   async provideTokenCount(
-    _model: LanguageModelChatInformation,
+    model: LanguageModelChatInformation,
     text: LanguageModelChatMessage | string,
-    _token: CancellationToken,
+    token: CancellationToken,
   ): Promise<number> {
-    if (typeof text === "string") {
-      return Math.ceil(text.length / 4);
-    } else {
+    // Fallback estimation function
+    const estimateTokens = (input: LanguageModelChatMessage | string): number => {
+      if (typeof input === "string") {
+        return Math.ceil(input.length / 4);
+      }
       let totalTokens = 0;
-      for (const part of text.content) {
+      for (const part of input.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
           totalTokens += Math.ceil(part.value.length / 4);
         }
       }
       return totalTokens;
+    };
+
+    try {
+      // Create AbortController for cancellation support
+      const abortController = new AbortController();
+      const cancellationListener = token.onCancellationRequested(() => {
+        abortController.abort();
+      });
+
+      try {
+        // For simple string input, use estimation (CountTokens API expects structured messages)
+        if (typeof text === "string") {
+          return estimateTokens(text);
+        }
+
+        // Convert the message to Bedrock format
+        const converted = convertMessages([text], model.id, {
+          extendedThinkingEnabled: false,
+          lastThinkingBlock: undefined,
+        });
+
+        // Use the CountTokens API
+        const tokenCount = await this.client.countTokens(
+          model.id,
+          {
+            converse: {
+              messages: converted.messages,
+              ...(converted.system.length > 0 && { system: converted.system }),
+            },
+          },
+          abortController.signal,
+        );
+
+        // If CountTokens API is available, use its result
+        if (tokenCount !== undefined) {
+          logger.debug(`[Bedrock Model Provider] Token count from API: ${tokenCount}`);
+          return tokenCount;
+        }
+
+        // Fall back to estimation if CountTokens is not available
+        logger.debug("[Bedrock Model Provider] CountTokens not available, using estimation");
+        return estimateTokens(text);
+      } finally {
+        cancellationListener.dispose();
+      }
+    } catch (err) {
+      // If there's any error (including cancellation), fall back to estimation
+      if (err instanceof Error && err.name === "AbortError") {
+        logger.debug("[Bedrock Model Provider] Token count cancelled, using estimation");
+      } else {
+        logger.warn("[Bedrock Model Provider] Token count failed, using estimation", err);
+      }
+      return estimateTokens(text);
     }
   }
 
