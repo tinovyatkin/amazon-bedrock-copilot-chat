@@ -213,22 +213,47 @@ export function convertMessages(
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
-  // Add cache points to the last 2 user messages with tool results
+  // Add cache points to the last 2 user messages
+  // Strategy depends on whether model supports caching with tool results:
+  // - If supported: Add cache points to messages WITH tool results
+  // - If not supported: Add cache points to messages WITHOUT tool results
   // This ensures we stay within the 4 cache point limit:
   // 1. After system messages
   // 2. After tool definitions (in tools.ts)
-  // 3-4. After last 2 tool result messages
-  if (
-    profile.supportsPromptCaching &&
-    promptCachingEnabled &&
-    userMessageIndicesWithToolResults.length > 0
-  ) {
-    // Get the last 2 indices
-    const indicesToCache = userMessageIndicesWithToolResults.slice(-2);
-    logger.debug(
-      `[Message Converter] Adding cache points to last ${indicesToCache.length} tool result messages (indices: ${indicesToCache.join(", ")})`,
-    );
+  // 3-4. After last 2 user messages (with or without tool results)
+  if (profile.supportsPromptCaching && promptCachingEnabled) {
+    let indicesToCache: number[] = [];
 
+    if (profile.supportsCachingWithToolResults && userMessageIndicesWithToolResults.length > 0) {
+      // Model supports caching with tool results: cache messages WITH tool results
+      indicesToCache = userMessageIndicesWithToolResults.slice(-2);
+      logger.debug(
+        `[Message Converter] Adding cache points to last ${indicesToCache.length} messages with tool results (indices: ${indicesToCache.join(", ")})`,
+      );
+    } else if (!profile.supportsCachingWithToolResults) {
+      // Model does NOT support caching with tool results: cache messages WITHOUT tool results
+      // Find all user message indices that DON'T have tool results
+      const userMessagesWithoutToolResults: number[] = [];
+      for (let i = 0; i < bedrockMessages.length; i++) {
+        const message = bedrockMessages[i];
+        if (
+          message?.role === ConversationRole.USER &&
+          !userMessageIndicesWithToolResults.includes(i)
+        ) {
+          userMessagesWithoutToolResults.push(i);
+        }
+      }
+
+      // Get the last 2 indices
+      indicesToCache = userMessagesWithoutToolResults.slice(-2);
+      if (indicesToCache.length > 0) {
+        logger.debug(
+          `[Message Converter] Adding cache points to last ${indicesToCache.length} messages without tool results (indices: ${indicesToCache.join(", ")})`,
+        );
+      }
+    }
+
+    // Add cache points to the selected messages
     for (const idx of indicesToCache) {
       const message = bedrockMessages[idx];
       if (message?.content !== undefined) {
