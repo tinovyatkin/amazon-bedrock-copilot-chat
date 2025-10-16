@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **Request Validation**: Pre-flight token counting now uses CountTokens API for accurate validation
+  - Unified `countRequestTokens()` method counts messages + system prompts + tools together
+  - Validates against `maxInputTokens` before sending request to prevent API errors
+  - Provides accurate token counts in error messages when limit exceeded
+  - Removed separate estimation methods in favor of unified API-based counting
+
 - **Cancellation Support**: Enhanced request cancellation handling across all AWS SDK operations
   - Added AbortSignal support to `startConversationStream()` for streaming requests
   - Added AbortSignal support to `countTokens()` for token counting requests
