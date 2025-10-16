@@ -5,6 +5,43 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2025-10-16
+
+### Added
+
+- **Guardrail Detection**: Comprehensive monitoring of AWS Bedrock Guardrails during streaming
+  - Detects account-level and organization-level guardrail policies
+  - Recursive policy detection for blocked content (action:BLOCKED + detected:true)
+  - Detailed logging with actionable guidance when content is blocked
+  - Helps diagnose why certain models (e.g., Sonnet 4.5) may be blocked
+
+### Fixed
+
+- **Stop Reason Correction**: Fixed incorrect stop reasons when models use tools
+  - Some Bedrock models incorrectly report `end_turn` instead of `tool_use`
+  - Now tracks tool usage and corrects stop reason for accurate flow control
+
+- **Context Window Overflow**: Better error detection and messaging
+  - Detects specific Bedrock API error patterns for context window overflow
+  - Provides actionable guidance (reduce history, remove tool results, adjust parameters)
+  - Uses `util.inspect` for safe error stringification
+
+### Improved
+
+- **Model Compatibility**: Enhanced support for different Bedrock models
+  - Tool result `status` field now only included for models that support it (Claude models)
+  - Deepseek models: Filter out `reasoningContent` blocks in multi-turn conversations
+  - Prevents validation errors with non-Claude models
+
+### Technical Details
+
+All changes implemented following [strands-agents](https://github.com/strands-agents/sdk-python) best practices:
+
+- Stop reason correction pattern from strands-agents streaming implementation
+- Guardrail detection using recursive policy checking algorithm
+- Model-specific capability profiles for tool result status
+- Context window overflow detection with known error message patterns
+
 ## [0.1.15] - 2025-10-15
 
 ### Fixed
