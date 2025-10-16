@@ -213,15 +213,16 @@ export class BedrockAPIClient {
 
   /**
    * Resolve the base model ID for a given model ID or inference profile ID.
-   * For cross-region inference profiles, this uses the GetInferenceProfile API
+   * For inference profiles, this uses the GetInferenceProfile API
    * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
    *
-   * Cross-region inference profiles have format: {region-code}.{model-id}
-   * Example: "us.anthropic.claude-sonnet-4-20250514-v1:0"
-   * Region codes are 2-3 letter prefixes like: us, eu, ap
+   * Inference profiles have format: {prefix}.{model-id}
+   * Examples:
+   * - Regional: "us.anthropic.claude-sonnet-4-20250514-v1:0" (routes to specific regions)
+   * - Global: "global.anthropic.claude-sonnet-4-5-20250929-v1:0" (routes across all regions)
    *
    * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
-   * start with a region code prefix.
+   * start with a known inference profile prefix.
    *
    * @param modelId The model ID or inference profile ID
    * @param abortSignal Optional AbortSignal to cancel the request
@@ -237,10 +238,12 @@ export class BedrockAPIClient {
       return cached;
     }
 
-    // Check if this looks like a cross-region inference profile
-    // Pattern: starts with 2-3 letter region code followed by a dot
-    // Examples: us.*, eu.*, ap.*, etc.
-    const inferenceProfilePattern = /^[a-z]{2,3}\./;
+    // Check if this looks like an inference profile
+    // Patterns:
+    // - Regional: starts with 2-3 letter region code (us, eu, ap, sa, etc.)
+    // - Global: starts with "global"
+    // Examples: us.*, eu.*, ap.*, global.*, etc.
+    const inferenceProfilePattern = /^(global|[a-z]{2,3})\./;
     if (!inferenceProfilePattern.test(modelId)) {
       // Not an inference profile, return as-is
       return modelId;
