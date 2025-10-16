@@ -26,6 +26,7 @@ export class StreamProcessor {
     let textChunkCount = 0;
     let stopReason: string | undefined;
     let capturedThinkingBlock: ThinkingBlock | undefined;
+    let hasToolUse = false; // Track tool use to fix incorrect stop reasons
 
     // Clear any previous state from the buffer
     toolBuffer.clear();
@@ -54,6 +55,7 @@ export class StreamProcessor {
           });
           const toolUse = start.start?.toolUse;
           if (toolUse?.toolUseId && toolUse.name && start.contentBlockIndex) {
+            hasToolUse = true; // Track that we have tool use in this response
             toolBuffer.startTool(start.contentBlockIndex, toolUse.toolUseId, toolUse.name);
             logger.debug("[Stream Processor] Tool call started:", {
               id: toolUse.toolUseId,
@@ -239,6 +241,16 @@ export class StreamProcessor {
           }
         } else if (event.messageStop) {
           stopReason = event.messageStop.stopReason;
+
+          // Fix incorrect stop reason: Some Bedrock models report "end_turn" when they actually made tool calls
+          // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L815-L825
+          if (hasToolUse && stopReason === "end_turn") {
+            logger.warn(
+              "[Stream Processor] Correcting stop reason from end_turn to tool_use (model incorrectly reported end_turn)",
+            );
+            stopReason = "tool_use";
+          }
+
           logger.info("[Stream Processor] Message stop event received", {
             stopReason,
           });
