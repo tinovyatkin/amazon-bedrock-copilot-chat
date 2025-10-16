@@ -12,6 +12,12 @@ export interface ModelProfile {
    */
   supports1MContext: boolean;
   /**
+   * Whether the model supports caching with tool results (cachePoint after toolResult blocks)
+   * When false, cachePoint should only be added to messages WITHOUT toolResult
+   * Reference: Amazon Nova models don't support cachePoint after toolResult
+   */
+  supportsCachingWithToolResults: boolean;
+  /**
    * Whether the model supports prompt caching via cache points
    */
   supportsPromptCaching: boolean;
@@ -50,6 +56,7 @@ export function getModelProfile(modelId: string): ModelProfile {
   const defaultProfile: ModelProfile = {
     requiresInterleavedThinkingHeader: false,
     supports1MContext: false,
+    supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
     supportsThinking: false,
     supportsToolChoice: false,
@@ -82,10 +89,12 @@ export function getModelProfile(modelId: string): ModelProfile {
 
     case "amazon":
       // Amazon Nova models support tool choice and prompt caching
+      // Nova does NOT support cachePoint after toolResult blocks
       if (modelId.includes("nova")) {
         return {
           requiresInterleavedThinkingHeader: false,
           supports1MContext: false,
+          supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
           supportsThinking: false,
           supportsToolChoice: true,
@@ -107,9 +116,14 @@ export function getModelProfile(modelId: string): ModelProfile {
       const requiresInterleavedThinkingHeader =
         modelId.includes("opus-4") || modelId.includes("sonnet-4");
 
+      // Claude models with extended thinking have issues with cachePoint after toolResult
+      // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
+      const supportsCachingWithToolResults = !supportsThinking;
+
       return {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
+        supportsCachingWithToolResults,
         supportsPromptCaching: true,
         supportsThinking,
         supportsToolChoice: true,
@@ -122,6 +136,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       return {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
+        supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: false,
@@ -134,6 +149,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       return {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
+        supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
         supportsToolChoice: true,
