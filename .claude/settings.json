@@ -39,5 +39,6 @@
   },
   "model": "sonnet[1m]",
   "hooks": {},
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "alwaysThinkingEnabled": true
 }
