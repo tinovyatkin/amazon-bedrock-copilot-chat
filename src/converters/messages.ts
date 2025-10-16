@@ -127,7 +127,7 @@ export function convertMessages(
 
           logger.debug("[Message Converter] Created Bedrock tool result:", {
             format: isJson ? "json" : "text",
-            hasContent: contentBlock ? true : false,
+            hasContent: true,
             status,
             toolUseId: part.callId,
           });
@@ -145,7 +145,7 @@ export function convertMessages(
       if (content.length > 0) {
         // Check if last message was also a user message - if so, merge content
         const lastMessage = bedrockMessages[bedrockMessages.length - 1];
-        if (lastMessage && lastMessage.role === ConversationRole.USER && lastMessage.content) {
+        if (lastMessage?.role === ConversationRole.USER && lastMessage.content !== undefined) {
           // Merge content into the last user message
           logger.debug("[Message Converter] Merging consecutive USER messages");
           lastMessage.content.push(...content);
@@ -184,7 +184,7 @@ export function convertMessages(
       if (content.length > 0) {
         // Check if last message was also an assistant message - if so, merge content
         const lastMessage = bedrockMessages[bedrockMessages.length - 1];
-        if (lastMessage && lastMessage.role === ConversationRole.ASSISTANT && lastMessage.content) {
+        if (lastMessage?.role === ConversationRole.ASSISTANT && lastMessage.content !== undefined) {
           // Merge content into the last assistant message
           logger.debug("[Message Converter] Merging consecutive ASSISTANT messages");
           lastMessage.content.push(...content);
@@ -231,7 +231,7 @@ export function convertMessages(
 
     for (const idx of indicesToCache) {
       const message = bedrockMessages[idx];
-      if (message && message.content) {
+      if (message?.content !== undefined) {
         message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
       }
     }

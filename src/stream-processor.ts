@@ -44,9 +44,7 @@ export class StreamProcessor {
           logger.info("[Stream Processor] Message start:", event.messageStart.role);
         } else if (event.contentBlockStart) {
           const start = event.contentBlockStart;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-          const startData = start.start as any;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          const startData = start.start;
           const hasThinking = startData && "thinking" in startData;
 
           logger.debug("[Stream Processor] Content block start:", {
@@ -55,7 +53,7 @@ export class StreamProcessor {
             index: start.contentBlockIndex,
           });
           const toolUse = start.start?.toolUse;
-          if (toolUse?.toolUseId && toolUse.name && start.contentBlockIndex) {
+          if (toolUse?.toolUseId && toolUse.name && start.contentBlockIndex !== undefined) {
             hasToolUse = true; // Track that we have tool use in this response
             toolBuffer.startTool(start.contentBlockIndex, toolUse.toolUseId, toolUse.name);
             logger.debug("[Stream Processor] Tool call started:", {
@@ -65,7 +63,6 @@ export class StreamProcessor {
           }
           // Capture thinking block with signature if present
           if (hasThinking) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             const thinkingData = startData.thinking;
 
             const signature =
@@ -178,7 +175,7 @@ export class StreamProcessor {
           // Handle tool use deltas
           else if ("toolUse" in (delta.delta || {})) {
             const toolUse = delta.delta?.toolUse;
-            if (delta.contentBlockIndex && toolUse?.input) {
+            if (delta.contentBlockIndex !== undefined && toolUse?.input) {
               logger.trace(
                 "[Stream Processor] Tool use delta received for block:",
                 delta.contentBlockIndex,

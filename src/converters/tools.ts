@@ -51,13 +51,17 @@ export function convertTools(
   // Add tool choice if supported by the model
   // CRITICAL: Cannot set tool_choice when extended thinking enabled
   // API error: "Thinking may not be enabled when tool_choice forces tool use"
-  if (profile.supportsToolChoice && options.toolMode && !extendedThinkingEnabled) {
+  if (profile.supportsToolChoice && options.toolMode !== undefined && !extendedThinkingEnabled) {
     if (options.toolMode === LanguageModelChatToolMode.Required) {
       config.toolChoice = { any: {} } satisfies bedrockRuntime.AnyToolChoice;
     } else if (options.toolMode === LanguageModelChatToolMode.Auto) {
       config.toolChoice = { auto: {} } satisfies bedrockRuntime.AutoToolChoice;
     }
-  } else if (profile.supportsToolChoice && options.toolMode && extendedThinkingEnabled) {
+  } else if (
+    profile.supportsToolChoice &&
+    options.toolMode !== undefined &&
+    extendedThinkingEnabled
+  ) {
     logger.debug("[Tool Converter] Skipping tool_choice (incompatible with extended thinking)", {
       requestedMode: options.toolMode,
     });

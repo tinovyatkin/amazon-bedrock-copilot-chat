@@ -53,7 +53,8 @@ export default defineConfig([
       "no-fallthrough": ["error", { "allowEmptyCase": true }],
 			"perfectionist/sort-imports": "off",
       "@eslint-community/eslint-comments/require-description": "warn",
-      "@eslint-community/eslint-comments/no-restricted-disable": ["warn", "@typescript-eslint/no-explicit-any"]
+      "@eslint-community/eslint-comments/no-restricted-disable": ["warn", "@typescript-eslint/no-explicit-any"],
+      "@typescript-eslint/strict-boolean-expressions": ["error", {"allowAny": true, "allowNullableString": true, "allowNullableBoolean": true, "allowNullableObject": true, "allowNullableNumber": false}]
 		},
 	},
 	{
@@ -79,7 +80,8 @@ export default defineConfig([
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/require-await": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off"
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/strict-boolean-expressions": "off"
     }
   },
 	{
