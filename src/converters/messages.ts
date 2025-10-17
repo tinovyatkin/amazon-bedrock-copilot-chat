@@ -21,6 +21,7 @@ interface ConvertedMessages {
 /**
  * Convert VSCode language model messages to Bedrock API format
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   modelId: string,
@@ -94,7 +95,7 @@ export function convertMessages(
           const isJson =
             profile.toolResultFormat === "json" &&
             typeof partContent === "object" &&
-            partContent !== null &&
+            partContent != null &&
             !Array.isArray(partContent);
           const contentBlock: ToolResultContentBlock = isJson
             ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)

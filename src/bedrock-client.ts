@@ -200,7 +200,6 @@ export class BedrockAPIClient {
       return fromIni({ profile: this.profileName });
     }
     // Use default credentials chain if no profile specified
-    return;
   }
 
   private recreateClients(): void {

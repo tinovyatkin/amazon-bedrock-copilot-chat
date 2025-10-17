@@ -16,6 +16,7 @@ export interface ThinkingBlock {
 }
 
 export class StreamProcessor {
+  // eslint-disable-next-line sonarjs/cognitive-complexity
   async processStream(
     stream: AsyncIterable<ConverseStreamOutput>,
     progress: Progress<LanguageModelResponsePart>,
@@ -219,7 +220,7 @@ export class StreamProcessor {
             // Check if guardrail is blocking
             if (
               typeof guardrailData === "object" &&
-              guardrailData !== null &&
+              guardrailData != null &&
               hasBlockedGuardrail(guardrailData as Record<string, unknown>)
             ) {
               logger.error(
@@ -287,9 +288,10 @@ export class StreamProcessor {
           );
         } else if (!token.isCancellationRequested) {
           // Only throw if not cancelled by user
-          throw new Error(
-            `No response content was generated. ${stopReason ? `Stop reason: ${stopReason}` : "Please try rephrasing your request."}`,
-          );
+          const reason = stopReason
+            ? `Stop reason: ${stopReason}`
+            : "Please try rephrasing your request.";
+          throw new Error(`No response content was generated. ${reason}`);
         }
       }
 

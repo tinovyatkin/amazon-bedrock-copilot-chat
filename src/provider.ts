@@ -290,6 +290,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- FIXME
   async provideLanguageModelChatResponse(
     model: LanguageModelChatInformation,
     messages: readonly LanguageModelChatMessage[],
@@ -852,8 +853,7 @@ function isContextWindowOverflowError(error: unknown): boolean {
     return false;
   }
 
-  const errorMessage =
-    error instanceof Error ? error.message : typeof error === "string" ? error : inspect(error);
+  const errorMessage = error instanceof Error ? error.message : inspect(error);
   return CONTEXT_WINDOW_OVERFLOW_MESSAGES.some((msg) => errorMessage.includes(msg));
 }
 

@@ -8,6 +8,7 @@ import markdown from "@eslint/markdown";
 import stylistic from "@stylistic/eslint-plugin";
 import prettierConfig from "eslint-config-prettier";
 import perfectionist from "eslint-plugin-perfectionist";
+import sonarjs from "eslint-plugin-sonarjs";
 import eslintPluginUnicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
 
@@ -18,7 +19,11 @@ export default defineConfig([
     },
   },
   {
-    extends: ["js/recommended", eslintPluginUnicorn.configs.recommended],
+    extends: [
+      "js/recommended",
+      eslintPluginUnicorn.configs.recommended,
+      sonarjs.configs.recommended,
+    ],
     files: ["**/*.ts"],
     languageOptions: { globals: { ...globals.node } },
     plugins: { js },
@@ -27,6 +32,9 @@ export default defineConfig([
       "unicorn/import-style": "off",
       "unicorn/no-useless-undefined": ["error", { checkArguments: false }],
       "unicorn/no-null": "off",
+      "sonarjs/fixme-tag": "warn",
+      "sonarjs/cognitive-complexity": ["error", 20],
+      "sonarjs/no-alphabetical-sort": "off",
     },
   },
   tseslint.configs.stylisticTypeChecked,
