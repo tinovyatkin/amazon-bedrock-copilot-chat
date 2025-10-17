@@ -1,4 +1,4 @@
-import { GetParametersByPathCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
 import * as vscode from "vscode";
 
 import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
@@ -9,21 +9,21 @@ const AWS_REGIONS: string[] = [];
 export async function getBedrockRegionsFromSSM(): Promise<string[]> {
   if (AWS_REGIONS.length > 0) return AWS_REGIONS;
 
-  const ssmClient = new SSMClient({ region: "us-east-1" });
+  const client = new SSMClient({ region: "us-east-1" });
 
   try {
     // AWS maintains service availability info in SSM Parameter Store
-    const response = await ssmClient.send(
-      new GetParametersByPathCommand({
+    for await (const page of paginateGetParametersByPath(
+      { client },
+      {
         Path: "/aws/service/global-infrastructure/services/bedrock/regions",
         Recursive: true,
-      }),
-    );
-
-    for (const param of response.Parameters ?? []) {
-      // Extract region from parameter name
-      const region = param.Value;
-      if (region) AWS_REGIONS.push(region);
+      },
+    )) {
+      for (const param of page.Parameters ?? []) {
+        const region = param.Value;
+        if (region) AWS_REGIONS.push(region);
+      }
     }
   } catch (error) {
     console.error("Error fetching from SSM:", error);
@@ -157,8 +157,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
       break;
     }
     case "region": {
-      const availableRegions = await getBedrockRegionsFromSSM();
-      const region = await vscode.window.showQuickPick(availableRegions, {
+      const region = await vscode.window.showQuickPick(getBedrockRegionsFromSSM(), {
         ignoreFocusOut: true,
         placeHolder: `Current: ${existingRegion}`,
         title: "Amazon Bedrock Region",
