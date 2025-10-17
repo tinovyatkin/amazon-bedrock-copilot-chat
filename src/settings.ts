@@ -1,11 +1,14 @@
 import * as vscode from "vscode";
+import { getProfileRegion } from "./aws-profiles";
 
 /**
  * Settings helper that reads configuration with priority order:
  * 1. VSCode workspace settings (.vscode/settings.json)
  * 2. VSCode user settings (global)
  * 3. GlobalState (for backward compatibility)
- * 4. Default value
+ * 4. Profile configuration (for region)
+ * 5. Environment variables (for region)
+ * 6. Default value
  */
 
 export interface BedrockSettings {
@@ -27,18 +30,10 @@ export interface BedrockSettings {
 /**
  * Get Bedrock settings with priority order
  */
-export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings {
+export async function getBedrockSettings(globalState: vscode.Memento): Promise<BedrockSettings> {
   const config = vscode.workspace.getConfiguration("bedrock");
 
-  // Read region with priority: workspace > user > globalState > default
-  const region =
-    config.get<string>("region") ??
-    (globalState.get<string>("bedrock.region") ||
-      process.env.AWS_DEFAULT_REGION ||
-      process.env.AWS_REGION ||
-      "us-east-1");
-
-  // Read profile with priority: workspace > user > globalState > default
+  // Read profile first (needed for region resolution)
   // Note: null in config means "use default credentials", so we check inspect() for undefined
   const profileInspect = config.inspect<null | string>("profile");
   let profile: string | undefined;
@@ -53,6 +48,15 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
     // User setting takes precedence over globalState
     profile = profileInspect.globalValue ?? undefined;
   }
+
+  // Read region with priority: workspace > user > globalState > profile config > env vars > default
+  const region: string =
+    config.get<string>("region") ??
+    globalState.get<string>("bedrock.region") ??
+    (profile ? await getProfileRegion(profile) : undefined) ??
+    process.env.AWS_DEFAULT_REGION ??
+    process.env.AWS_REGION ??
+    "us-east-1";
 
   // Read preferred model with priority: workspace > user > globalState > default
   const preferredModelInspect = config.inspect<null | string>("preferredModel");

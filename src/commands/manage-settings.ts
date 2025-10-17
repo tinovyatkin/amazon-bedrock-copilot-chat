@@ -39,7 +39,7 @@ export async function getBedrockRegionsFromSSM(abortSignal?: AbortSignal): Promi
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 export async function manageSettings(globalState: vscode.Memento): Promise<void> {
-  const settings = getBedrockSettings(globalState);
+  const settings = await getBedrockSettings(globalState);
   const existingProfile = settings.profile;
   const existingRegion = settings.region;
 

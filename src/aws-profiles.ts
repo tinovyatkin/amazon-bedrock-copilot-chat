@@ -1,6 +1,20 @@
 import { loadSharedConfigFiles } from "@smithy/shared-ini-file-loader";
 
 /**
+ * Get the configured region for a specific AWS profile
+ * @param profileName The profile name to look up
+ * @returns The region configured in the profile, or undefined if not found
+ */
+export async function getProfileRegion(profileName: string): Promise<string | undefined> {
+  try {
+    const { configFile } = await loadSharedConfigFiles();
+    return configFile?.[profileName]?.region as string | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * List all available AWS profile names from credentials and config files
  */
 export async function listAwsProfiles(): Promise<string[]> {

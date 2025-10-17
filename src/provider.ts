@@ -74,8 +74,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     private readonly globalState: vscode.Memento,
     private readonly userAgent: string,
   ) {
-    const settings = getBedrockSettings(this.globalState);
-    this.client = new BedrockAPIClient(settings.region, settings.profile);
+    // Initialize with default region - will be updated on first use
+    this.client = new BedrockAPIClient("us-east-1", undefined);
     this.streamProcessor = new StreamProcessor();
   }
 
@@ -83,7 +83,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     options: { silent: boolean },
     token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
-    const settings = getBedrockSettings(this.globalState);
+    const settings = await getBedrockSettings(this.globalState);
 
     // Check if this is the first run by checking if we've shown the welcome prompt before
     const hasRunBefore = this.globalState.get<boolean>("bedrock.hasRunBefore", false);
@@ -371,7 +371,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       // Check if extended thinking will be enabled for this request
       // We need this information before converting messages
-      const settings = getBedrockSettings(this.globalState);
+      const settings = await getBedrockSettings(this.globalState);
       const modelProfile = getModelProfile(model.id);
       const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
       const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
@@ -690,7 +690,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         }
 
         // Convert the message to Bedrock format
-        const settings = getBedrockSettings(this.globalState);
+        const settings = await getBedrockSettings(this.globalState);
         const converted = convertMessages([text], model.id, {
           extendedThinkingEnabled: false,
           lastThinkingBlock: undefined,
