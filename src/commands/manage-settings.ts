@@ -1,24 +1,39 @@
+import { GetParametersByPathCommand, SSMClient } from "@aws-sdk/client-ssm";
 import * as vscode from "vscode";
+
 import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
 
-const REGIONS = [
-  "us-east-1",
-  "us-east-2",
-  "us-west-2",
-  "ap-south-1",
-  "ap-northeast-1",
-  "ap-northeast-2",
-  "ap-southeast-1",
-  "ap-southeast-2",
-  "ca-central-1",
-  "eu-central-1",
-  "eu-west-1",
-  "eu-west-2",
-  "eu-west-3",
-  "sa-east-1",
-];
+const AWS_REGIONS: string[] = [];
 
+export async function getBedrockRegionsFromSSM(): Promise<string[]> {
+  if (AWS_REGIONS.length > 0) return AWS_REGIONS;
+
+  const ssmClient = new SSMClient({ region: "us-east-1" });
+
+  try {
+    // AWS maintains service availability info in SSM Parameter Store
+    const response = await ssmClient.send(
+      new GetParametersByPathCommand({
+        Path: "/aws/service/global-infrastructure/services/bedrock/regions",
+        Recursive: true,
+      }),
+    );
+
+    for (const param of response.Parameters ?? []) {
+      // Extract region from parameter name
+      const region = param.Value;
+      if (region) AWS_REGIONS.push(region);
+    }
+  } catch (error) {
+    console.error("Error fetching from SSM:", error);
+  }
+
+  if (AWS_REGIONS.length === 0) AWS_REGIONS.push("us-east-1");
+  return AWS_REGIONS;
+}
+
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function manageSettings(globalState: vscode.Memento): Promise<void> {
   const settings = getBedrockSettings(globalState);
   const existingProfile = settings.profile;
@@ -142,7 +157,8 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
       break;
     }
     case "region": {
-      const region = await vscode.window.showQuickPick(REGIONS, {
+      const availableRegions = await getBedrockRegionsFromSSM();
+      const region = await vscode.window.showQuickPick(availableRegions, {
         ignoreFocusOut: true,
         placeHolder: `Current: ${existingRegion}`,
         title: "Amazon Bedrock Region",
