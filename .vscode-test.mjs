@@ -9,6 +9,7 @@ export default defineConfig({
   mocha: {
     ui: "tdd",
     timeout: 20000,
+    forbidOnly: !!process.env.CI,
     color: true,
   },
 });
