@@ -32,7 +32,11 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
 
   // Read region with priority: workspace > user > globalState > default
   const region =
-    config.get<string>("region") ?? globalState.get<string>("bedrock.region") ?? "us-east-1";
+    config.get<string>("region") ??
+    (globalState.get<string>("bedrock.region") ||
+      process.env.AWS_DEFAULT_REGION ||
+      process.env.AWS_REGION ||
+      "us-east-1");
 
   // Read profile with priority: workspace > user > globalState > default
   // Note: null in config means "use default credentials", so we check inspect() for undefined
