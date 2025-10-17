@@ -96,7 +96,11 @@ export class BedrockAPIClient {
   async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
     try {
       const profileIds = new Set<string>();
-      const paginator = paginateListInferenceProfiles({ client: this.bedrockClient }, {});
+      const paginator = paginateListInferenceProfiles(
+        { client: this.bedrockClient },
+        {},
+        abortSignal,
+      );
 
       for await (const page of paginator) {
         // Check if the operation was cancelled
