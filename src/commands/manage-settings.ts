@@ -4,33 +4,37 @@ import * as vscode from "vscode";
 import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
 
-const AWS_REGIONS: string[] = [];
+const AWS_REGIONS = new Set<string>();
 
-export async function getBedrockRegionsFromSSM(): Promise<string[]> {
-  if (AWS_REGIONS.length > 0) return AWS_REGIONS;
+export async function getBedrockRegionsFromSSM(abortSignal?: AbortSignal): Promise<string[]> {
+  if (AWS_REGIONS.size === 0) {
+    const client = new SSMClient({ region: "us-east-1" });
 
-  const client = new SSMClient({ region: "us-east-1" });
-
-  try {
-    // AWS maintains service availability info in SSM Parameter Store
-    for await (const page of paginateGetParametersByPath(
-      { client },
-      {
-        Path: "/aws/service/global-infrastructure/services/bedrock/regions",
-        Recursive: true,
-      },
-    )) {
-      for (const param of page.Parameters ?? []) {
-        const region = param.Value;
-        if (region) AWS_REGIONS.push(region);
+    try {
+      // AWS maintains service availability info in SSM Parameter Store
+      for await (const page of paginateGetParametersByPath(
+        { client },
+        {
+          Path: "/aws/service/global-infrastructure/services/bedrock/regions",
+          Recursive: true,
+        },
+        { abortSignal },
+      )) {
+        for (const param of page.Parameters ?? []) {
+          if (param.Type !== "String" || param.Name?.endsWith("/endpoint")) continue;
+          const region = param.Value;
+          if (region) AWS_REGIONS.add(region);
+        }
       }
+    } catch (error) {
+      console.error("Error fetching from SSM:", error);
     }
-  } catch (error) {
-    console.error("Error fetching from SSM:", error);
+
+    if (AWS_REGIONS.size === 0) AWS_REGIONS.add("us-east-1");
   }
 
-  if (AWS_REGIONS.length === 0) AWS_REGIONS.push("us-east-1");
-  return AWS_REGIONS;
+  // sorting regions to keep geographies together
+  return [...AWS_REGIONS].toSorted((r1, r2) => r1.localeCompare(r2, undefined, { numeric: true }));
 }
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
@@ -157,6 +161,11 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
       break;
     }
     case "region": {
+      const abortController = new AbortController();
+      const cancellationToken = new vscode.CancellationTokenSource();
+      cancellationToken.token.onCancellationRequested(() => {
+        abortController.abort();
+      });
       const region = await vscode.window.showQuickPick(getBedrockRegionsFromSSM(), {
         ignoreFocusOut: true,
         placeHolder: `Current: ${existingRegion}`,
