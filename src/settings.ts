@@ -42,12 +42,12 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
   if (profileInspect?.workspaceValue !== undefined) {
     // Workspace setting takes precedence
     profile = profileInspect.workspaceValue ?? undefined;
-  } else if (profileInspect?.globalValue !== undefined) {
-    // User setting takes precedence over globalState
-    profile = profileInspect.globalValue ?? undefined;
-  } else {
+  } else if (profileInspect?.globalValue === undefined) {
     // Fall back to globalState for backward compatibility
     profile = globalState.get<string>("bedrock.profile");
+  } else {
+    // User setting takes precedence over globalState
+    profile = profileInspect.globalValue ?? undefined;
   }
 
   // Read preferred model with priority: workspace > user > globalState > default
@@ -56,11 +56,11 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
 
   if (preferredModelInspect?.workspaceValue !== undefined) {
     preferredModel = preferredModelInspect.workspaceValue ?? undefined;
-  } else if (preferredModelInspect?.globalValue !== undefined) {
-    preferredModel = preferredModelInspect.globalValue ?? undefined;
-  } else {
+  } else if (preferredModelInspect?.globalValue === undefined) {
     // No globalState fallback for preferredModel as it's a new setting
     preferredModel = undefined;
+  } else {
+    preferredModel = preferredModelInspect.globalValue ?? undefined;
   }
 
   // Read 1M context settings with defaults (enabled by default)
@@ -71,7 +71,7 @@ export function getBedrockSettings(globalState: vscode.Memento): BedrockSettings
 
   // Read thinking settings with defaults
   const thinkingEnabled = config.get<boolean>("thinking.enabled") ?? true;
-  const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10000;
+  const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10_000;
 
   return {
     context1M: {
@@ -104,7 +104,7 @@ export async function updateBedrockSettings(
   const config = vscode.workspace.getConfiguration("bedrock");
 
   // Update VSCode settings
-  await config.update(setting, value ?? null, target);
+  await config.update(setting, value, target);
 
   // Also update globalState for backward compatibility
   // Only do this for region and profile, not preferredModel (new setting)

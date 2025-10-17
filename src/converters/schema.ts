@@ -9,15 +9,14 @@ import { logger } from "../logger";
  * VSCode already provides schemas in JSON Schema format, so we just need to
  * ensure we have a valid default if the schema is missing.
  */
-export function convertSchema(
-  schema: LanguageModelChatTool["inputSchema"],
-): NonNullable<ToolInputSchema["json"]> {
+// eslint-disable-next-line sonarjs/function-return-type
+export function convertSchema(schema: LanguageModelChatTool["inputSchema"]) {
   // Log the input schema for debugging
-  if (schema != null) {
-    logger.debug("Tool schema:", JSON.stringify(schema, null, 2));
-  } else {
+  if (schema == null) {
     logger.debug("Tool schema is null/undefined, using default");
     return { type: "object" };
+  } else {
+    logger.debug("Tool schema:", JSON.stringify(schema, undefined, 2));
   }
 
   // Return the schema as-is if provided, otherwise use a default empty object schema

@@ -43,6 +43,7 @@ reviews:
         Do not flag any issues or violations.
         Simply acknowledge these are test fixtures and skip detailed review.
   path_filters:
+    - "!src/vscode.d.ts"
     - "!**/tests/fixtures/**"
     - "!CHANGELOG.md"
     - "!**/docs/**"

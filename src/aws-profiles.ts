@@ -1,7 +1,7 @@
-import * as fs from "fs";
 import * as ini from "ini";
-import * as os from "os";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 /**
  * Get the path to the AWS config file
@@ -44,9 +44,9 @@ export async function listAwsProfiles(): Promise<string[]> {
   const credentialsFile = getCredentialsFilename();
   try {
     if (fs.existsSync(credentialsFile)) {
-      const content = fs.readFileSync(credentialsFile, "utf-8");
+      const content = fs.readFileSync(credentialsFile, "utf8");
       const parsed = ini.parse(content);
-      Object.keys(parsed).forEach((key) => profiles.add(key));
+      for (const key of Object.keys(parsed)) profiles.add(key);
     }
   } catch {
     // Ignore errors reading credentials file
@@ -56,20 +56,20 @@ export async function listAwsProfiles(): Promise<string[]> {
   const configFile = getConfigFilename();
   try {
     if (fs.existsSync(configFile)) {
-      const content = fs.readFileSync(configFile, "utf-8");
+      const content = fs.readFileSync(configFile, "utf8");
       const parsed = ini.parse(content);
-      Object.keys(parsed).forEach((key) => {
+      for (const key of Object.keys(parsed)) {
         // Config file uses "profile <name>" format for non-default profiles
         if (key.startsWith("profile ")) {
-          profiles.add(key.substring(8));
+          profiles.add(key.slice(8));
         } else if (key === "default") {
           profiles.add(key);
         }
-      });
+      }
     }
   } catch {
     // Ignore errors reading config file
   }
 
-  return Array.from(profiles).sort();
+  return [...profiles].toSorted();
 }

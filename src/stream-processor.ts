@@ -16,6 +16,7 @@ export interface ThinkingBlock {
 }
 
 export class StreamProcessor {
+  // eslint-disable-next-line sonarjs/cognitive-complexity
   async processStream(
     stream: AsyncIterable<ConverseStreamOutput>,
     progress: Progress<LanguageModelResponsePart>,
@@ -79,7 +80,7 @@ export class StreamProcessor {
           const delta = event.contentBlockDelta;
 
           // Handle text deltas (check for key existence, not just truthy value)
-          if ("text" in (delta.delta || {})) {
+          if ("text" in (delta.delta ?? {})) {
             const text = delta.delta?.text;
             if (text) {
               textChunkCount++;
@@ -93,7 +94,7 @@ export class StreamProcessor {
           // Handle reasoning content deltas
           // Note: We don't emit reasoning/thinking content as it interferes with tool call display
           // and differs from native Copilot behavior with OpenAI models
-          else if ("reasoningContent" in (delta.delta || {})) {
+          else if ("reasoningContent" in (delta.delta ?? {})) {
             const reasoningText = delta.delta?.reasoningContent?.text;
             const reasoningSignature = delta.delta?.reasoningContent?.signature;
 
@@ -103,19 +104,15 @@ export class StreamProcessor {
                 reasoningText.length,
               );
               // Accumulate reasoning text into thinking block
-              if (!capturedThinkingBlock) {
-                capturedThinkingBlock = { text: "" };
-              }
+              capturedThinkingBlock ??= { text: "" };
               capturedThinkingBlock.text += reasoningText;
             }
 
             // Capture signature from reasoning content delta
             if (reasoningSignature && typeof reasoningSignature === "string") {
-              if (!capturedThinkingBlock) {
-                capturedThinkingBlock = { text: "" };
-              }
+              capturedThinkingBlock ??= { text: "" };
               capturedThinkingBlock.signature =
-                (capturedThinkingBlock.signature || "") + reasoningSignature;
+                (capturedThinkingBlock.signature ?? "") + reasoningSignature;
               logger.trace(
                 "[Stream Processor] Reasoning signature delta received, total length:",
                 capturedThinkingBlock.signature.length,
@@ -129,7 +126,7 @@ export class StreamProcessor {
             }
           }
           // Handle tool use deltas
-          else if ("toolUse" in (delta.delta || {})) {
+          else if ("toolUse" in (delta.delta ?? {})) {
             const toolUse = delta.delta?.toolUse;
             if (delta.contentBlockIndex !== undefined && toolUse?.input) {
               logger.trace(
@@ -168,14 +165,16 @@ export class StreamProcessor {
           }
           // Truly unknown delta types
           else {
-            logger.trace("[Stream Processor] Unknown delta type:", Object.keys(delta.delta || {}));
+            logger.trace("[Stream Processor] Unknown delta type:", Object.keys(delta.delta ?? {}));
           }
         } else if (event.contentBlockStop) {
           const stop = event.contentBlockStop;
           logger.info("[Stream Processor] Content block stop, index:", stop.contentBlockIndex);
 
           // Only finalize if we haven't already emitted this tool call
-          if (!toolBuffer.isEmitted(stop.contentBlockIndex!)) {
+          if (toolBuffer.isEmitted(stop.contentBlockIndex!)) {
+            logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
+          } else {
             const tool = toolBuffer.finalizeTool(stop.contentBlockIndex!);
             if (tool?.input) {
               toolCallCount++;
@@ -190,8 +189,6 @@ export class StreamProcessor {
               toolBuffer.markEmitted(stop.contentBlockIndex!);
               hasEmittedContent = true;
             }
-          } else {
-            logger.debug("[Stream Processor] Tool call already emitted, skipping duplicate");
           }
         } else if (event.messageStop) {
           stopReason = event.messageStop.stopReason;
@@ -223,7 +220,7 @@ export class StreamProcessor {
             // Check if guardrail is blocking
             if (
               typeof guardrailData === "object" &&
-              guardrailData !== null &&
+              guardrailData != null &&
               hasBlockedGuardrail(guardrailData as Record<string, unknown>)
             ) {
               logger.error(
@@ -291,9 +288,10 @@ export class StreamProcessor {
           );
         } else if (!token.isCancellationRequested) {
           // Only throw if not cancelled by user
-          throw new Error(
-            `No response content was generated. ${stopReason ? `Stop reason: ${stopReason}` : "Please try rephrasing your request."}`,
-          );
+          const reason = stopReason
+            ? `Stop reason: ${stopReason}`
+            : "Please try rephrasing your request.";
+          throw new Error(`No response content was generated. ${reason}`);
         }
       }
 
@@ -320,10 +318,8 @@ function findDetectedAndBlockedPolicy(input: unknown): boolean {
 
     // Recursively check all values in the object
     for (const value of Object.values(obj)) {
-      if (typeof value === "object" && value !== null) {
-        if (findDetectedAndBlockedPolicy(value)) {
-          return true;
-        }
+      if (typeof value === "object" && value !== null && findDetectedAndBlockedPolicy(value)) {
+        return true;
       }
     }
   } else if (Array.isArray(input)) {
