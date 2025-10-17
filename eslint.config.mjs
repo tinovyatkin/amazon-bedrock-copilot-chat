@@ -87,6 +87,10 @@ export default defineConfig([
           allowNullableNumber: false,
         },
       ],
+      "@typescript-eslint/prefer-nullish-coalescing": [
+        "error",
+        { ignorePrimitives: { string: true } },
+      ],
     },
   },
   {
