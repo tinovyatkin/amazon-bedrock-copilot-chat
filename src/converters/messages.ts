@@ -7,7 +7,7 @@ import {
   ToolResultContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType } from "@smithy/types";
-import { MIMEType } from "node:util";
+import { inspect, MIMEType, types } from "node:util";
 import * as vscode from "vscode";
 
 import { logger } from "../logger";
@@ -56,24 +56,24 @@ export function convertMessages(
             content.push({ text: part.value });
           }
         } else if (
+          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
           typeof part === "object" &&
           part != null &&
           "mimeType" in part &&
-          "data" in part
+          typeof part.mimeType === "string" &&
+          "data" in part &&
+          types.isUint8Array(part.data)
         ) {
-          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
-          const dataPart = part as { data: Uint8Array; mimeType: string };
           try {
-            const mime = new MIMEType(dataPart.mimeType);
+            const mime = new MIMEType(part.mimeType);
             if (mime.type === "image") {
               const format = mime.subtype.toLowerCase();
-
               if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
                 content.push({
                   image: {
-                    format: format as "gif" | "jpeg" | "png" | "webp",
+                    format,
                     source: {
-                      bytes: dataPart.data,
+                      bytes: part.data,
                     },
                   },
                 } satisfies ContentBlock.ImageMember);
@@ -84,8 +84,8 @@ export function convertMessages(
             }
           } catch (error) {
             logger.warn("[Message Converter] Invalid MIME type", {
-              error: error instanceof Error ? error.message : String(error),
-              mimeType: dataPart.mimeType,
+              error: error instanceof Error ? error.message : inspect(error),
+              mimeType: part.mimeType,
             });
           }
         } else if (part instanceof vscode.LanguageModelToolResultPart) {
@@ -102,13 +102,13 @@ export function convertMessages(
                 textContent += item;
               } else {
                 // For unknown types, try to stringify
-                textContent += JSON.stringify(item);
+                textContent += inspect(item, { depth: 4 });
               }
             }
           } else if (typeof part.content === "string") {
             textContent = part.content;
           } else {
-            textContent = JSON.stringify(part.content);
+            textContent = inspect(part.content);
           }
 
           // Log complete VSCode tool result part

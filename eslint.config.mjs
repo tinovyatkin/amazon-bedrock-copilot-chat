@@ -35,6 +35,7 @@ export default defineConfig([
       "sonarjs/fixme-tag": "warn",
       "sonarjs/cognitive-complexity": ["error", 20],
       "sonarjs/no-alphabetical-sort": "off",
+      "object-shorthand": "warn",
     },
   },
   tseslint.configs.stylisticTypeChecked,
