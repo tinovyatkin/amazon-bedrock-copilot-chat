@@ -16,7 +16,6 @@ import {
   Progress,
 } from "vscode";
 
-import { hasAwsCredentials } from "./aws-profiles";
 import { BedrockAPIClient } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
@@ -86,16 +85,18 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   ): Promise<LanguageModelChatInformation[]> {
     const settings = getBedrockSettings(this.globalState);
 
-    // Check if this appears to be a first run (no profile configured and using default region)
-    // Only prompt if credentials are also not available
-    const isFirstRun = settings.region === "us-east-1" && !settings.profile && !hasAwsCredentials();
+    // Check if this is the first run by checking if we've shown the welcome prompt before
+    const hasRunBefore = this.globalState.get<boolean>("bedrock.hasRunBefore", false);
 
-    if (isFirstRun && !options.silent) {
+    if (!hasRunBefore && !options.silent) {
       const action = await vscode.window.showInformationMessage(
         "Amazon Bedrock integration requires AWS credentials. Would you like to configure your AWS profile and region first?",
         "Configure Settings",
         "Use Default Credentials",
       );
+
+      // Mark that we've shown the prompt
+      await this.globalState.update("bedrock.hasRunBefore", true);
 
       if (action === "Configure Settings") {
         await vscode.commands.executeCommand("bedrock.manage");

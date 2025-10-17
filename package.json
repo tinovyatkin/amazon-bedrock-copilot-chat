@@ -141,7 +141,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.908.0",
     "@aws-sdk/client-ssm": "^3.912.0",
     "@aws-sdk/credential-providers": "^3.908.0",
-    "ini": "^5.0.0"
+    "@smithy/shared-ini-file-loader": "^4.3.3"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",
@@ -151,7 +151,6 @@
     "@homer0/prettier-plugin-jsdoc": "^10.0.0",
     "@smithy/types": "^4.7.0",
     "@stylistic/eslint-plugin": "^5.4.0",
-    "@types/ini": "^4.1.1",
     "@types/mocha": "^10.0.6",
     "@types/node": "^22",
     "@types/vscode": "^1.103.0",

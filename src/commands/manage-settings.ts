@@ -1,7 +1,7 @@
 import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
 import * as vscode from "vscode";
 
-import { hasAwsCredentials, listAwsProfiles } from "../aws-profiles";
+import { listAwsProfiles } from "../aws-profiles";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
 
 const AWS_REGIONS = new Set<string>();
@@ -89,10 +89,8 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
     }
     case "profile": {
       // Attempt to list available profiles (Default credentials are always offered)
-      let profiles: string[] = [];
-      if (hasAwsCredentials()) {
-        profiles = await listAwsProfiles();
-      } else {
+      const profiles = await listAwsProfiles();
+      if (profiles.length === 0) {
         vscode.window.showInformationMessage(
           "No local AWS credential files found. You can still use Default credentials (env/SSO/IMDS).",
         );
