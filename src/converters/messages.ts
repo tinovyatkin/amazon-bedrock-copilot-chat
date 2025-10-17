@@ -7,6 +7,7 @@ import {
   ToolResultContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType } from "@smithy/types";
+import { MIMEType } from "node:util";
 import * as vscode from "vscode";
 
 import { logger } from "../logger";
@@ -53,6 +54,39 @@ export function convertMessages(
           // Skip empty text parts - Bedrock API rejects blank text fields
           if (part.value.trim()) {
             content.push({ text: part.value });
+          }
+        } else if (
+          typeof part === "object" &&
+          part != null &&
+          "mimeType" in part &&
+          "data" in part
+        ) {
+          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
+          const dataPart = part as { data: Uint8Array; mimeType: string };
+          try {
+            const mime = new MIMEType(dataPart.mimeType);
+            if (mime.type === "image") {
+              const format = mime.subtype.toLowerCase();
+
+              if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
+                content.push({
+                  image: {
+                    format: format as "gif" | "jpeg" | "png" | "webp",
+                    source: {
+                      bytes: dataPart.data,
+                    },
+                  },
+                } satisfies ContentBlock.ImageMember);
+                logger.debug("[Message Converter] Added image block", { format });
+              } else {
+                logger.warn("[Message Converter] Unsupported image format", { format });
+              }
+            }
+          } catch (error) {
+            logger.warn("[Message Converter] Invalid MIME type", {
+              error: error instanceof Error ? error.message : String(error),
+              mimeType: dataPart.mimeType,
+            });
           }
         } else if (part instanceof vscode.LanguageModelToolResultPart) {
           hasToolResults = true;
@@ -171,6 +205,43 @@ export function convertMessages(
           // Skip empty text parts - Bedrock API rejects blank text fields
           if (part.value.trim()) {
             content.push({ text: part.value });
+          }
+        } else if (
+          typeof part === "object" &&
+          part != null &&
+          "mimeType" in part &&
+          "data" in part
+        ) {
+          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
+          const dataPart = part as { data: Uint8Array; mimeType: string };
+          try {
+            const mime = new MIMEType(dataPart.mimeType);
+            if (mime.type === "image") {
+              const format = mime.subtype.toLowerCase();
+
+              if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
+                content.push({
+                  image: {
+                    format: format as "gif" | "jpeg" | "png" | "webp",
+                    source: {
+                      bytes: dataPart.data,
+                    },
+                  },
+                } satisfies ContentBlock.ImageMember);
+                logger.debug("[Message Converter] Added image block to assistant message", {
+                  format,
+                });
+              } else {
+                logger.warn("[Message Converter] Unsupported image format in assistant message", {
+                  format,
+                });
+              }
+            }
+          } catch (error) {
+            logger.warn("[Message Converter] Invalid MIME type in assistant message", {
+              error: error instanceof Error ? error.message : String(error),
+              mimeType: dataPart.mimeType,
+            });
           }
         } else if (part instanceof vscode.LanguageModelToolCallPart) {
           content.push({

@@ -5,7 +5,7 @@ import {
   SystemContentBlock,
   ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
-import { inspect } from "node:util";
+import { inspect, MIMEType } from "node:util";
 import * as vscode from "vscode";
 import {
   CancellationToken,
@@ -330,6 +330,14 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             if (part instanceof vscode.LanguageModelToolResultPart) {
               return { callId: part.callId, content: part.content, type: "toolResult" };
             }
+            if (typeof part === "object" && part != null && "mimeType" in part && "data" in part) {
+              const dataPart = part as { data: Uint8Array; mimeType: string };
+              return {
+                dataLength: dataPart.data.length,
+                mimeType: dataPart.mimeType,
+                type: "data",
+              };
+            }
             return { type: "unknown" };
           }),
           role: msg.role,
@@ -344,6 +352,18 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           }
           if (p instanceof vscode.LanguageModelToolResultPart) {
             return `toolResult(${p.callId})`;
+          }
+          if (typeof p === "object" && p != null && "mimeType" in p) {
+            try {
+              const dataPart = p as { mimeType: string };
+              const mime = new MIMEType(dataPart.mimeType);
+              if (mime.type === "image") {
+                return `image(${mime.essence})`;
+              }
+              return `data(${mime.essence})`;
+            } catch {
+              // Invalid MIME type, skip
+            }
           }
           return "unknown";
         });
@@ -397,6 +417,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       for (const [idx, msg] of converted.messages.entries()) {
         const contentTypes = msg.content?.map((c) => {
           if ("text" in c) return "text";
+          if ("image" in c) return "image";
           if ("toolUse" in c) return "toolUse";
           if ("toolResult" in c) return "toolResult";
           if ("reasoningContent" in c) return "reasoningContent";
@@ -534,6 +555,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           contentBlocks: Array.isArray(m.content)
             ? m.content.map((c) => {
                 if (c.text) return "text";
+                if (c.image) return `image(${c.image.format})`;
                 if (c.toolResult) {
                   const preview =
                     c.toolResult.content?.[0]?.text?.slice(0, 100) ??
