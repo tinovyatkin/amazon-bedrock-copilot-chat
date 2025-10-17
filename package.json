@@ -152,7 +152,7 @@
     "@smithy/types": "^4.7.0",
     "@stylistic/eslint-plugin": "^5.4.0",
     "@types/mocha": "^10.0.6",
-    "@types/node": "^22",
+    "@types/node": "^24.0.0",
     "@types/vscode": "^1.103.0",
     "@typescript/native-preview": "^7.0.0-dev.20251013.1",
     "@vscode/dts": "^0.4.1",
