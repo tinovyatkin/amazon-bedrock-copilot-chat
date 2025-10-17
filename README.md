@@ -173,8 +173,6 @@ The following models are filtered out as they don't support the Converse API too
 
 This extension is based on [huggingface-vscode-chat](https://github.com/huggingface/huggingface-vscode-chat) and [vscode-copilot-chat PR#1046](https://github.com/microsoft/vscode-copilot-chat/pull/1046).
 
-AWS profile handling inspired by [AWS Toolkit for Visual Studio Code](https://github.com/aws/aws-toolkit-vscode).
-
 ## License
 
 MIT
