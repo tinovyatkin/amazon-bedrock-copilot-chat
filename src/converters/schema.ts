@@ -14,7 +14,7 @@ export function convertSchema(schema: LanguageModelChatTool["inputSchema"]) {
   // Log the input schema for debugging
   if (schema == null) {
     logger.debug("Tool schema is null/undefined, using default");
-    schema = { type: "object" };
+    return { type: "object" };
   } else {
     logger.debug("Tool schema:", JSON.stringify(schema, undefined, 2));
   }
