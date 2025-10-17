@@ -16,7 +16,7 @@ pre-commit:
       stage_fixed: true
     format:
       glob: "*.{json,jsonc,yaml,yml,md,js,html,ts}"
-      run: bunx prettier --write {staged_files}
+      run: bunx prettier --cache --no-error-on-unmatched-pattern --write {staged_files}
       stage_fixed: true
     taplo:
       glob: "**/*.toml"
