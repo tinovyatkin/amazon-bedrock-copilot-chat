@@ -11,19 +11,18 @@ A VSCode extension that integrates AWS Bedrock foundation models (Claude, Llama,
 ### Development
 
 ```bash
-bun install                        # Install dependencies (also downloads VSCode API definitions)
-bun run check-types                # Run TypeScript type checking (no emit)
-bunx eslint --fix FILENAME.ts      # Run ESLint
-bunx prettier --write FILENAME.ts  # Format code with Prettier
+bun install                               # Install dependencies (also downloads VSCode API definitions)
+bunx tsgo --noEmit                        # Run TypeScript type checking (no emit)
+bunx eslint -f compact --fix FILENAME.ts  # Run ESLint
 ```
 
 ### Testing
 
-```bash
-# Press F5 in VSCode to launch Extension Development Host
-# Or use Run and Debug panel -> "Run Extension"
+Uses `mocha` via `vscode-test`
 
-bun run test             # Run tests (requires compilation first)
+```bash
+
+bun run test             # Run tests
 ```
 
 ## Architecture Overview
@@ -86,24 +85,6 @@ bun run test             # Run tests (requires compilation first)
 - Automatically manages log files for debugging
 - Legacy `log()` method deprecated (forwards to `info()`)
 
-**Setting Log Level for Debugging (0.x versions)**
-
-To see debug and trace logs:
-
-1. Open "Bedrock Chat" output channel
-2. Click the dropdown menu (⚙️ icon) on the right side of the output panel
-3. Select "Set Log Level..." → "Debug" or "Trace"
-
-Alternatively, add to your VSCode settings:
-
-```json
-{
-  "bedrock.logLevel": "Debug" // or "Trace" for maximum verbosity
-}
-```
-
-Note: At 1.0.0 release, default will be "Info" level.
-
 ### Model Capabilities (src/profiles.ts)
 
 Different Bedrock models have varying capabilities:
@@ -113,41 +94,6 @@ Different Bedrock models have varying capabilities:
 - Check model-specific profiles when debugging tool calling issues
 
 ## Important Patterns
-
-### AWS Credential Resolution
-
-```typescript
-// If profile specified: use fromIni({ profile })
-// If no profile: use default credential chain (env vars, IAM roles, etc.)
-private getCredentials() {
-  if (this.profileName) {
-    return fromIni({ profile: this.profileName });
-  }
-  return undefined; // Falls back to default chain
-}
-```
-
-### Cross-Region Inference Profiles
-
-Models can be accessed via cross-region inference profiles (format: `{region-prefix}.{model-id}`):
-
-- Automatically detected via `ListInferenceProfilesCommand`
-- Provides better availability and latency
-- Example: `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
-
-### Message Validation
-
-- First message must be USER role
-- Messages must alternate USER/ASSISTANT
-- Tool call/result messages must match ASSISTANT/USER pattern
-- See `validation.ts` for detailed rules
-
-### Token Estimation
-
-Uses simple approximation: `tokens ≈ char_count / 4`
-
-- Applied to both message content and tool configurations
-- Validates against model's `maxInputTokens` before request
 
 ## File Organization
 
@@ -176,25 +122,10 @@ src/
 - **package.json**: VSCode contribution point `languageModelChatProviders` with vendor `"bedrock"`
 - **tsconfig.json**: Strict mode, ES2024 target, Node16 modules
 - **eslint.config.mjs**: TypeScript ESLint + stylistic plugin
+- **.vscode-test.mjs**: VSCode Tests runner
+- **lefthook.yml**: Git hooks config
 
 ## Common Issues
-
-**Models not appearing**: Check AWS credentials, region, and IAM permissions (`bedrock:ListFoundationModels`)
-
-**Tool calling failures**: Different models have different tool capabilities - check `profiles.ts` for model-specific configuration
-
-**Token limit errors**: Token estimation is approximate - actual token count may differ from estimate
-
-**Stream processing errors**: Check that model supports streaming (`responseStreamingSupported: true`)
-
-## Testing Approach
-
-1. **Unit tests**: Limited coverage, see `src/test/provider.test.ts`
-2. **Integration testing**: Run extension in Development Host (F5)
-3. **Manual verification**: Use "Bedrock Chat" output channel for logs
-4. **AWS testing**: Requires valid AWS credentials and Bedrock access
-
-See TESTING.md and IMPLEMENTATION.md for detailed testing procedures.
 
 ## VSCode API Requirements
 
@@ -202,30 +133,10 @@ See TESTING.md and IMPLEMENTATION.md for detailed testing procedures.
 - Uses proposed/experimental APIs (downloaded via `bun run download-api`)
 - API definitions in vscode.d.ts (auto-generated)
 
-## Dependencies
-
-**Runtime**:
-
-- `@aws-sdk/client-bedrock`: Model listing
-- `@aws-sdk/client-bedrock-runtime`: Converse API
-- `@aws-sdk/credential-providers`: AWS profile support
-- `ini`: Parse AWS config files
-
-**Development**:
-
-- `typescript`: 5.9+, strict mode
-- `eslint`: Code quality with typescript-eslint
-- `prettier`: Code formatting
-- `@vscode/test-*`: Testing infrastructure
-
 ## Development Workflow
 
 1. Make code changes
-2. `bun run compile` or use watch mode
-3. Press F5 to launch Extension Development Host
-4. Test in Copilot Chat
-5. Check "Bedrock Chat" output channel for logs
-6. Run `bun run check-types`, `bun run lint`, and `bun run format` before committing
+2. Run `bun run check-types` and `bun run lint` before committing
 
 ## 📑 MANDATORY: Handling GitHub PR Review Comment(s)
 
