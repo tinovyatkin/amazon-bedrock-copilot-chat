@@ -182,7 +182,7 @@ async function handleProfileSelection(
 }
 
 async function handleRegionSelection(
-  existingRegion: string,
+  existingRegion: string | undefined,
   globalState: vscode.Memento,
 ): Promise<void> {
   const abortController = new AbortController();
@@ -195,9 +195,10 @@ async function handleRegionSelection(
     getBedrockRegionsFromSSM(abortController.signal, logger),
     {
       ignoreFocusOut: true,
-      placeHolder: `Current: ${existingRegion}`,
+      placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
       title: "Amazon Bedrock Region",
     },
+    cancellationToken.token,
   );
 
   if (!region) return;
