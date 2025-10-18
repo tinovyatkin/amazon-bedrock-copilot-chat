@@ -25,45 +25,6 @@ import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import { validateBedrockMessages } from "./validation";
 
-/**
- * Patterns for models that do not support tool calling.
- * These models will be completely excluded from the provider list.
- *
- * Based on AWS Bedrock documentation:
- * - Legacy Titan Text models don't support Converse API tool use
- * - Stability AI models are for image generation only
- * - AI21 Jurassic 2 models don't support tool calling
- * - Meta Llama 2 and Llama 3.0 don't support tools (but 3.1+ do)
- * - Embedding models don't support conversational tool use
- *
- * Patterns support both regular model IDs and inference profiles (regional/global):
- * - Regular: anthropic.claude-...
- * - Regional: us.anthropic.claude-...
- * - Global: global.anthropic.claude-...
- */
-const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
-  // Amazon Titan Text (legacy models)
-  /^(global|[a-z]{2,3}\.)?amazon\.titan-text-/,
-
-  // Stability AI (image generation)
-  /^(global|[a-z]{2,3}\.)?stability\./,
-
-  // AI21 Jurassic 2 (older models)
-  /^(global|[a-z]{2,3}\.)?ai21\.j2-/,
-
-  // Meta Llama 2 (doesn't support tools)
-  /^(global|[a-z]{2,3}\.)?meta\.llama-?2/,
-
-  // Meta Llama 3.0 (only 3.1+ supports tools)
-  /^(global|[a-z]{2,3}\.)?meta\.llama-?3\.0/,
-
-  // Cohere Embed (embedding models)
-  /^(global|[a-z]{2,3}\.)?cohere\.embed-/,
-
-  // Amazon Titan Embed (embedding models)
-  /^(global|[a-z]{2,3}\.)?amazon\.titan-embed-/,
-];
-
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
@@ -166,14 +127,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               logger.trace(
                 `[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`,
               );
-            }
-
-            // Exclude models that don't support tool calling
-            if (isToolIncapableModel(modelIdToUse)) {
-              logger.debug(
-                `[Bedrock Model Provider] Excluding tool-incapable model: ${modelIdToUse}`,
-              );
-              continue;
             }
 
             candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
@@ -981,13 +934,4 @@ function isContextWindowOverflowError(error: unknown): boolean {
 
   const errorMessage = error instanceof Error ? error.message : inspect(error);
   return CONTEXT_WINDOW_OVERFLOW_MESSAGES.some((msg) => errorMessage.includes(msg));
-}
-
-/**
- * Check if a model ID matches any of the tool-incapable patterns.
- * @param modelId The model ID to check (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0" or "us.anthropic.claude-...")
- * @returns true if the model is tool-incapable and should be excluded
- */
-function isToolIncapableModel(modelId: string): boolean {
-  return TOOL_INCAPABLE_MODEL_PATTERNS.some((pattern) => pattern.test(modelId));
 }

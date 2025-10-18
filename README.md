@@ -133,13 +133,9 @@ The extension automatically filters and displays only models that:
 
 ### Models Automatically Excluded
 
-The following models are filtered out as they don't support the Converse API tool use feature:
+The extension automatically filters models to show only text generation models (using `byOutputModality: "TEXT"` in the Bedrock API). This excludes embedding models and image generation models.
 
-- Amazon Titan Text (legacy models)
-- Stability AI models (image generation only)
-- AI21 Jurassic 2
-- Meta Llama 2 and Llama 3.0
-- All embedding models (Titan Embed, Cohere Embed)
+**Note**: Some text models that appear in the list may have limited or no tool calling support (e.g., legacy Amazon Titan Text, AI21 Jurassic 2, Meta Llama 2 and 3.0). These will fail gracefully if tool calls are attempted.
 
 ## Troubleshooting
 

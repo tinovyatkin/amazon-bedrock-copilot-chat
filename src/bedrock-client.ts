@@ -126,7 +126,9 @@ export class BedrockAPIClient {
 
   async fetchModels(abortSignal?: AbortSignal): Promise<BedrockModelSummary[]> {
     try {
-      const command = new ListFoundationModelsCommand({});
+      const command = new ListFoundationModelsCommand({
+        byOutputModality: "TEXT",
+      });
       const response = await this.bedrockClient.send(command, { abortSignal });
 
       return (response.modelSummaries ?? []).map((summary) => ({
