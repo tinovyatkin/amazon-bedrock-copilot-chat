@@ -8,10 +8,10 @@ import {
 import {
   BedrockRuntimeClient,
   ConverseStreamCommand,
-  ConverseStreamCommandInput,
-  ConverseStreamOutput,
+  type ConverseStreamCommandInput,
+  type ConverseStreamOutput,
   CountTokensCommand,
-  CountTokensCommandInput,
+  type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
 

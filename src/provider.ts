@@ -1,19 +1,19 @@
 import {
-  ConverseStreamCommandInput,
-  CountTokensCommandInput,
-  Message,
-  SystemContentBlock,
-  ToolConfiguration,
+  type ConverseStreamCommandInput,
+  type CountTokensCommandInput,
+  type Message,
+  type SystemContentBlock,
+  type ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import * as vscode from "vscode";
 import {
-  CancellationToken,
-  LanguageModelChatInformation,
-  LanguageModelChatMessage,
-  LanguageModelChatProvider,
-  LanguageModelResponsePart,
-  Progress,
+  type CancellationToken,
+  type LanguageModelChatInformation,
+  type LanguageModelChatMessage,
+  type LanguageModelChatProvider,
+  type LanguageModelResponsePart,
+  type Progress,
 } from "vscode";
 
 import { BedrockAPIClient } from "./bedrock-client";
@@ -22,7 +22,7 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
 import { getBedrockSettings } from "./settings";
-import { StreamProcessor, ThinkingBlock } from "./stream-processor";
+import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import { validateBedrockMessages } from "./validation";
 
 /**

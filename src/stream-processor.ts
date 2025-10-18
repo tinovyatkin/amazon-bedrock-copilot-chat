@@ -1,7 +1,7 @@
 import type { ConverseStreamOutput } from "@aws-sdk/client-bedrock-runtime";
 import { StopReason } from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
-import { CancellationToken, LanguageModelResponsePart, Progress } from "vscode";
+import { type CancellationToken, type LanguageModelResponsePart, type Progress } from "vscode";
 
 import { logger } from "./logger";
 import { ToolBuffer } from "./tool-buffer";

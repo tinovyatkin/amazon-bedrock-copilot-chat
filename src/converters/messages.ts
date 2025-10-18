@@ -1,10 +1,10 @@
 import {
-  Message as BedrockMessage,
+  type Message as BedrockMessage,
   CachePointType,
-  ContentBlock,
+  type ContentBlock,
   ConversationRole,
-  SystemContentBlock,
-  ToolResultContentBlock,
+  type SystemContentBlock,
+  type ToolResultContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType } from "@smithy/types";
 import { inspect, MIMEType, types } from "node:util";

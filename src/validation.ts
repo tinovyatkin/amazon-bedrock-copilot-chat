@@ -1,4 +1,4 @@
-import { Message as BedrockMessage, ConversationRole } from "@aws-sdk/client-bedrock-runtime";
+import { type Message as BedrockMessage, ConversationRole } from "@aws-sdk/client-bedrock-runtime";
 
 /**
  * Validate converted Bedrock messages before sending to API

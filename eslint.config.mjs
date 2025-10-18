@@ -100,9 +100,19 @@ export default defineConfig([
         "error",
         {
           selector: "CallExpression[callee.object.name='console']",
-          message: "Use logger instead of console for logging. Import logger from './logger' or '../logger', or pass logger as a function argument.",
+          message:
+            "Use logger instead of console for logging. Import logger from './logger' or '../logger', or pass logger as a function argument.",
         },
       ],
+      "@typescript-eslint/consistent-type-imports": [
+        "error",
+        {
+          disallowTypeAnnotations: true,
+          fixStyle: "separate-type-imports",
+          prefer: "type-imports",
+        },
+      ],
+      "no-duplicate-imports": "off",
     },
   },
   {
@@ -110,6 +120,7 @@ export default defineConfig([
     extends: [tseslint.configs.disableTypeChecked],
     rules: {
       "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/consistent-type-imports": "off",
     },
   },
   {

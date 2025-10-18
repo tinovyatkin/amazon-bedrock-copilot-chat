@@ -1,6 +1,6 @@
 import type * as bedrockRuntime from "@aws-sdk/client-bedrock-runtime";
 import type { LanguageModelChatTool } from "vscode";
-import { LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
+import { type LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
 
 import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
