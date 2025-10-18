@@ -1,5 +1,7 @@
 import { loadSharedConfigFiles } from "@smithy/shared-ini-file-loader";
 
+import type { logger as Logger } from "./logger";
+
 /**
  * Get the configured region for a specific AWS profile
  * @param profileName The profile name to look up
@@ -16,8 +18,9 @@ export async function getProfileRegion(profileName: string): Promise<string | un
 
 /**
  * List all available AWS profile names from credentials and config files
+ * @param logger Optional logger instance to log errors
  */
-export async function listAwsProfiles(): Promise<string[]> {
+export async function listAwsProfiles(logger?: typeof Logger): Promise<string[]> {
   try {
     const { configFile, credentialsFile } = await loadSharedConfigFiles();
     const profiles = new Set<string>();
@@ -33,7 +36,8 @@ export async function listAwsProfiles(): Promise<string[]> {
     }
 
     return [...profiles].toSorted();
-  } catch {
+  } catch (error) {
+    logger?.error("Failed to load AWS profiles", error);
     // If loading fails, return empty array
     return [];
   }

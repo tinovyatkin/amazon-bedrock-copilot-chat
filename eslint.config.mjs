@@ -96,6 +96,13 @@ export default defineConfig([
         "error",
         { checkLiteralConstAssertions: true },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.object.name='console']",
+          message: "Use logger instead of console for logging. Import logger from './logger' or '../logger', or pass logger as a function argument.",
+        },
+      ],
     },
   },
   {
@@ -124,6 +131,7 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/strict-boolean-expressions": "off",
       "@typescript-eslint/no-empty-function": "off",
+      "no-restricted-syntax": "off",
     },
   },
   {

@@ -2,11 +2,15 @@ import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
 import * as vscode from "vscode";
 
 import { listAwsProfiles } from "../aws-profiles";
+import { logger } from "../logger";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
 
 const AWS_REGIONS = new Set<string>();
 
-export async function getBedrockRegionsFromSSM(abortSignal?: AbortSignal): Promise<string[]> {
+export async function getBedrockRegionsFromSSM(
+  abortSignal?: AbortSignal,
+  providedLogger?: typeof logger,
+): Promise<string[]> {
   if (AWS_REGIONS.size === 0) {
     const client = new SSMClient({ region: "us-east-1" });
 
@@ -27,7 +31,7 @@ export async function getBedrockRegionsFromSSM(abortSignal?: AbortSignal): Promi
         }
       }
     } catch (error) {
-      console.error("Error fetching from SSM:", error);
+      providedLogger?.error("Error fetching Bedrock regions from SSM", error);
     }
 
     if (AWS_REGIONS.size === 0) AWS_REGIONS.add("us-east-1");
@@ -89,7 +93,7 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
     }
     case "profile": {
       // Attempt to list available profiles (Default credentials are always offered)
-      const profiles = await listAwsProfiles();
+      const profiles = await listAwsProfiles(logger);
       if (profiles.length === 0) {
         vscode.window.showInformationMessage(
           "No local AWS credential files found. You can still use Default credentials (env/SSO/IMDS).",
@@ -164,11 +168,14 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
       cancellationToken.token.onCancellationRequested(() => {
         abortController.abort();
       });
-      const region = await vscode.window.showQuickPick(getBedrockRegionsFromSSM(), {
-        ignoreFocusOut: true,
-        placeHolder: `Current: ${existingRegion}`,
-        title: "Amazon Bedrock Region",
-      });
+      const region = await vscode.window.showQuickPick(
+        getBedrockRegionsFromSSM(abortController.signal, logger),
+        {
+          ignoreFocusOut: true,
+          placeHolder: `Current: ${existingRegion}`,
+          title: "Amazon Bedrock Region",
+        },
+      );
       if (region) {
         // Ask where to save the setting
         const scope = await vscode.window.showQuickPick(
