@@ -20,7 +20,7 @@ export default defineConfig([
   },
   {
     extends: [
-      "js/recommended",
+      js.configs.recommended,
       eslintPluginUnicorn.configs.recommended,
       sonarjs.configs.recommended,
     ],
@@ -35,6 +35,7 @@ export default defineConfig([
       "sonarjs/fixme-tag": "warn",
       "sonarjs/cognitive-complexity": ["error", 20],
       "sonarjs/no-alphabetical-sort": "off",
+      "sonarjs/function-return-type": "off",
       "object-shorthand": "warn",
     },
   },
@@ -129,7 +130,7 @@ export default defineConfig([
     },
   },
   {
-    extends: ["markdown/recommended"],
+    extends: [markdown.configs.recommended],
     files: ["**/*.md"],
     language: "markdown/gfm",
     plugins: { markdown },
