@@ -191,25 +191,29 @@ async function handleRegionSelection(
     abortController.abort();
   });
 
-  const region = await vscode.window.showQuickPick(
-    getBedrockRegionsFromSSM(abortController.signal, logger),
-    {
-      ignoreFocusOut: true,
-      placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
-      title: "Amazon Bedrock Region",
-    },
-    cancellationToken.token,
-  );
+  try {
+    const region = await vscode.window.showQuickPick(
+      getBedrockRegionsFromSSM(abortController.signal, logger),
+      {
+        ignoreFocusOut: true,
+        placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
+        title: "Amazon Bedrock Region",
+      },
+      cancellationToken.token,
+    );
 
-  if (!region) return;
+    if (!region) return;
 
-  const scope = await askConfigurationScope();
-  if (scope === undefined) return;
+    const scope = await askConfigurationScope();
+    if (scope === undefined) return;
 
-  await updateBedrockSettings("region", region, scope, globalState);
+    await updateBedrockSettings("region", region, scope, globalState);
 
-  const scopeLabel = scope === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
-  vscode.window.showInformationMessage(
-    `Amazon Bedrock region set to ${region} (${scopeLabel} settings).`,
-  );
+    const scopeLabel = scope === vscode.ConfigurationTarget.Workspace ? "workspace" : "user";
+    vscode.window.showInformationMessage(
+      `Amazon Bedrock region set to ${region} (${scopeLabel} settings).`,
+    );
+  } finally {
+    cancellationToken.dispose();
+  }
 }
