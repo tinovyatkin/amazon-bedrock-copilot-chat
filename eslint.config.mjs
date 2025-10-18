@@ -113,6 +113,7 @@ export default defineConfig([
         },
       ],
       "no-duplicate-imports": "off",
+      "@typescript-eslint/no-shadow": "error",
     },
   },
   {
