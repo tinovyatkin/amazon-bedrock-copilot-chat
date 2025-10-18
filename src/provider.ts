@@ -291,7 +291,6 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
-  // eslint-disable-next-line sonarjs/cognitive-complexity -- FIXME
   async provideLanguageModelChatResponse(
     model: LanguageModelChatInformation,
     messages: readonly LanguageModelChatMessage[],
@@ -314,128 +313,39 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
-      logger.info("[Bedrock Model Provider] === NEW REQUEST ===");
-      logger.info("[Bedrock Model Provider] Converting messages, count:", messages.length);
+      // Log incoming messages
+      this.logIncomingMessages(messages);
 
-      // Log full incoming VSCode messages at trace level for reproduction
-      logger.trace("[Bedrock Model Provider] Full VSCode messages for reproduction:", {
-        messages: messages.map((msg) => ({
-          content: msg.content.map((part) => {
-            if (part instanceof vscode.LanguageModelTextPart) {
-              return { type: "text", value: part.value };
-            }
-            if (part instanceof vscode.LanguageModelToolCallPart) {
-              return { callId: part.callId, input: part.input, name: part.name, type: "toolCall" };
-            }
-            if (part instanceof vscode.LanguageModelToolResultPart) {
-              return { callId: part.callId, content: part.content, type: "toolResult" };
-            }
-            if (typeof part === "object" && part != null && "mimeType" in part && "data" in part) {
-              const dataPart = part as { data: Uint8Array; mimeType: string };
-              return {
-                dataLength: dataPart.data.length,
-                mimeType: dataPart.mimeType,
-                type: "data",
-              };
-            }
-            return { type: "unknown" };
-          }),
-          role: msg.role,
-        })),
-      });
-
-      for (const [idx, msg] of messages.entries()) {
-        const partTypes = msg.content.map((p) => {
-          if (p instanceof vscode.LanguageModelTextPart) return "text";
-          if (p instanceof vscode.LanguageModelToolCallPart) {
-            return `toolCall(${p.name})`;
-          }
-          if (p instanceof vscode.LanguageModelToolResultPart) {
-            return `toolResult(${p.callId})`;
-          }
-          if (typeof p === "object" && p != null && "mimeType" in p) {
-            try {
-              const dataPart = p as { mimeType: string };
-              const mime = new MIMEType(dataPart.mimeType);
-              if (mime.type === "image") {
-                return `image(${mime.essence})`;
-              }
-              return `data(${mime.essence})`;
-            } catch {
-              // Invalid MIME type, skip
-            }
-          }
-          return "unknown";
-        });
-        logger.debug(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
-        // Log tool result details
-        for (const part of msg.content) {
-          if (part instanceof vscode.LanguageModelToolResultPart) {
-            let contentPreview = "[Unable to preview]";
-            try {
-              const contentStr =
-                typeof part.content === "string" ? part.content : JSON.stringify(part.content);
-              contentPreview = contentStr.slice(0, 100);
-            } catch {
-              // Keep default
-            }
-            logger.debug(`[Bedrock Model Provider]   Tool Result:`, {
-              callId: part.callId,
-              contentPreview,
-              contentType: typeof part.content,
-              isError: "isError" in part ? part.isError : false,
-            });
-          }
-        }
-      }
-
-      // Check if extended thinking will be enabled for this request
-      // We need this information before converting messages
+      // Get settings and model configuration
       const settings = await getBedrockSettings(this.globalState);
       const modelProfile = getModelProfile(model.id);
       const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
-      const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
+
+      // Calculate thinking configuration
       const maxTokensForRequest =
         typeof options.modelOptions?.max_tokens === "number"
           ? options.modelOptions.max_tokens
           : 4096;
-      const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
-      // Extended thinking enabled using official reasoningContent format
-      const extendedThinkingEnabled =
-        settings.thinking.enabled && modelProfile.supportsThinking && budgetTokens >= 1024;
+      const { budgetTokens, extendedThinkingEnabled } = this.calculateThinkingConfig(
+        modelProfile,
+        modelLimits,
+        maxTokensForRequest,
+        settings.thinking.enabled,
+      );
 
+      // Convert messages with thinking configuration
       const converted = convertMessages(messages, model.id, {
         extendedThinkingEnabled,
         lastThinkingBlock: this.lastThinkingBlock,
         promptCachingEnabled: settings.promptCaching.enabled,
       });
 
-      logger.debug(
-        "[Bedrock Model Provider] Converted to Bedrock messages:",
-        converted.messages.length,
-      );
-      for (const [idx, msg] of converted.messages.entries()) {
-        const contentTypes = msg.content?.map((c) => {
-          if ("text" in c) return "text";
-          if ("image" in c) return "image";
-          if ("toolUse" in c) return "toolUse";
-          if ("toolResult" in c) return "toolResult";
-          if ("reasoningContent" in c) return "reasoningContent";
-          if ("thinking" in c || "redacted_thinking" in c) return "thinking";
-          if ("cachePoint" in c) return "cachePoint";
-          return "unknown";
-        });
-        logger.debug(
-          `[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`,
-          contentTypes,
-        );
-      }
+      // Log converted messages
+      this.logConvertedMessages(converted.messages);
 
-      // Validate the converted Bedrock messages, not the original VSCode messages
-      // System messages are extracted separately and don't count in the alternating pattern
+      // Validate messages and tools
       validateBedrockMessages(converted.messages);
 
-      // Pass extendedThinkingEnabled to skip tool_choice (incompatible with thinking)
       const toolConfig = convertTools(
         options,
         model.id,
@@ -447,211 +357,37 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         throw new Error("Cannot have more than 128 tools per request.");
       }
 
-      const requestInput: ConverseStreamCommandInput = {
-        inferenceConfig: {
-          maxTokens: Math.min(
-            typeof options.modelOptions?.max_tokens === "number"
-              ? options.modelOptions.max_tokens
-              : 4096,
-            model.maxOutputTokens,
-          ),
-          temperature:
-            typeof options.modelOptions?.temperature === "number"
-              ? options.modelOptions?.temperature
-              : 0.7,
-        },
-        messages: converted.messages,
-        modelId: model.id,
-      };
-
-      if (converted.system.length > 0) {
-        requestInput.system = converted.system;
-      }
-
-      if (options.modelOptions) {
-        const mo = options.modelOptions as Record<string, unknown>;
-        if (typeof mo.top_p === "number") {
-          requestInput.inferenceConfig!.topP = mo.top_p;
-        }
-        if (typeof mo.stop === "string") {
-          requestInput.inferenceConfig!.stopSequences = [mo.stop];
-        } else if (Array.isArray(mo.stop)) {
-          requestInput.inferenceConfig!.stopSequences = mo.stop;
-        }
-      }
-
-      if (toolConfig) {
-        requestInput.toolConfig = toolConfig;
-      }
-
-      // Add thinking configuration if enabled
-      if (extendedThinkingEnabled) {
-        // Extended thinking requires temperature 1.0
-        requestInput.inferenceConfig!.temperature = 1;
-
-        // Add thinking configuration to additionalModelRequestFields
-        requestInput.additionalModelRequestFields = {
-          thinking: {
-            budget_tokens: budgetTokens,
-            type: "enabled",
-          },
-        };
-
-        // Build anthropic_beta array with required features
-        const anthropicBeta: string[] = [];
-
-        // Add interleaved-thinking beta header for Claude 4 models
-        if (modelProfile.requiresInterleavedThinkingHeader) {
-          anthropicBeta.push("interleaved-thinking-2025-05-14");
-        }
-
-        // Add 1M context beta header for models that support it and setting is enabled
-        if (modelProfile.supports1MContext && settings.context1M.enabled) {
-          anthropicBeta.push("context-1m-2025-08-07");
-        }
-
-        if (anthropicBeta.length > 0) {
-          requestInput.additionalModelRequestFields.anthropic_beta = anthropicBeta;
-        }
-
-        logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
-          anthropicBeta: anthropicBeta.length > 0 ? anthropicBeta : undefined,
-          budgetTokens,
-          interleavedThinking: modelProfile.requiresInterleavedThinkingHeader,
-          modelId: model.id,
-          supports1MContext: modelProfile.supports1MContext,
-          temperature: 1,
-        });
-      } else if (modelProfile.supports1MContext && settings.context1M.enabled) {
-        // Even if thinking is not enabled, add 1M context beta header for supported models when setting is enabled
-        const existingFields = (requestInput.additionalModelRequestFields ?? {}) as Record<
-          string,
-          unknown
-        >;
-        const existingBeta = existingFields.anthropic_beta;
-        const betaArray = Array.isArray(existingBeta) ? (existingBeta as string[]) : [];
-
-        requestInput.additionalModelRequestFields = {
-          ...existingFields,
-          anthropic_beta: [...betaArray, "context-1m-2025-08-07"],
-        };
-
-        logger.debug("[Bedrock Model Provider] 1M context enabled", {
-          modelId: model.id,
-        });
-      }
-
-      logger.info("[Bedrock Model Provider] Starting streaming request", {
-        hasTools: !!toolConfig,
-        messageCount: requestInput.messages?.length,
-        modelId: model.id,
-        systemMessageCount: requestInput.system?.length,
-        toolCount: toolConfig?.tools?.length,
-      });
-
-      // Log the actual request for debugging
-      logger.debug("[Bedrock Model Provider] Request details:", {
-        messages: requestInput.messages?.map((m) => ({
-          contentBlocks: Array.isArray(m.content)
-            ? m.content.map((c) => {
-                if (c.text) return "text";
-                if (c.image) return `image(${c.image.format})`;
-                if (c.toolResult) {
-                  const preview =
-                    c.toolResult.content?.[0]?.text?.slice(0, 100) ??
-                    (JSON.stringify(c.toolResult.content?.[0]?.json)?.slice(0, 100) || "[empty]");
-                  return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
-                }
-                if (c.toolUse) return `toolUse(${c.toolUse.name})`;
-                if ("reasoningContent" in c) return "reasoningContent";
-                if ("thinking" in c) return "thinking";
-                if ("redacted_thinking" in c) return "redacted_thinking";
-                if ("cachePoint" in c) return "cachePoint";
-                return "unknown";
-              })
-            : undefined,
-          role: m.role,
-        })),
-      });
-
-      // Log full message structures at trace level for detailed debugging
-      logger.trace("[Bedrock Model Provider] Full request structure for reproduction:", {
-        messages: requestInput.messages,
-        system: requestInput.system,
-        toolConfig: requestInput.toolConfig
-          ? {
-              toolChoice: requestInput.toolConfig.toolChoice,
-              toolCount: requestInput.toolConfig.tools?.length,
-            }
-          : undefined,
-      });
-
-      // Count tokens and validate against model limits before sending request
-      const inputTokenCount = await this.countRequestTokens(
-        model.id,
-        {
-          messages: requestInput.messages!,
-          system: requestInput.system,
-          toolConfig: requestInput.toolConfig,
-        },
-        token,
+      // Build beta headers
+      const betaHeaders = this.buildBetaHeaders(
+        modelProfile,
+        extendedThinkingEnabled,
+        settings.context1M.enabled,
       );
 
-      const tokenLimit = Math.max(1, model.maxInputTokens);
-      if (inputTokenCount > tokenLimit) {
-        logger.error("[Bedrock Model Provider] Message exceeds token limit", {
-          inputTokenCount,
-          tokenLimit,
-        });
-        throw new Error(
-          `Message exceeds token limit. Input: ${inputTokenCount} tokens, Limit: ${tokenLimit} tokens.`,
-        );
-      }
+      // Build request input
+      const requestInput = this.buildRequestInput(
+        model,
+        converted,
+        options,
+        toolConfig,
+        extendedThinkingEnabled,
+        budgetTokens,
+        betaHeaders,
+      );
 
-      logger.debug("[Bedrock Model Provider] Token count validation passed", {
-        inputTokenCount,
-        tokenLimit,
-      });
+      // Log request details
+      this.logRequestDetails(requestInput);
 
-      // Create AbortController for cancellation support
-      const abortController = new AbortController();
-      const cancellationListener = token.onCancellationRequested(() => {
-        abortController.abort();
-      });
+      // Validate token count
+      await this.validateTokenCount(model, requestInput, token);
 
-      try {
-        const stream = await this.client.startConversationStream(
-          requestInput,
-          abortController.signal,
-        );
-
-        logger.info("[Bedrock Model Provider] Processing stream events");
-        const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
-
-        // Store thinking block for next request ONLY if it has a signature
-        // API requires signatures for interleaved thinking, so we only store blocks we can inject
-        if (extendedThinkingEnabled && result.thinkingBlock?.signature) {
-          this.lastThinkingBlock = result.thinkingBlock;
-          logger.info(
-            "[Bedrock Model Provider] Stored thinking block with signature for next request:",
-            {
-              signatureLength: result.thinkingBlock.signature.length,
-              textLength: result.thinkingBlock.text.length,
-            },
-          );
-        } else if (extendedThinkingEnabled && result.thinkingBlock) {
-          logger.info(
-            "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
-            {
-              textLength: result.thinkingBlock.text.length,
-            },
-          );
-        }
-
-        logger.info("[Bedrock Model Provider] Finished processing stream");
-      } finally {
-        cancellationListener.dispose();
-      }
+      // Process the stream
+      await this.processResponseStream(
+        requestInput,
+        trackingProgress,
+        extendedThinkingEnabled,
+        token,
+      );
     } catch (error) {
       // Check for context window overflow errors and provide better error messages
       // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L852-L860
@@ -755,6 +491,139 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   }
 
   /**
+   * Build beta headers array for the request
+   */
+  private buildBetaHeaders(
+    modelProfile: ReturnType<typeof getModelProfile>,
+    extendedThinkingEnabled: boolean,
+    context1MEnabled: boolean,
+  ): string[] {
+    const anthropicBeta: string[] = [];
+
+    if (extendedThinkingEnabled) {
+      // Add interleaved-thinking beta header for Claude 4 models
+      if (modelProfile.requiresInterleavedThinkingHeader) {
+        anthropicBeta.push("interleaved-thinking-2025-05-14");
+      }
+
+      // Add 1M context beta header for models that support it and setting is enabled
+      if (modelProfile.supports1MContext && context1MEnabled) {
+        anthropicBeta.push("context-1m-2025-08-07");
+      }
+    } else if (modelProfile.supports1MContext && context1MEnabled) {
+      // Even if thinking is not enabled, add 1M context beta header
+      anthropicBeta.push("context-1m-2025-08-07");
+    }
+
+    return anthropicBeta;
+  }
+
+  /**
+   * Build and configure the request input for Bedrock API
+   */
+  private buildRequestInput(
+    model: LanguageModelChatInformation,
+    converted: { messages: Message[]; system: SystemContentBlock[] },
+    options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
+    toolConfig: ToolConfiguration | undefined,
+    extendedThinkingEnabled: boolean,
+    budgetTokens: number,
+    betaHeaders: string[],
+  ): ConverseStreamCommandInput {
+    const requestInput: ConverseStreamCommandInput = {
+      inferenceConfig: {
+        maxTokens: Math.min(
+          typeof options.modelOptions?.max_tokens === "number"
+            ? options.modelOptions.max_tokens
+            : 4096,
+          model.maxOutputTokens,
+        ),
+        temperature:
+          typeof options.modelOptions?.temperature === "number"
+            ? options.modelOptions?.temperature
+            : 0.7,
+      },
+      messages: converted.messages,
+      modelId: model.id,
+    };
+
+    if (converted.system.length > 0) {
+      requestInput.system = converted.system;
+    }
+
+    if (options.modelOptions) {
+      const mo = options.modelOptions as Record<string, unknown>;
+      if (typeof mo.top_p === "number") {
+        requestInput.inferenceConfig!.topP = mo.top_p;
+      }
+      if (typeof mo.stop === "string") {
+        requestInput.inferenceConfig!.stopSequences = [mo.stop];
+      } else if (Array.isArray(mo.stop)) {
+        requestInput.inferenceConfig!.stopSequences = mo.stop;
+      }
+    }
+
+    if (toolConfig) {
+      requestInput.toolConfig = toolConfig;
+    }
+
+    // Add thinking configuration if enabled
+    if (extendedThinkingEnabled) {
+      // Extended thinking requires temperature 1.0
+      requestInput.inferenceConfig!.temperature = 1;
+
+      // Add thinking configuration to additionalModelRequestFields
+      requestInput.additionalModelRequestFields = {
+        thinking: {
+          budget_tokens: budgetTokens,
+          type: "enabled",
+        },
+      };
+
+      if (betaHeaders.length > 0) {
+        requestInput.additionalModelRequestFields.anthropic_beta = betaHeaders;
+      }
+
+      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+        budgetTokens,
+        interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
+        modelId: model.id,
+        supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
+        temperature: 1,
+      });
+    } else if (betaHeaders.length > 0) {
+      // Even if thinking is not enabled, add beta headers if needed
+      requestInput.additionalModelRequestFields = {
+        anthropic_beta: betaHeaders,
+      };
+
+      logger.debug("[Bedrock Model Provider] 1M context enabled", {
+        modelId: model.id,
+      });
+    }
+
+    return requestInput;
+  }
+
+  /**
+   * Calculate thinking configuration parameters
+   */
+  private calculateThinkingConfig(
+    modelProfile: ReturnType<typeof getModelProfile>,
+    modelLimits: ReturnType<typeof getModelTokenLimits>,
+    maxTokensForRequest: number,
+    thinkingEnabled: boolean,
+  ): { budgetTokens: number; extendedThinkingEnabled: boolean } {
+    const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
+    const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
+    const extendedThinkingEnabled =
+      thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
+
+    return { budgetTokens, extendedThinkingEnabled };
+  }
+
+  /**
    * Count tokens for a complete request using the CountTokens API.
    * Falls back to estimation if the API is unavailable or fails.
    * @param modelId The model ID to count tokens for
@@ -853,6 +722,240 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       }
       return estimateTokens();
     }
+  }
+
+  /**
+   * Log converted Bedrock messages for debugging
+   */
+  private logConvertedMessages(messages: Message[]): void {
+    logger.debug("[Bedrock Model Provider] Converted to Bedrock messages:", messages.length);
+    for (const [idx, msg] of messages.entries()) {
+      const contentTypes = msg.content?.map((c) => {
+        if ("text" in c) return "text";
+        if ("image" in c) return "image";
+        if ("toolUse" in c) return "toolUse";
+        if ("toolResult" in c) return "toolResult";
+        if ("reasoningContent" in c) return "reasoningContent";
+        if ("thinking" in c || "redacted_thinking" in c) return "thinking";
+        if ("cachePoint" in c) return "cachePoint";
+        return "unknown";
+      });
+      logger.debug(`[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`, contentTypes);
+    }
+  }
+
+  /**
+   * Log incoming VSCode messages for debugging and reproduction
+   */
+  private logIncomingMessages(messages: readonly LanguageModelChatMessage[]): void {
+    logger.info("[Bedrock Model Provider] === NEW REQUEST ===");
+    logger.info("[Bedrock Model Provider] Converting messages, count:", messages.length);
+
+    // Log full incoming VSCode messages at trace level for reproduction
+    logger.trace("[Bedrock Model Provider] Full VSCode messages for reproduction:", {
+      messages: messages.map((msg) => ({
+        content: msg.content.map((part) => {
+          if (part instanceof vscode.LanguageModelTextPart) {
+            return { type: "text", value: part.value };
+          }
+          if (part instanceof vscode.LanguageModelToolCallPart) {
+            return { callId: part.callId, input: part.input, name: part.name, type: "toolCall" };
+          }
+          if (part instanceof vscode.LanguageModelToolResultPart) {
+            return { callId: part.callId, content: part.content, type: "toolResult" };
+          }
+          if (typeof part === "object" && part != null && "mimeType" in part && "data" in part) {
+            const dataPart = part as { data: Uint8Array; mimeType: string };
+            return {
+              dataLength: dataPart.data.length,
+              mimeType: dataPart.mimeType,
+              type: "data",
+            };
+          }
+          return { type: "unknown" };
+        }),
+        role: msg.role,
+      })),
+    });
+
+    for (const [idx, msg] of messages.entries()) {
+      const partTypes = msg.content.map((p) => {
+        if (p instanceof vscode.LanguageModelTextPart) return "text";
+        if (p instanceof vscode.LanguageModelToolCallPart) {
+          return `toolCall(${p.name})`;
+        }
+        if (p instanceof vscode.LanguageModelToolResultPart) {
+          return `toolResult(${p.callId})`;
+        }
+        if (typeof p === "object" && p != null && "mimeType" in p) {
+          try {
+            const dataPart = p as { mimeType: string };
+            const mime = new MIMEType(dataPart.mimeType);
+            if (mime.type === "image") {
+              return `image(${mime.essence})`;
+            }
+            return `data(${mime.essence})`;
+          } catch {
+            // Invalid MIME type, skip
+          }
+        }
+        return "unknown";
+      });
+      logger.debug(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
+      // Log tool result details
+      for (const part of msg.content) {
+        if (part instanceof vscode.LanguageModelToolResultPart) {
+          let contentPreview = "[Unable to preview]";
+          try {
+            const contentStr =
+              typeof part.content === "string" ? part.content : JSON.stringify(part.content);
+            contentPreview = contentStr.slice(0, 100);
+          } catch {
+            // Keep default
+          }
+          logger.debug(`[Bedrock Model Provider]   Tool Result:`, {
+            callId: part.callId,
+            contentPreview,
+            contentType: typeof part.content,
+            isError: "isError" in part ? part.isError : false,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Log request details for debugging
+   */
+  private logRequestDetails(requestInput: ConverseStreamCommandInput): void {
+    logger.info("[Bedrock Model Provider] Starting streaming request", {
+      hasTools: !!requestInput.toolConfig,
+      messageCount: requestInput.messages?.length,
+      modelId: requestInput.modelId,
+      systemMessageCount: requestInput.system?.length,
+      toolCount: requestInput.toolConfig?.tools?.length,
+    });
+
+    // Log the actual request for debugging
+    logger.debug("[Bedrock Model Provider] Request details:", {
+      messages: requestInput.messages?.map((m) => ({
+        contentBlocks: Array.isArray(m.content)
+          ? m.content.map((c) => {
+              if (c.text) return "text";
+              if (c.image) return `image(${c.image.format})`;
+              if (c.toolResult) {
+                const preview =
+                  c.toolResult.content?.[0]?.text?.slice(0, 100) ??
+                  (JSON.stringify(c.toolResult.content?.[0]?.json)?.slice(0, 100) || "[empty]");
+                return `toolResult(${c.toolResult.toolUseId},preview:${preview})`;
+              }
+              if (c.toolUse) return `toolUse(${c.toolUse.name})`;
+              if ("reasoningContent" in c) return "reasoningContent";
+              if ("thinking" in c) return "thinking";
+              if ("redacted_thinking" in c) return "redacted_thinking";
+              if ("cachePoint" in c) return "cachePoint";
+              return "unknown";
+            })
+          : undefined,
+        role: m.role,
+      })),
+    });
+
+    // Log full message structures at trace level for detailed debugging
+    logger.trace("[Bedrock Model Provider] Full request structure for reproduction:", {
+      messages: requestInput.messages,
+      system: requestInput.system,
+      toolConfig: requestInput.toolConfig
+        ? {
+            toolChoice: requestInput.toolConfig.toolChoice,
+            toolCount: requestInput.toolConfig.tools?.length,
+          }
+        : undefined,
+    });
+  }
+
+  /**
+   * Process the response stream and handle thinking blocks
+   */
+  private async processResponseStream(
+    requestInput: ConverseStreamCommandInput,
+    trackingProgress: Progress<LanguageModelResponsePart>,
+    extendedThinkingEnabled: boolean,
+    token: CancellationToken,
+  ): Promise<void> {
+    const abortController = new AbortController();
+    const cancellationListener = token.onCancellationRequested(() => {
+      abortController.abort();
+    });
+
+    try {
+      const stream = await this.client.startConversationStream(
+        requestInput,
+        abortController.signal,
+      );
+
+      logger.info("[Bedrock Model Provider] Processing stream events");
+      const result = await this.streamProcessor.processStream(stream, trackingProgress, token);
+
+      // Store thinking block for next request ONLY if it has a signature
+      // API requires signatures for interleaved thinking, so we only store blocks we can inject
+      if (extendedThinkingEnabled && result.thinkingBlock?.signature) {
+        this.lastThinkingBlock = result.thinkingBlock;
+        logger.info(
+          "[Bedrock Model Provider] Stored thinking block with signature for next request:",
+          {
+            signatureLength: result.thinkingBlock.signature.length,
+            textLength: result.thinkingBlock.text.length,
+          },
+        );
+      } else if (extendedThinkingEnabled && result.thinkingBlock) {
+        logger.info(
+          "[Bedrock Model Provider] Discarding thinking block without signature (cannot be reused):",
+          {
+            textLength: result.thinkingBlock.text.length,
+          },
+        );
+      }
+
+      logger.info("[Bedrock Model Provider] Finished processing stream");
+    } finally {
+      cancellationListener.dispose();
+    }
+  }
+
+  /**
+   * Validate token count against model limits
+   */
+  private async validateTokenCount(
+    model: LanguageModelChatInformation,
+    requestInput: ConverseStreamCommandInput,
+    token: CancellationToken,
+  ): Promise<void> {
+    const inputTokenCount = await this.countRequestTokens(
+      model.id,
+      {
+        messages: requestInput.messages!,
+        system: requestInput.system,
+        toolConfig: requestInput.toolConfig,
+      },
+      token,
+    );
+
+    const tokenLimit = Math.max(1, model.maxInputTokens);
+    if (inputTokenCount > tokenLimit) {
+      logger.error("[Bedrock Model Provider] Message exceeds token limit", {
+        inputTokenCount,
+        tokenLimit,
+      });
+      throw new Error(
+        `Message exceeds token limit. Input: ${inputTokenCount} tokens, Limit: ${tokenLimit} tokens.`,
+      );
+    }
+
+    logger.debug("[Bedrock Model Provider] Token count validation passed", {
+      inputTokenCount,
+      tokenLimit,
+    });
   }
 }
 
