@@ -66,9 +66,9 @@ const TOOL_INCAPABLE_MODEL_PATTERNS: RegExp[] = [
 
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
-  private client: BedrockAPIClient;
+  private readonly client: BedrockAPIClient;
   private lastThinkingBlock?: ThinkingBlock;
-  private streamProcessor: StreamProcessor;
+  private readonly streamProcessor: StreamProcessor;
 
   constructor(
     private readonly globalState: vscode.Memento,
