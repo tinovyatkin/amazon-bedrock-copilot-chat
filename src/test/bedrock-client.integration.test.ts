@@ -82,6 +82,39 @@ suite("BedrockAPIClient Integration Tests", () => {
       }
     });
 
+    test("should filter out embedding models using byOutputModality: TEXT", async function () {
+      this.timeout(30_000);
+
+      const models = await client.fetchModels();
+
+      // Check for embedding models - these should NOT be present with TEXT filter
+      const embeddingModels = models.filter(
+        (m) =>
+          m.modelId.includes("embed") ||
+          m.outputModalities.includes("EMBEDDING") ||
+          m.modelId.includes("titan-embed") ||
+          m.modelId.includes("cohere.embed"),
+      );
+
+      assert.strictEqual(
+        embeddingModels.length,
+        0,
+        "Should NOT return embedding models when byOutputModality: TEXT filter is applied",
+      );
+
+      // Verify all returned models have TEXT in outputModalities
+      const nonTextModels = models.filter((m) => !m.outputModalities.includes("TEXT"));
+      assert.strictEqual(
+        nonTextModels.length,
+        0,
+        "All returned models should have TEXT in outputModalities",
+      );
+
+      console.log(
+        `✓ Embedding models successfully filtered out (${models.length} text models returned)`,
+      );
+    });
+
     test("should fetch models with custom AWS profile if configured", async function () {
       this.timeout(30_000);
 
