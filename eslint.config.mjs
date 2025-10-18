@@ -102,7 +102,7 @@ export default defineConfig([
     files: ["**/*.mjs", "**/*.md"],
     extends: [tseslint.configs.disableTypeChecked],
     rules: {
-      '@typescript-eslint/ban-ts-comment"': "off",
+      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
   {
