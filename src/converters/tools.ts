@@ -1,4 +1,5 @@
 import type * as bedrockRuntime from "@aws-sdk/client-bedrock-runtime";
+import { CachePointType } from "@aws-sdk/client-bedrock-runtime";
 import type { LanguageModelChatTool } from "vscode";
 import { type LanguageModelChatProvider, LanguageModelChatToolMode } from "vscode";
 
@@ -43,7 +44,7 @@ export function convertTools(
   // promptCachingEnabled defaults to true if not specified
   const cachingEnabled = promptCachingEnabled ?? true;
   if (profile.supportsPromptCaching && cachingEnabled && tools.length > 0) {
-    tools.push({ cachePoint: { type: "default" } });
+    tools.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
   const config: bedrockRuntime.ToolConfiguration = { tools };
