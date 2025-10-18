@@ -1,5 +1,7 @@
 import * as assert from "node:assert";
 
+import { ModelModality } from "@aws-sdk/client-bedrock";
+
 import { BedrockAPIClient } from "../bedrock-client";
 
 /**
@@ -103,7 +105,7 @@ suite("BedrockAPIClient Integration Tests", () => {
       );
 
       // Verify all returned models have TEXT in outputModalities
-      const nonTextModels = models.filter((m) => !m.outputModalities.includes("TEXT"));
+      const nonTextModels = models.filter((m) => !m.outputModalities.includes(ModelModality.TEXT));
       assert.strictEqual(
         nonTextModels.length,
         0,

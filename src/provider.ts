@@ -1,3 +1,4 @@
+import { ModelModality } from "@aws-sdk/client-bedrock";
 import {
   type ConverseStreamCommandInput,
   type CountTokensCommandInput,
@@ -103,7 +104,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
           }[] = [];
 
           for (const m of models) {
-            if (!m.responseStreamingSupported || !m.outputModalities.includes("TEXT")) {
+            if (!m.responseStreamingSupported || !m.outputModalities.includes(ModelModality.TEXT)) {
               continue;
             }
 
@@ -170,7 +171,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             const limits = getModelTokenLimits(modelIdToUse, settings.context1M.enabled);
             const maxInput = limits.maxInputTokens;
             const maxOutput = limits.maxOutputTokens;
-            const vision = m.inputModalities.includes("IMAGE");
+            const vision = m.inputModalities.includes(ModelModality.IMAGE);
 
             // Determine tooltip suffix based on inference profile type
             let tooltipSuffix = "";

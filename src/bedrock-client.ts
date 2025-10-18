@@ -3,6 +3,7 @@ import {
   GetFoundationModelAvailabilityCommand,
   GetInferenceProfileCommand,
   ListFoundationModelsCommand,
+  ModelModality,
   paginateListInferenceProfiles,
 } from "@aws-sdk/client-bedrock";
 import {
@@ -127,7 +128,7 @@ export class BedrockAPIClient {
   async fetchModels(abortSignal?: AbortSignal): Promise<BedrockModelSummary[]> {
     try {
       const command = new ListFoundationModelsCommand({
-        byOutputModality: "TEXT",
+        byOutputModality: ModelModality.TEXT,
       });
       const response = await this.bedrockClient.send(command, { abortSignal });
 
