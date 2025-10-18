@@ -121,7 +121,14 @@ async function clearAllSettings(
     globalState.update("bedrock.region", undefined),
   ];
 
-  await Promise.all([...configUpdates, ...globalStateUpdates]);
+  const results = await Promise.allSettled([...configUpdates, ...globalStateUpdates]);
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((f) => f.reason),
+      "Failed to clear one or more settings",
+    );
+  }
 }
 
 async function handleClearSettings(globalState: vscode.Memento): Promise<void> {
