@@ -8,7 +8,7 @@ import { loadSharedConfigFiles } from "@smithy/shared-ini-file-loader";
 export async function getProfileRegion(profileName: string): Promise<string | undefined> {
   try {
     const { configFile } = await loadSharedConfigFiles();
-    return configFile?.[profileName]?.region as string | undefined;
+    return configFile?.[profileName]?.region;
   } catch {
     return undefined;
   }

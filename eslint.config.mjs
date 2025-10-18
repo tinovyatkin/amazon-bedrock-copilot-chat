@@ -92,13 +92,17 @@ export default defineConfig([
         "error",
         { ignorePrimitives: { string: true } },
       ],
+      "@typescript-eslint/no-unnecessary-type-assertion": [
+        "error",
+        { checkLiteralConstAssertions: true },
+      ],
     },
   },
   {
     files: ["**/*.mjs", "**/*.md"],
     extends: [tseslint.configs.disableTypeChecked],
     rules: {
-      '@typescript-eslint/ban-ts-comment"': "off",
+      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
   {
