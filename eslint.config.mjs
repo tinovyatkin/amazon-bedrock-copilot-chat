@@ -92,6 +92,10 @@ export default defineConfig([
         "error",
         { ignorePrimitives: { string: true } },
       ],
+      "@typescript-eslint/no-unnecessary-type-assertion": [
+        "error",
+        { checkLiteralConstAssertions: true },
+      ],
     },
   },
   {

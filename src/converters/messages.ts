@@ -11,7 +11,7 @@ import { inspect, MIMEType, types } from "node:util";
 import * as vscode from "vscode";
 
 import { logger } from "../logger";
-import { getModelProfile } from "../profiles";
+import { getModelProfile, type ModelProfile } from "../profiles";
 import type { ThinkingBlock } from "../stream-processor";
 
 interface ConvertedMessages {
@@ -19,10 +19,14 @@ interface ConvertedMessages {
   system: SystemContentBlock[];
 }
 
+interface ImageDataPart {
+  data: Uint8Array;
+  mimeType: string;
+}
+
 /**
  * Convert VSCode language model messages to Bedrock API format
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   modelId: string,
@@ -44,383 +48,466 @@ export function convertMessages(
     lastThinkingBlockTextLength: options?.lastThinkingBlock?.text.length,
   });
 
+  // Process each message by role
   for (const msg of messages) {
     if (msg.role === vscode.LanguageModelChatMessageRole.User) {
-      const content: ContentBlock[] = [];
-      let hasToolResults = false;
-
-      for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          // Skip empty text parts - Bedrock API rejects blank text fields
-          if (part.value.trim()) {
-            content.push({ text: part.value });
-          }
-        } else if (
-          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
-          typeof part === "object" &&
-          part != null &&
-          "mimeType" in part &&
-          typeof part.mimeType === "string" &&
-          "data" in part &&
-          types.isUint8Array(part.data)
-        ) {
-          try {
-            const mime = new MIMEType(part.mimeType);
-            if (mime.type === "image") {
-              const format = mime.subtype.toLowerCase();
-              if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
-                content.push({
-                  image: {
-                    format,
-                    source: {
-                      bytes: part.data,
-                    },
-                  },
-                } satisfies ContentBlock.ImageMember);
-                logger.debug("[Message Converter] Added image block", { format });
-              } else {
-                logger.warn("[Message Converter] Unsupported image format", { format });
-              }
-            }
-          } catch (error) {
-            logger.warn("[Message Converter] Invalid MIME type", {
-              error: error instanceof Error ? error.message : inspect(error),
-              mimeType: part.mimeType,
-            });
-          }
-        } else if (part instanceof vscode.LanguageModelToolResultPart) {
-          hasToolResults = true;
-
-          // Extract text content from the tool result
-          // Tool result content is an array of LanguageModelTextPart or other types
-          let textContent = "";
-          if (Array.isArray(part.content)) {
-            for (const item of part.content) {
-              if (item instanceof vscode.LanguageModelTextPart) {
-                textContent += item.value;
-              } else if (typeof item === "string") {
-                textContent += item;
-              } else {
-                // For unknown types, try to stringify
-                textContent += inspect(item, { depth: 4 });
-              }
-            }
-          } else if (typeof part.content === "string") {
-            textContent = part.content;
-          } else {
-            textContent = inspect(part.content);
-          }
-
-          // Log complete VSCode tool result part
-          logger.debug("[Message Converter] Processing VSCode tool result:", {
-            // Log all properties of the part for debugging
-            allProperties: Object.keys(part),
-            callId: part.callId,
-            contentType: typeof part.content,
-            hasIsError: "isError" in part,
-            isArray: Array.isArray(part.content),
-            // Check for isError property (not in VSCode API, but logging for debugging)
-            isError: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
-            textLength: textContent.length,
-            textPreview: textContent.slice(0, 200),
-          });
-
-          const partContent = part.content;
-          const isJson =
-            profile.toolResultFormat === "json" &&
-            typeof partContent === "object" &&
-            partContent != null &&
-            !Array.isArray(partContent);
-          const contentBlock: ToolResultContentBlock = isJson
-            ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
-            : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
-
-          // Since VSCode API doesn't provide isError property, detect errors from content
-          // Look for common error patterns in the text content
-          const lowerContent = textContent.toLowerCase();
-          const isLikelyError =
-            lowerContent.startsWith("error") ||
-            lowerContent.startsWith("error while calling tool:") ||
-            lowerContent.includes("error while calling tool:") ||
-            lowerContent.includes("invalid terminal id") ||
-            lowerContent.includes("please check your input");
-
-          // Only include status field if model supports it
-          // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L333-L347
-          // AWS Docs: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolResultBlock.html
-          const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
-
-          logger.debug("[Message Converter] Error status decision:", {
-            contentPreview: textContent.slice(0, 100),
-            detectedFromContent: isLikelyError,
-            hasIsErrorProperty: "isError" in part,
-            // Check for isError property (not in VSCode API, but logging for debugging)
-            isErrorValue: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
-            modelSupportsStatus: profile.supportsToolResultStatus,
-            resultingStatus: status,
-          });
-
-          logger.debug("[Message Converter] Created Bedrock tool result:", {
-            format: isJson ? "json" : "text",
-            hasContent: true,
-            status,
-            toolUseId: part.callId,
-          });
-
-          content.push({
-            toolResult: {
-              content: [contentBlock],
-              toolUseId: part.callId,
-              ...(status ? { status } : {}),
-            },
-          } satisfies ContentBlock.ToolResultMember);
-        }
-      }
-
-      if (content.length > 0) {
-        // Check if last message was also a user message - if so, merge content
-        const lastMessage = bedrockMessages.at(-1);
-        if (lastMessage?.role === ConversationRole.USER && lastMessage.content !== undefined) {
-          // Merge content into the last user message
-          logger.debug("[Message Converter] Merging consecutive USER messages");
-          lastMessage.content.push(...content);
-          // Update hasToolResults tracking for merged message
-          if (hasToolResults) {
-            const lastIndex = bedrockMessages.length - 1;
-            if (!userMessageIndicesWithToolResults.includes(lastIndex)) {
-              userMessageIndicesWithToolResults.push(lastIndex);
-            }
-          }
-        } else {
-          bedrockMessages.push({ content, role: ConversationRole.USER });
-          if (hasToolResults) {
-            userMessageIndicesWithToolResults.push(bedrockMessages.length - 1);
-          }
-        }
-      }
+      const { content, hasToolResults } = processUserMessageParts(msg, profile);
+      mergeOrAppendMessage(
+        bedrockMessages,
+        content,
+        ConversationRole.USER,
+        hasToolResults,
+        userMessageIndicesWithToolResults,
+      );
     } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
-      const content: ContentBlock[] = [];
-      for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          // Skip empty text parts - Bedrock API rejects blank text fields
-          if (part.value.trim()) {
-            content.push({ text: part.value });
-          }
-        } else if (
-          typeof part === "object" &&
-          part != null &&
-          "mimeType" in part &&
-          "data" in part
-        ) {
-          // Handle image data parts (LanguageModelDataPart - exists in vscode.d.ts but not runtime yet)
-          const dataPart = part as { data: Uint8Array; mimeType: string };
-          try {
-            const mime = new MIMEType(dataPart.mimeType);
-            if (mime.type === "image") {
-              const format = mime.subtype.toLowerCase();
-
-              if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
-                content.push({
-                  image: {
-                    format: format as "gif" | "jpeg" | "png" | "webp",
-                    source: {
-                      bytes: dataPart.data,
-                    },
-                  },
-                } satisfies ContentBlock.ImageMember);
-                logger.debug("[Message Converter] Added image block to assistant message", {
-                  format,
-                });
-              } else {
-                logger.warn("[Message Converter] Unsupported image format in assistant message", {
-                  format,
-                });
-              }
-            }
-          } catch (error) {
-            logger.warn("[Message Converter] Invalid MIME type in assistant message", {
-              error: error instanceof Error ? error.message : String(error),
-              mimeType: dataPart.mimeType,
-            });
-          }
-        } else if (part instanceof vscode.LanguageModelToolCallPart) {
-          content.push({
-            toolUse: {
-              input: part.input as DocumentType,
-              name: part.name,
-              toolUseId: part.callId,
-            },
-          });
-        }
-      }
-      if (content.length > 0) {
-        // Check if last message was also an assistant message - if so, merge content
-        const lastMessage = bedrockMessages.at(-1);
-        if (lastMessage?.role === ConversationRole.ASSISTANT && lastMessage.content !== undefined) {
-          // Merge content into the last assistant message
-          logger.debug("[Message Converter] Merging consecutive ASSISTANT messages");
-          lastMessage.content.push(...content);
-        } else {
-          bedrockMessages.push({ content, role: ConversationRole.ASSISTANT });
-        }
-      }
+      const content = processAssistantMessageParts(msg);
+      mergeOrAppendMessage(
+        bedrockMessages,
+        content,
+        ConversationRole.ASSISTANT,
+        false,
+        userMessageIndicesWithToolResults,
+      );
     } else {
       // System messages
-      for (const part of msg.content) {
-        if (
-          part instanceof vscode.LanguageModelTextPart && // Skip empty text parts - Bedrock API rejects blank text fields
-          part.value.trim()
-        ) {
-          systemMessages.push({ text: part.value });
-        }
-      }
+      systemMessages.push(...processSystemMessageParts(msg));
     }
   }
 
-  // Check if prompt caching should be enabled (defaults to true)
-  const promptCachingEnabled = options?.promptCachingEnabled ?? true;
+  // Add prompt caching points if enabled (defaults to true)
+  if (options?.promptCachingEnabled ?? true) {
+    addPromptCachingPoints(
+      profile,
+      systemMessages,
+      bedrockMessages,
+      userMessageIndicesWithToolResults,
+    );
+  }
 
-  // Add cache point after system messages if prompt caching is supported and enabled
-  if (profile.supportsPromptCaching && promptCachingEnabled && systemMessages.length > 0) {
+  // Inject extended thinking if enabled
+  if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+    injectExtendedThinking(bedrockMessages, options.lastThinkingBlock);
+  }
+
+  // Filter reasoning content for Deepseek models
+  filterDeepseekReasoningContent(bedrockMessages, modelId);
+
+  return { messages: bedrockMessages, system: systemMessages };
+}
+
+/**
+ * Add prompt caching points to system and user messages
+ */
+function addPromptCachingPoints(
+  profile: ModelProfile,
+  systemMessages: SystemContentBlock[],
+  bedrockMessages: BedrockMessage[],
+  userMessageIndicesWithToolResults: number[],
+): void {
+  if (!profile.supportsPromptCaching) return;
+
+  // Add cache point after system messages
+  if (systemMessages.length > 0) {
     systemMessages.push({ cachePoint: { type: CachePointType.DEFAULT } });
   }
 
   // Add cache points to the last 2 user messages
-  // Strategy depends on whether model supports caching with tool results:
-  // - If supported: Add cache points to messages WITH tool results
-  // - If not supported: Add cache points to messages WITHOUT tool results
-  // This ensures we stay within the 4 cache point limit:
-  // 1. After system messages
-  // 2. After tool definitions (in tools.ts)
-  // 3-4. After last 2 user messages (with or without tool results)
-  if (profile.supportsPromptCaching && promptCachingEnabled) {
-    let indicesToCache: number[] = [];
+  let indicesToCache: number[] = [];
 
-    if (profile.supportsCachingWithToolResults && userMessageIndicesWithToolResults.length > 0) {
-      // Model supports caching with tool results: cache messages WITH tool results
-      indicesToCache = userMessageIndicesWithToolResults.slice(-2);
-      logger.debug(
-        `[Message Converter] Adding cache points to last ${indicesToCache.length} messages with tool results (indices: ${indicesToCache.join(", ")})`,
-      );
-    } else if (!profile.supportsCachingWithToolResults) {
-      // Model does NOT support caching with tool results: cache messages WITHOUT tool results
-      // Find all user message indices that DON'T have tool results
-      const userMessagesWithoutToolResults: number[] = [];
-      for (const [i, message] of bedrockMessages.entries()) {
-        if (
-          message?.role === ConversationRole.USER &&
-          !userMessageIndicesWithToolResults.includes(i)
-        ) {
-          userMessagesWithoutToolResults.push(i);
-        }
-      }
-
-      // Get the last 2 indices
-      indicesToCache = userMessagesWithoutToolResults.slice(-2);
-      if (indicesToCache.length > 0) {
-        logger.debug(
-          `[Message Converter] Adding cache points to last ${indicesToCache.length} messages without tool results (indices: ${indicesToCache.join(", ")})`,
-        );
+  if (profile.supportsCachingWithToolResults && userMessageIndicesWithToolResults.length > 0) {
+    // Model supports caching with tool results: cache messages WITH tool results
+    indicesToCache = userMessageIndicesWithToolResults.slice(-2);
+    logger.debug(
+      `[Message Converter] Adding cache points to last ${indicesToCache.length} messages with tool results (indices: ${indicesToCache.join(", ")})`,
+    );
+  } else if (!profile.supportsCachingWithToolResults) {
+    // Model does NOT support caching with tool results: cache messages WITHOUT tool results
+    const userMessagesWithoutToolResults: number[] = [];
+    for (const [i, message] of bedrockMessages.entries()) {
+      if (
+        message?.role === ConversationRole.USER &&
+        !userMessageIndicesWithToolResults.includes(i)
+      ) {
+        userMessagesWithoutToolResults.push(i);
       }
     }
 
-    // Add cache points to the selected messages
-    for (const idx of indicesToCache) {
-      const message = bedrockMessages[idx];
-      if (message?.content !== undefined) {
-        message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
+    // Get the last 2 indices
+    indicesToCache = userMessagesWithoutToolResults.slice(-2);
+    if (indicesToCache.length > 0) {
+      logger.debug(
+        `[Message Converter] Adding cache points to last ${indicesToCache.length} messages without tool results (indices: ${indicesToCache.join(", ")})`,
+      );
+    }
+  }
+
+  // Add cache points to the selected messages
+  for (const idx of indicesToCache) {
+    const message = bedrockMessages[idx];
+    if (message?.content !== undefined) {
+      message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
+    }
+  }
+}
+
+/**
+ * Detect if tool result content indicates an error
+ */
+function detectToolResultError(textContent: string): boolean {
+  const lowerContent = textContent.toLowerCase();
+  return (
+    lowerContent.startsWith("error") ||
+    lowerContent.startsWith("error while calling tool:") ||
+    lowerContent.includes("error while calling tool:") ||
+    lowerContent.includes("invalid terminal id") ||
+    lowerContent.includes("please check your input")
+  );
+}
+
+/**
+ * Extract text content from tool result
+ */
+function extractToolResultText(content: unknown): string {
+  let textContent = "";
+  if (Array.isArray(content)) {
+    for (const item of content) {
+      if (item instanceof vscode.LanguageModelTextPart) {
+        textContent += item.value;
+      } else if (typeof item === "string") {
+        textContent += item;
+      } else {
+        // For unknown types, try to stringify
+        textContent += inspect(item, { depth: 4 });
+      }
+    }
+  } else if (typeof content === "string") {
+    textContent = content;
+  } else {
+    textContent = inspect(content);
+  }
+  return textContent;
+}
+
+/**
+ * Filter out reasoning content for Deepseek models
+ */
+function filterDeepseekReasoningContent(bedrockMessages: BedrockMessage[], modelId: string): void {
+  const isDeepseekModel = modelId.toLowerCase().includes("deepseek");
+  if (!isDeepseekModel) return;
+
+  let filteredCount = 0;
+  for (const message of bedrockMessages) {
+    if (message.content) {
+      const originalLength = message.content.length;
+      message.content = message.content.filter((block) => {
+        if ("reasoningContent" in block) {
+          filteredCount++;
+          return false;
+        }
+        return true;
+      });
+
+      if (message.content.length === 0 && originalLength > 0) {
+        logger.debug(
+          "[Message Converter] Message became empty after filtering reasoningContent, will be removed",
+        );
       }
     }
   }
 
-  // Inject captured thinking as reasoningContent into ALL assistant messages
-  // CRITICAL: When anthropic_beta: ["interleaved-thinking-2025-05-14"] is present,
-  // the API requires ALL assistant messages to have thinking blocks, not just the last one
-  if (options?.extendedThinkingEnabled && options.lastThinkingBlock?.signature) {
-    let injectedCount = 0;
-    for (const message of bedrockMessages) {
-      if (
-        message.role === ConversationRole.ASSISTANT &&
-        message.content &&
-        message.content.length > 0
-      ) {
-        const hasReasoning = message.content.some(
-          (block) => "reasoningContent" in block || "thinking" in block,
-        );
+  // Remove empty messages
+  const messagesBeforeFilter = bedrockMessages.length;
+  bedrockMessages.splice(
+    0,
+    bedrockMessages.length,
+    ...bedrockMessages.filter((msg) => msg.content && msg.content.length > 0),
+  );
 
-        if (!hasReasoning) {
-          // Use official SDK reasoningContent format
-          const reasoningBlock: ContentBlock.ReasoningContentMember = {
-            reasoningContent: {
-              reasoningText: {
-                signature: options.lastThinkingBlock.signature,
-                text: options.lastThinkingBlock.text,
-              },
-            },
-          };
+  if (filteredCount > 0) {
+    logger.debug("[Message Converter] Filtered reasoningContent for Deepseek model", {
+      blocksFiltered: filteredCount,
+      emptyMessagesRemoved: messagesBeforeFilter - bedrockMessages.length,
+    });
+  }
+}
 
-          message.content.unshift(reasoningBlock);
-          injectedCount++;
-        }
-      }
-    }
-
-    if (injectedCount > 0) {
-      logger.debug("[Message Converter] Injected thinking into assistant messages", {
-        count: injectedCount,
-        signatureLength: options.lastThinkingBlock.signature.length,
-        textLength: options.lastThinkingBlock.text.length,
-      });
-    }
-  } else if (options?.extendedThinkingEnabled && options.lastThinkingBlock) {
+/**
+ * Inject extended thinking blocks into assistant messages
+ */
+function injectExtendedThinking(
+  bedrockMessages: BedrockMessage[],
+  thinkingBlock: ThinkingBlock,
+): void {
+  if (!thinkingBlock.signature) {
     logger.warn(
       "[Message Converter] Cannot inject thinking block - signature required for interleaved thinking",
       {
-        capturedFromDeltas: !options.lastThinkingBlock.signature,
-        textLength: options.lastThinkingBlock.text.length,
+        capturedFromDeltas: true,
+        textLength: thinkingBlock.text.length,
       },
     );
+    return;
   }
 
-  // Deepseek models have issues with reasoningContent in multi-turn conversations
-  // Filter out reasoningContent blocks for Deepseek models
-  // Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L306-L309
-  // Deepseek API docs: https://api-docs.deepseek.com/guides/reasoning_model#multi-round-conversation
-  const isDeepseekModel = modelId.toLowerCase().includes("deepseek");
-  if (isDeepseekModel) {
-    let filteredCount = 0;
-    for (const message of bedrockMessages) {
-      if (message.content) {
-        const originalLength = message.content.length;
-        message.content = message.content.filter((block) => {
-          if ("reasoningContent" in block) {
-            filteredCount++;
-            return false;
-          }
-          return true;
-        });
-        // Remove message entirely if all content was filtered out
-        if (message.content.length === 0 && originalLength > 0) {
-          logger.debug(
-            "[Message Converter] Message became empty after filtering reasoningContent, will be removed",
-          );
-        }
+  let injectedCount = 0;
+  for (const message of bedrockMessages) {
+    if (
+      message.role === ConversationRole.ASSISTANT &&
+      message.content &&
+      message.content.length > 0
+    ) {
+      const hasReasoning = message.content.some(
+        (block) => "reasoningContent" in block || "thinking" in block,
+      );
+
+      if (!hasReasoning) {
+        const reasoningBlock: ContentBlock.ReasoningContentMember = {
+          reasoningContent: {
+            reasoningText: {
+              signature: thinkingBlock.signature,
+              text: thinkingBlock.text,
+            },
+          },
+        };
+
+        message.content.unshift(reasoningBlock);
+        injectedCount++;
       }
     }
-    // Remove empty messages
-    const messagesBeforeFilter = bedrockMessages.length;
-    bedrockMessages.splice(
-      0,
-      bedrockMessages.length,
-      ...bedrockMessages.filter((msg) => msg.content && msg.content.length > 0),
-    );
-    if (filteredCount > 0) {
-      logger.debug("[Message Converter] Filtered reasoningContent for Deepseek model", {
-        blocksFiltered: filteredCount,
-        emptyMessagesRemoved: messagesBeforeFilter - bedrockMessages.length,
-      });
+  }
+
+  if (injectedCount > 0) {
+    logger.debug("[Message Converter] Injected thinking into assistant messages", {
+      count: injectedCount,
+      signatureLength: thinkingBlock.signature.length,
+      textLength: thinkingBlock.text.length,
+    });
+  }
+}
+
+/**
+ * Check if a part is an image data part
+ */
+function isImageDataPart(part: unknown): part is ImageDataPart {
+  return (
+    typeof part === "object" &&
+    part != null &&
+    "mimeType" in part &&
+    typeof part.mimeType === "string" &&
+    "data" in part &&
+    types.isUint8Array(part.data)
+  );
+}
+
+/**
+ * Merge content into last message or append new message
+ */
+function mergeOrAppendMessage(
+  messages: BedrockMessage[],
+  content: ContentBlock[],
+  role: ConversationRole,
+  hasToolResults: boolean,
+  userMessageIndicesWithToolResults: number[],
+): void {
+  if (content.length === 0) return;
+
+  const lastMessage = messages.at(-1);
+  if (lastMessage?.role === role && lastMessage.content !== undefined) {
+    // Merge content into the last message
+    logger.debug(`[Message Converter] Merging consecutive ${role} messages`);
+    lastMessage.content.push(...content);
+
+    // Update hasToolResults tracking for merged message (only for user messages)
+    if (role === ConversationRole.USER && hasToolResults) {
+      const lastIndex = messages.length - 1;
+      if (!userMessageIndicesWithToolResults.includes(lastIndex)) {
+        userMessageIndicesWithToolResults.push(lastIndex);
+      }
+    }
+  } else {
+    // Append new message
+    messages.push({ content, role });
+
+    // Track tool results (only for user messages)
+    if (role === ConversationRole.USER && hasToolResults) {
+      userMessageIndicesWithToolResults.push(messages.length - 1);
+    }
+  }
+}
+
+/**
+ * Process all parts of an assistant message
+ */
+function processAssistantMessageParts(msg: vscode.LanguageModelChatMessage): ContentBlock[] {
+  const content: ContentBlock[] = [];
+
+  for (const part of msg.content) {
+    if (part instanceof vscode.LanguageModelTextPart) {
+      const block = processTextPart(part);
+      if (block) content.push(block);
+    } else if (isImageDataPart(part)) {
+      const block = processImagePart(part, ConversationRole.ASSISTANT);
+      if (block) content.push(block);
+    } else if (part instanceof vscode.LanguageModelToolCallPart) {
+      content.push(processToolCallPart(part));
     }
   }
 
-  return { messages: bedrockMessages, system: systemMessages };
+  return content;
+}
+
+/**
+ * Process image data part from message content
+ */
+function processImagePart(part: ImageDataPart, role: ConversationRole): ContentBlock | null {
+  try {
+    const mime = new MIMEType(part.mimeType);
+    if (mime.type === "image") {
+      const format = mime.subtype.toLowerCase();
+      if (format === "png" || format === "jpeg" || format === "gif" || format === "webp") {
+        logger.debug(`[Message Converter] Added image block to ${role} message`, { format });
+        return {
+          image: {
+            format,
+            source: {
+              bytes: part.data,
+            },
+          },
+        } satisfies ContentBlock.ImageMember;
+      } else {
+        logger.warn(`[Message Converter] Unsupported image format in ${role} message`, { format });
+      }
+    }
+  } catch (error) {
+    logger.warn(`[Message Converter] Invalid MIME type in ${role} message`, {
+      error: error instanceof Error ? error.message : inspect(error),
+      mimeType: part.mimeType,
+    });
+  }
+  return null;
+}
+
+/**
+ * Process all parts of a system message
+ */
+function processSystemMessageParts(msg: vscode.LanguageModelChatMessage): SystemContentBlock[] {
+  const systemBlocks: SystemContentBlock[] = [];
+
+  for (const part of msg.content) {
+    if (part instanceof vscode.LanguageModelTextPart && part.value.trim()) {
+      systemBlocks.push({ text: part.value });
+    }
+  }
+
+  return systemBlocks;
+}
+
+/**
+ * Process text part from message content
+ */
+function processTextPart(part: vscode.LanguageModelTextPart): ContentBlock | null {
+  // Skip empty text parts - Bedrock API rejects blank text fields
+  if (!part.value.trim()) {
+    return null;
+  }
+  return { text: part.value };
+}
+
+/**
+ * Process tool call part from assistant message content
+ */
+function processToolCallPart(part: vscode.LanguageModelToolCallPart): ContentBlock {
+  return {
+    toolUse: {
+      input: part.input as DocumentType,
+      name: part.name,
+      toolUseId: part.callId,
+    },
+  };
+}
+
+/**
+ * Process tool result part from user message content
+ */
+function processToolResultPart(
+  part: vscode.LanguageModelToolResultPart,
+  profile: ModelProfile,
+): ContentBlock {
+  const textContent = extractToolResultText(part.content);
+
+  // Log complete VSCode tool result part
+  logger.debug("[Message Converter] Processing VSCode tool result:", {
+    allProperties: Object.keys(part),
+    callId: part.callId,
+    contentType: typeof part.content,
+    hasIsError: "isError" in part,
+    isArray: Array.isArray(part.content),
+    isError: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
+    textLength: textContent.length,
+    textPreview: textContent.slice(0, 200),
+  });
+
+  const partContent = part.content;
+  const isJson =
+    profile.toolResultFormat === "json" &&
+    typeof partContent === "object" &&
+    partContent != null &&
+    !Array.isArray(partContent);
+  const contentBlock: ToolResultContentBlock = isJson
+    ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
+    : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
+
+  // Detect errors from content
+  const isLikelyError = detectToolResultError(textContent);
+  const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
+
+  logger.debug("[Message Converter] Error status decision:", {
+    contentPreview: textContent.slice(0, 100),
+    detectedFromContent: isLikelyError,
+    hasIsErrorProperty: "isError" in part,
+    isErrorValue: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
+    modelSupportsStatus: profile.supportsToolResultStatus,
+    resultingStatus: status,
+  });
+
+  logger.debug("[Message Converter] Created Bedrock tool result:", {
+    format: isJson ? "json" : "text",
+    hasContent: true,
+    status,
+    toolUseId: part.callId,
+  });
+
+  return {
+    toolResult: {
+      content: [contentBlock],
+      toolUseId: part.callId,
+      ...(status ? { status } : {}),
+    },
+  } satisfies ContentBlock.ToolResultMember;
+}
+
+/**
+ * Process all parts of a user message
+ */
+function processUserMessageParts(
+  msg: vscode.LanguageModelChatMessage,
+  profile: ModelProfile,
+): { content: ContentBlock[]; hasToolResults: boolean } {
+  const content: ContentBlock[] = [];
+  let hasToolResults = false;
+
+  for (const part of msg.content) {
+    if (part instanceof vscode.LanguageModelTextPart) {
+      const block = processTextPart(part);
+      if (block) content.push(block);
+    } else if (isImageDataPart(part)) {
+      const block = processImagePart(part, ConversationRole.USER);
+      if (block) content.push(block);
+    } else if (part instanceof vscode.LanguageModelToolResultPart) {
+      hasToolResults = true;
+      content.push(processToolResultPart(part, profile));
+    }
+  }
+
+  return { content, hasToolResults };
 }
