@@ -435,16 +435,13 @@ function processToolResultPart(
 ): ContentBlock {
   const textContent = extractToolResultText(part.content);
 
-  // Log complete VSCode tool result part
+  // Log diagnostics without leaking content
   logger.debug("[Message Converter] Processing VSCode tool result:", {
-    allProperties: Object.keys(part),
     callId: part.callId,
     contentType: typeof part.content,
     hasIsError: "isError" in part,
     isArray: Array.isArray(part.content),
-    isError: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
     textLength: textContent.length,
-    textPreview: textContent.slice(0, 200),
   });
 
   const partContent = part.content;
@@ -457,15 +454,17 @@ function processToolResultPart(
     ? ({ json: partContent } satisfies ToolResultContentBlock.JsonMember)
     : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
 
-  // Detect errors from content
-  const isLikelyError = detectToolResultError(textContent);
+  // Detect errors from explicit flag (when present) or content
+  const explicitIsError =
+    "isError" in part ? Boolean((part as Record<string, unknown>).isError) : false;
+  const isLikelyError = explicitIsError || detectToolResultError(textContent);
   const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
 
   logger.debug("[Message Converter] Error status decision:", {
-    contentPreview: textContent.slice(0, 100),
-    detectedFromContent: isLikelyError,
+    contentLength: textContent.length,
+    detectedFromContent: !explicitIsError && isLikelyError,
+    explicitIsError,
     hasIsErrorProperty: "isError" in part,
-    isErrorValue: "isError" in part ? (part as Record<string, unknown>).isError : undefined,
     modelSupportsStatus: profile.supportsToolResultStatus,
     resultingStatus: status,
   });
