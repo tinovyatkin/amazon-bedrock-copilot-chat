@@ -114,6 +114,10 @@ export default defineConfig([
       ],
       "no-duplicate-imports": "off",
       "@typescript-eslint/no-shadow": "error",
+      "@typescript-eslint/no-unnecessary-type-conversion": "error",
+      "@typescript-eslint/prefer-readonly": "error",
+      "@typescript-eslint/promise-function-async": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
   },
   {

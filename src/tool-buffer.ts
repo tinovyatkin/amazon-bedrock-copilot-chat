@@ -6,9 +6,9 @@ interface ToolCall {
 }
 
 export class ToolBuffer {
-  private emittedIndices = new Set<number>();
-  private inputBuffers = new Map<number, string>();
-  private tools = new Map<number, ToolCall>();
+  private readonly emittedIndices = new Set<number>();
+  private readonly inputBuffers = new Map<number, string>();
+  private readonly tools = new Map<number, ToolCall>();
 
   appendInput(index: number, inputChunk: string): void {
     const current = this.inputBuffers.get(index) ?? "";

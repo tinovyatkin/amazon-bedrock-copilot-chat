@@ -23,7 +23,7 @@ export class BedrockAPIClient {
   private bedrockRuntimeClient: BedrockRuntimeClient;
   // Cache for inference profile ID -> base model ID mappings
   // This avoids repeated API calls to GetInferenceProfile
-  private inferenceProfileCache = new Map<string, string>();
+  private readonly inferenceProfileCache = new Map<string, string>();
   private profileName?: string;
 
   private region: string;
