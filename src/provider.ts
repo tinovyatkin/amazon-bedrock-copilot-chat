@@ -32,10 +32,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   private lastThinkingBlock?: ThinkingBlock;
   private readonly streamProcessor: StreamProcessor;
 
-  constructor(
-    private readonly globalState: vscode.Memento,
-    private readonly userAgent: string,
-  ) {
+  constructor(private readonly globalState: vscode.Memento) {
     // Initialize with default region - will be updated on first use
     this.client = new BedrockAPIClient("us-east-1", undefined);
     this.streamProcessor = new StreamProcessor();

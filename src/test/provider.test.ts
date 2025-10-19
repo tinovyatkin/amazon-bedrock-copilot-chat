@@ -8,14 +8,11 @@ import { BedrockChatModelProvider } from "../provider";
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
-      const provider = new BedrockChatModelProvider(
-        {
-          get: async () => {},
-          keys: () => [],
-          update: async () => {},
-        },
-        "GitHubCopilotChat/test VSCode/test",
-      );
+      const provider = new BedrockChatModelProvider({
+        get: async () => {},
+        keys: () => [],
+        update: async () => {},
+      });
 
       const infos = await provider.prepareLanguageModelChatInformation(
         { silent: true },
@@ -25,14 +22,11 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("provideTokenCount counts simple string", async () => {
-      const provider = new BedrockChatModelProvider(
-        {
-          get: async () => {},
-          keys: () => [],
-          update: async () => {},
-        },
-        "GitHubCopilotChat/test VSCode/test",
-      );
+      const provider = new BedrockChatModelProvider({
+        get: async () => {},
+        keys: () => [],
+        update: async () => {},
+      });
 
       const est = await provider.provideTokenCount(
         {
