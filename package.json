@@ -140,7 +140,9 @@
     "@aws-sdk/client-bedrock-runtime": "^3.908.0",
     "@aws-sdk/client-ssm": "^3.912.0",
     "@aws-sdk/credential-providers": "^3.908.0",
-    "@smithy/shared-ini-file-loader": "^4.3.3"
+    "@smithy/shared-ini-file-loader": "^4.3.3",
+    "@smithy/util-retry": "^4.2.3",
+    "smithy-node-native-fetch": "^1.2.1"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.5.0",

@@ -1,3 +1,4 @@
+import type { BedrockClientConfig } from "@aws-sdk/client-bedrock";
 import {
   BedrockClient,
   GetFoundationModelAvailabilityCommand,
@@ -6,6 +7,7 @@ import {
   ModelModality,
   paginateListInferenceProfiles,
 } from "@aws-sdk/client-bedrock";
+import type { BedrockRuntimeClientConfig } from "@aws-sdk/client-bedrock-runtime";
 import {
   BedrockRuntimeClient,
   ConverseStreamCommand,
@@ -14,7 +16,8 @@ import {
   CountTokensCommand,
   type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
-import { fromIni } from "@aws-sdk/credential-providers";
+import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
+import * as nodeNativeFetch from "smithy-node-native-fetch";
 
 import { logger } from "./logger";
 import type { BedrockModelSummary } from "./types";
@@ -195,18 +198,20 @@ export class BedrockAPIClient {
     return response.stream;
   }
 
-  private getClientConfig() {
+  private getClientConfig(): BedrockClientConfig & BedrockRuntimeClientConfig {
     return {
-      credentials: this.getCredentials(),
+      ...nodeNativeFetch,
+      profile: this.profileName,
       region: this.region,
+      retryStrategy: new AdaptiveRetryStrategy(
+        async () => 10, // maxAttempts provider function
+        {
+          rateLimiter: new DefaultRateLimiter({
+            beta: 0.5, // Conservative smoothing factor (default is 0.7)
+          }),
+        },
+      ),
     };
-  }
-
-  private getCredentials() {
-    if (this.profileName) {
-      return fromIni({ profile: this.profileName });
-    }
-    // Use default credentials chain if no profile specified
   }
 
   private recreateClients(): void {

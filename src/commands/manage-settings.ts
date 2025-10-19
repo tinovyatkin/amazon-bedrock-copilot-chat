@@ -1,4 +1,5 @@
 import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
+import * as nodeNativeFetch from "smithy-node-native-fetch";
 import * as vscode from "vscode";
 
 import { listAwsProfiles } from "../aws-profiles";
@@ -12,7 +13,7 @@ export async function getBedrockRegionsFromSSM(
   providedLogger?: typeof logger,
 ): Promise<string[]> {
   if (AWS_REGIONS.size === 0) {
-    const client = new SSMClient({ region: "us-east-1" });
+    const client = new SSMClient({ region: "us-east-1", ...nodeNativeFetch });
 
     try {
       // AWS maintains service availability info in SSM Parameter Store

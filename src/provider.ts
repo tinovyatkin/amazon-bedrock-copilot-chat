@@ -1,21 +1,21 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
-import {
-  type ConverseStreamCommandInput,
-  type CountTokensCommandInput,
-  type Message,
-  type SystemContentBlock,
-  type ToolConfiguration,
+import type {
+  ConverseStreamCommandInput,
+  CountTokensCommandInput,
+  Message,
+  SystemContentBlock,
+  ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
-import * as vscode from "vscode";
-import {
-  type CancellationToken,
-  type LanguageModelChatInformation,
-  type LanguageModelChatMessage,
-  type LanguageModelChatProvider,
-  type LanguageModelResponsePart,
-  type Progress,
+import type {
+  CancellationToken,
+  LanguageModelChatInformation,
+  LanguageModelChatMessage,
+  LanguageModelChatProvider,
+  LanguageModelResponsePart,
+  Progress,
 } from "vscode";
+import * as vscode from "vscode";
 
 import { BedrockAPIClient } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
