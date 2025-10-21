@@ -503,7 +503,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     }
 
     if (options.modelOptions) {
-      const mo = options.modelOptions as Record<string, unknown>;
+      const mo = options.modelOptions;
       if (typeof mo.top_p === "number") {
         requestInput.inferenceConfig!.topP = mo.top_p;
       }

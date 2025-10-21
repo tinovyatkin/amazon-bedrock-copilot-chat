@@ -1,5 +1,10 @@
-import type { ConverseStreamOutput } from "@aws-sdk/client-bedrock-runtime";
-import { StopReason } from "@aws-sdk/client-bedrock-runtime";
+import type {
+  ConverseStreamOutput,
+  GuardrailAssessment,
+  GuardrailTraceAssessment,
+  ReasoningContentBlockDelta,
+} from "@aws-sdk/client-bedrock-runtime";
+import { GuardrailContentPolicyAction, StopReason } from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
 import { type CancellationToken, type LanguageModelResponsePart, type Progress } from "vscode";
 
@@ -187,11 +192,7 @@ export class StreamProcessor {
       guardrailData,
     });
 
-    if (
-      typeof guardrailData === "object" &&
-      guardrailData != null &&
-      hasBlockedGuardrail(guardrailData as Record<string, unknown>)
-    ) {
+    if (hasBlockedGuardrail(guardrailData)) {
       logger.error(
         "[Stream Processor] ⚠️ GUARDRAIL BLOCKED - Content was blocked by AWS Bedrock Guardrails",
         {
@@ -205,7 +206,7 @@ export class StreamProcessor {
   }
 
   private handleReasoningDelta(
-    reasoningContent: undefined | { signature?: string; text?: string },
+    reasoningContent: ReasoningContentBlockDelta | undefined,
     state: ProcessingState,
   ): void {
     const reasoningText = reasoningContent?.text;
@@ -220,7 +221,7 @@ export class StreamProcessor {
       state.capturedThinkingBlock.text += reasoningText;
     }
 
-    if (reasoningSignature && typeof reasoningSignature === "string") {
+    if (typeof reasoningSignature === "string") {
       state.capturedThinkingBlock ??= { text: "" };
       state.capturedThinkingBlock.signature =
         (state.capturedThinkingBlock.signature ?? "") + reasoningSignature;
@@ -228,9 +229,7 @@ export class StreamProcessor {
         "[Stream Processor] Reasoning signature delta received, total length:",
         state.capturedThinkingBlock.signature.length,
       );
-    }
-
-    if (!reasoningText && !reasoningSignature) {
+    } else if (!reasoningText) {
       logger.trace(
         "[Stream Processor] Reasoning content delta with empty content (initialization)",
       );
@@ -404,29 +403,31 @@ export class StreamProcessor {
  * Recursively checks if an assessment contains a detected and blocked guardrail policy
  * Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L950-L977
  */
-function findDetectedAndBlockedPolicy(input: unknown): boolean {
-  // Check if input is a dictionary/object
-  if (typeof input === "object" && input !== null && !Array.isArray(input)) {
-    const obj = input as Record<string, unknown>;
-    // Check if current object has action: BLOCKED and detected: true
-    if (obj.action === "BLOCKED" && obj.detected === true) {
-      return true;
-    }
-
-    // Recursively check all values in the object
-    for (const value of Object.values(obj)) {
-      if (typeof value === "object" && value !== null && findDetectedAndBlockedPolicy(value)) {
-        return true;
-      }
-    }
-  } else if (Array.isArray(input)) {
+function findDetectedAndBlockedPolicy(input: GuardrailAssessment | GuardrailAssessment[]): boolean {
+  if (Array.isArray(input)) {
     // Handle case where input is an array
     for (const item of input) {
       if (findDetectedAndBlockedPolicy(item)) {
         return true;
       }
     }
+    return false;
   }
+
+  // Check if input is a dictionary/object
+  const obj = input as Record<string, unknown>;
+  // Check if current object has action: BLOCKED and detected: true
+  if (obj.action === GuardrailContentPolicyAction.BLOCKED && obj.detected === true) {
+    return true;
+  }
+
+  // Recursively check all values in the object
+  for (const value of Object.values(obj)) {
+    if (typeof value === "object" && value !== null && findDetectedAndBlockedPolicy(value)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -434,9 +435,8 @@ function findDetectedAndBlockedPolicy(input: unknown): boolean {
  * Check if guardrail data contains any blocked policies
  * Reference: https://github.com/strands-agents/sdk-python/blob/dbf6200d104539217dddfc7bd729c53f46e2ec56/src/strands/models/bedrock.py#L637-L650
  */
-function hasBlockedGuardrail(guardrailData: Record<string, unknown>): boolean {
-  const inputAssessment = guardrailData.inputAssessment as Record<string, unknown> | undefined;
-  const outputAssessments = guardrailData.outputAssessments as Record<string, unknown> | undefined;
+function hasBlockedGuardrail(guardrailData: GuardrailTraceAssessment): boolean {
+  const { inputAssessment, outputAssessments } = guardrailData;
 
   // Check input assessments
   if (inputAssessment) {
