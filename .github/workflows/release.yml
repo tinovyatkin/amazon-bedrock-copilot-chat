@@ -21,7 +21,7 @@ jobs:
         run: bunx @vscode/vsce package -o extension.vsix
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vsix
           path: extension.vsix
@@ -36,7 +36,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           name: vsix
           path: .
