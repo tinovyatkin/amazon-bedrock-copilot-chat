@@ -30,7 +30,7 @@
         "commitlint": "^20.1.0",
         "eslint": "^9.38.0",
         "eslint-config-prettier": "^10.1.8",
-        "eslint-formatter-compact": "^8.40.0",
+        "eslint-formatter-compact": "^9.0.0",
         "eslint-plugin-perfectionist": "^4.15.1",
         "eslint-plugin-sonarjs": "^3.0.5",
         "eslint-plugin-unicorn": "^61.0.2",
@@ -541,7 +541,7 @@
 
     "eslint-config-prettier": ["eslint-config-prettier@10.1.8", "", { "peerDependencies": { "eslint": ">=7.0.0" }, "bin": "bin/cli.js" }, "sha512-82GZUjRS0p/jganf6q1rEO25VSoHH0hKPCTrgillPjdI/3bgBhAE1QzHrHTizjpRvy6pGAvKjDJtk2pF9NDq8w=="],
 
-    "eslint-formatter-compact": ["eslint-formatter-compact@8.40.0", "", {}, "sha512-cwGUs113TgmTQXecx5kfRjB7m0y2wkDLSadPTE2pK6M/wO4N8PjmUaoWOFNCP9MHgsiZwgqd5bZFnDCnszC56Q=="],
+    "eslint-formatter-compact": ["eslint-formatter-compact@9.0.1", "", {}, "sha512-mBAti2tb403dQGMyilQTYHU80stem3N7jdtKW+tmn5gj3JNF7ki0rgCZtJFw4iMayTH862FTUIqCdp70ug0S0Q=="],
 
     "eslint-plugin-perfectionist": ["eslint-plugin-perfectionist@4.15.1", "", { "dependencies": { "@typescript-eslint/types": "^8.38.0", "@typescript-eslint/utils": "^8.38.0", "natural-orderby": "^5.0.0" }, "peerDependencies": { "eslint": ">=8.45.0" } }, "sha512-MHF0cBoOG0XyBf7G0EAFCuJJu4I18wy0zAoT1OHfx2o6EOx1EFTIzr2HGeuZa1kDcusoX0xJ9V7oZmaeFd773Q=="],
 
