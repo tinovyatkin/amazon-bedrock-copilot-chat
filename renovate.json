@@ -1,4 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"]
+  "extends": ["config:best-practices", ":gitSignOff", ":semanticCommits"],
+  "dependencyDashboard": false,
+  "automerge": true,
+  "platformAutomerge": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "schedule": ["after 9am and before 5pm every weekday", "every weekend"],
+  "timezone": "UTC",
+  "labels": ["dependencies", "renovate"],
+  "commitMessagePrefix": "chore(deps):",
+  "semanticCommits": "enabled",
+  "rebaseWhen": "conflicted",
+  "bumpVersion": "patch"
 }
