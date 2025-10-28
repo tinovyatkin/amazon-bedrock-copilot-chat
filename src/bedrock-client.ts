@@ -17,6 +17,7 @@ import {
   type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
+import type { AwsCredentialIdentity } from "@aws-sdk/types";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
@@ -327,11 +328,13 @@ export class BedrockAPIClient {
       if (!authConfig.accessKeyId || !authConfig.secretAccessKey) {
         return;
       }
-      return {
+      // Static credentials are process-scoped and not refreshed automatically
+      const creds: AwsCredentialIdentity = {
         accessKeyId: authConfig.accessKeyId,
         secretAccessKey: authConfig.secretAccessKey,
         ...(authConfig.sessionToken && { sessionToken: authConfig.sessionToken }),
       };
+      return creds;
     }
   }
 
