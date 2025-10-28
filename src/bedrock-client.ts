@@ -17,13 +17,15 @@ import {
   type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
+import type { AwsCredentialIdentity } from "@aws-sdk/types";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
 import { logger } from "./logger";
-import type { BedrockModelSummary } from "./types";
+import type { AuthConfig, BedrockModelSummary } from "./types";
 
 export class BedrockAPIClient {
+  private authConfig?: AuthConfig;
   private bedrockClient: BedrockClient;
   private bedrockRuntimeClient: BedrockRuntimeClient;
   // Cache for inference profile ID -> base model ID mappings
@@ -245,6 +247,11 @@ export class BedrockAPIClient {
     }
   }
 
+  setAuthConfig(authConfig: AuthConfig | undefined): void {
+    this.authConfig = authConfig;
+    this.recreateClients();
+  }
+
   setProfile(profileName: string | undefined): void {
     this.profileName = profileName;
     this.recreateClients();
@@ -282,9 +289,53 @@ export class BedrockAPIClient {
         },
       ),
     } as BedrockClientConfig & BedrockRuntimeClientConfig;
+
+    // If authConfig is set, use it (new approach)
+    if (this.authConfig) {
+      const credentials = this.getCredentials(this.authConfig);
+      return credentials ? { ...base, credentials } : base;
+    }
+
+    // Otherwise, use profileName (legacy approach for backward compatibility)
     return this.profileName
       ? { ...base, credentials: fromIni({ profile: this.profileName }) }
       : base;
+  }
+
+  /**
+   * Get AWS credentials based on the authentication configuration.
+   * For API key authentication, sets the AWS_BEARER_TOKEN_BEDROCK environment variable.
+   * @param authConfig Authentication configuration
+   * @returns Credentials provider or undefined for default credentials
+   */
+  private getCredentials(authConfig: AuthConfig) {
+    if (authConfig.method === "api-key") {
+      // API key is passed via environment variable
+      if (authConfig.apiKey) {
+        process.env.AWS_BEARER_TOKEN_BEDROCK = authConfig.apiKey;
+      }
+      return;
+    }
+
+    // Clear API key from environment if not using api-key method
+    delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+
+    if (authConfig.method === "profile") {
+      return authConfig.profile ? fromIni({ profile: authConfig.profile }) : undefined;
+    }
+
+    if (authConfig.method === "access-keys") {
+      if (!authConfig.accessKeyId || !authConfig.secretAccessKey) {
+        return;
+      }
+      // Static credentials are process-scoped and not refreshed automatically
+      const creds: AwsCredentialIdentity = {
+        accessKeyId: authConfig.accessKeyId,
+        secretAccessKey: authConfig.secretAccessKey,
+        ...(authConfig.sessionToken && { sessionToken: authConfig.sessionToken }),
+      };
+      return creds;
+    }
   }
 
   private recreateClients(): void {

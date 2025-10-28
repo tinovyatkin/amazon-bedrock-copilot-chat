@@ -5,14 +5,25 @@ import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
 import { BedrockChatModelProvider } from "../provider";
 
+// Mock implementations extracted to avoid function nesting depth issues
+const mockSecretStorage = {
+  delete: async () => {},
+  get: async () => undefined as string | undefined,
+  keys: async () => [],
+  onDidChange: () => ({ dispose: () => {} }),
+  store: async () => {},
+} as vscode.SecretStorage;
+
+const mockGlobalState: vscode.Memento = {
+  get: async () => {},
+  keys: () => [],
+  update: async () => {},
+} as unknown as vscode.Memento;
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
-      const provider = new BedrockChatModelProvider({
-        get: async () => {},
-        keys: () => [],
-        update: async () => {},
-      });
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
 
       const infos = await provider.prepareLanguageModelChatInformation(
         { silent: true },
@@ -22,11 +33,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("provideTokenCount counts simple string", async () => {
-      const provider = new BedrockChatModelProvider({
-        get: async () => {},
-        keys: () => [],
-        update: async () => {},
-      });
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
 
       const est = await provider.provideTokenCount(
         {

@@ -15,12 +15,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(outputChannel);
 
-  const provider = new BedrockChatModelProvider(context.globalState);
+  const provider = new BedrockChatModelProvider(context.secrets, context.globalState);
   vscode.lm.registerLanguageModelChatProvider("bedrock", provider);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("bedrock.manage", async () => {
-      await manageSettings(context.globalState);
+      await manageSettings(context.secrets, context.globalState);
     }),
   );
 }

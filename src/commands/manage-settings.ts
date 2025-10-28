@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { listAwsProfiles } from "../aws-profiles";
 import { logger } from "../logger";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
+import type { AuthMethod } from "../types";
 
 const AWS_REGIONS = new Set<string>();
 
@@ -42,13 +43,33 @@ export async function getBedrockRegionsFromSSM(
   return [...AWS_REGIONS].toSorted((r1, r2) => r1.localeCompare(r2, undefined, { numeric: true }));
 }
 
-export async function manageSettings(globalState: vscode.Memento): Promise<void> {
+export async function manageSettings(
+  secrets: vscode.SecretStorage,
+  globalState: vscode.Memento,
+): Promise<void> {
   const settings = await getBedrockSettings(globalState);
+  const currentAuthMethod = globalState.get<AuthMethod>("bedrock.authMethod") ?? "profile";
 
   const action = await vscode.window.showQuickPick(
     [
-      { label: "Set AWS Profile", value: "profile" as const },
-      { label: "Set Region", value: "region" as const },
+      {
+        description: `Current: ${currentAuthMethod}`,
+        label: "Set Authentication Method",
+        value: "auth-method" as const,
+      },
+      {
+        description:
+          currentAuthMethod === "profile"
+            ? `Current: ${settings.profile ?? "Default"}`
+            : "Only for profile auth",
+        label: "Set AWS Profile",
+        value: "profile" as const,
+      },
+      {
+        description: `Current: ${settings.region}`,
+        label: "Set Region",
+        value: "region" as const,
+      },
       { label: "Clear Settings", value: "clear" as const },
     ],
     {
@@ -60,8 +81,12 @@ export async function manageSettings(globalState: vscode.Memento): Promise<void>
   if (!action) return;
 
   switch (action.value) {
+    case "auth-method": {
+      await handleAuthMethodSelection(secrets, globalState);
+      break;
+    }
     case "clear": {
-      await handleClearSettings(globalState);
+      await handleClearSettings(secrets, globalState);
       break;
     }
     case "profile": {
@@ -100,6 +125,7 @@ async function askConfigurationScope(): Promise<undefined | vscode.Configuration
 
 async function clearAllSettings(
   config: vscode.WorkspaceConfiguration,
+  secrets: vscode.SecretStorage,
   globalState: vscode.Memento,
 ): Promise<void> {
   const configKeys = [
@@ -118,11 +144,23 @@ async function clearAllSettings(
   ]);
 
   const globalStateUpdates = [
+    globalState.update("bedrock.authMethod", undefined),
     globalState.update("bedrock.profile", undefined),
     globalState.update("bedrock.region", undefined),
   ];
 
-  const results = await Promise.allSettled([...configUpdates, ...globalStateUpdates]);
+  const secretUpdates = [
+    secrets.delete("bedrock.apiKey"),
+    secrets.delete("bedrock.accessKeyId"),
+    secrets.delete("bedrock.secretAccessKey"),
+    secrets.delete("bedrock.sessionToken"),
+  ];
+
+  const results = await Promise.allSettled([
+    ...configUpdates,
+    ...globalStateUpdates,
+    ...secretUpdates,
+  ]);
   const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
   if (failures.length > 0) {
     throw new AggregateError(
@@ -132,9 +170,145 @@ async function clearAllSettings(
   }
 }
 
-async function handleClearSettings(globalState: vscode.Memento): Promise<void> {
+async function clearAuthSettings(
+  secrets: vscode.SecretStorage,
+  globalState: vscode.Memento,
+): Promise<void> {
+  await Promise.all([
+    secrets.delete("bedrock.apiKey"),
+    secrets.delete("bedrock.accessKeyId"),
+    secrets.delete("bedrock.secretAccessKey"),
+    secrets.delete("bedrock.sessionToken"),
+    globalState.update("bedrock.profile", undefined),
+  ]);
+}
+
+async function handleAccessKeysSetup(secrets: vscode.SecretStorage): Promise<void> {
+  const accessKeyId = await vscode.window.showInputBox({
+    ignoreFocusOut: true,
+    password: true,
+    prompt: "Enter your AWS access key ID",
+    title: "AWS Access Key ID",
+  });
+
+  if (accessKeyId === undefined) return;
+
+  if (!accessKeyId.trim()) {
+    vscode.window.showWarningMessage("Access key ID cannot be empty.");
+    return;
+  }
+
+  const secretAccessKey = await vscode.window.showInputBox({
+    ignoreFocusOut: true,
+    password: true,
+    prompt: "Enter your AWS secret access key",
+    title: "AWS Secret Access Key",
+  });
+
+  if (secretAccessKey === undefined) return;
+
+  if (!secretAccessKey.trim()) {
+    vscode.window.showWarningMessage("Secret access key cannot be empty.");
+    return;
+  }
+
+  const sessionToken = await vscode.window.showInputBox({
+    ignoreFocusOut: true,
+    password: true,
+    prompt: "Enter your AWS session token (leave empty if not needed)",
+    title: "AWS Session Token (Optional)",
+  });
+
+  if (sessionToken === undefined) return;
+
+  await secrets.store("bedrock.accessKeyId", accessKeyId.trim());
+  await secrets.store("bedrock.secretAccessKey", secretAccessKey.trim());
+
+  if (sessionToken?.trim()) {
+    await secrets.store("bedrock.sessionToken", sessionToken.trim());
+  }
+
+  vscode.window.showInformationMessage("AWS access keys saved securely.");
+}
+
+async function handleApiKeySetup(secrets: vscode.SecretStorage): Promise<void> {
+  const apiKey = await vscode.window.showInputBox({
+    ignoreFocusOut: true,
+    password: true,
+    prompt: "Enter your AWS Bedrock API key (bearer token)",
+    title: "AWS Bedrock API Key",
+  });
+
+  if (apiKey === undefined) return;
+
+  if (!apiKey.trim()) {
+    vscode.window.showWarningMessage("API key cannot be empty.");
+    return;
+  }
+
+  await secrets.store("bedrock.apiKey", apiKey.trim());
+  vscode.window.showInformationMessage("AWS Bedrock API key saved securely.");
+}
+
+async function handleAuthMethodSelection(
+  secrets: vscode.SecretStorage,
+  globalState: vscode.Memento,
+): Promise<void> {
+  const method = await vscode.window.showQuickPick(
+    [
+      {
+        description: "Use AWS named profile from ~/.aws/credentials (recommended)",
+        label: "AWS Profile",
+        value: "profile" as const,
+      },
+      {
+        description: "Use AWS Bedrock API key (bearer token)",
+        label: "API Key",
+        value: "api-key" as const,
+      },
+      {
+        description: "Use AWS access key ID and secret",
+        label: "Access Keys",
+        value: "access-keys" as const,
+      },
+    ],
+    {
+      ignoreFocusOut: true,
+      placeHolder: "Choose how to authenticate with AWS Bedrock",
+      title: "Select Authentication Method",
+    },
+  );
+
+  if (!method) return;
+
+  // Clear existing auth settings before setting new method
+  await clearAuthSettings(secrets, globalState);
+  await globalState.update("bedrock.authMethod", method.value);
+
+  switch (method.value) {
+    case "access-keys": {
+      await handleAccessKeysSetup(secrets);
+      break;
+    }
+    case "api-key": {
+      await handleApiKeySetup(secrets);
+      break;
+    }
+    case "profile": {
+      // For profile, prompt to set it up
+      const settings = await getBedrockSettings(globalState);
+      await handleProfileSelection(settings.profile, globalState);
+      break;
+    }
+  }
+}
+
+async function handleClearSettings(
+  secrets: vscode.SecretStorage,
+  globalState: vscode.Memento,
+): Promise<void> {
   const config = vscode.workspace.getConfiguration("bedrock");
-  await clearAllSettings(config, globalState);
+  await clearAllSettings(config, secrets, globalState);
   vscode.window.showInformationMessage("Amazon Bedrock settings cleared from all scopes.");
 }
 
