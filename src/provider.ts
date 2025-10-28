@@ -24,6 +24,7 @@ import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
 import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
+import type { AuthConfig, AuthMethod } from "./types";
 import { validateBedrockMessages } from "./validation";
 
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
@@ -32,7 +33,10 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   private lastThinkingBlock?: ThinkingBlock;
   private readonly streamProcessor: StreamProcessor;
 
-  constructor(private readonly globalState: vscode.Memento) {
+  constructor(
+    private readonly secrets: vscode.SecretStorage,
+    private readonly globalState: vscode.Memento,
+  ) {
     // Initialize with default region - will be updated on first use
     this.client = new BedrockAPIClient("us-east-1", undefined);
     this.streamProcessor = new StreamProcessor();
@@ -68,8 +72,19 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // If "Use Default Credentials" was selected, continue with the fetch
     }
 
+    const authConfig = await this.getAuthConfig(options.silent);
+    if (!authConfig) {
+      if (!options.silent) {
+        vscode.window.showErrorMessage(
+          "AWS Bedrock authentication not configured. Please run 'Manage Amazon Bedrock Provider'.",
+        );
+      }
+      return [];
+    }
+
     this.client.setRegion(settings.region);
     this.client.setProfile(settings.profile);
+    this.client.setAuthConfig(authConfig);
 
     try {
       // Create AbortController for cancellation support
@@ -310,6 +325,15 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
+      // Get authentication configuration
+      const authConfig = await this.getAuthConfig();
+      if (!authConfig) {
+        throw new Error("AWS Bedrock authentication not configured");
+      }
+
+      // Configure client with authentication
+      this.client.setAuthConfig(authConfig);
+
       // Log incoming messages
       this.logIncomingMessages(messages);
 
@@ -719,6 +743,66 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       }
       return estimateTokens();
     }
+  }
+
+  /**
+   * Get authentication configuration based on the stored auth method.
+   * Retrieves credentials from SecretStorage for sensitive data (API keys, access keys)
+   * and from globalState for non-sensitive data (profile name, auth method).
+   * @param silent If true, don't prompt for missing credentials
+   * @returns AuthConfig or undefined if authentication is not configured
+   */
+  private async getAuthConfig(silent = false): Promise<AuthConfig | undefined> {
+    const method = this.globalState.get<AuthMethod>("bedrock.authMethod") ?? "profile";
+
+    if (method === "api-key") {
+      let apiKey = await this.secrets.get("bedrock.apiKey");
+      if (!apiKey && !silent) {
+        const entered = await vscode.window.showInputBox({
+          ignoreFocusOut: true,
+          password: true,
+          prompt: "Enter your AWS Bedrock API key",
+          title: "AWS Bedrock API Key",
+        });
+        if (entered?.trim()) {
+          apiKey = entered.trim();
+          await this.secrets.store("bedrock.apiKey", apiKey);
+        }
+      }
+      if (!apiKey) {
+        return undefined;
+      }
+      return { apiKey, method: "api-key" };
+    }
+
+    if (method === "profile") {
+      const settings = await getBedrockSettings(this.globalState);
+      return { method: "profile", profile: settings.profile };
+    }
+
+    if (method === "access-keys") {
+      const accessKeyId = await this.secrets.get("bedrock.accessKeyId");
+      const secretAccessKey = await this.secrets.get("bedrock.secretAccessKey");
+      const sessionToken = await this.secrets.get("bedrock.sessionToken");
+
+      if (!accessKeyId || !secretAccessKey) {
+        if (!silent) {
+          vscode.window.showErrorMessage(
+            "AWS access keys not configured. Please run 'Manage Amazon Bedrock Provider'.",
+          );
+        }
+        return undefined;
+      }
+
+      return {
+        accessKeyId,
+        method: "access-keys",
+        secretAccessKey,
+        ...(sessionToken && { sessionToken }),
+      };
+    }
+
+    return undefined;
   }
 
   /**
