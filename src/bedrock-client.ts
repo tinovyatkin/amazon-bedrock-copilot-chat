@@ -16,6 +16,7 @@ import {
   CountTokensCommand,
   type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
+import { fromIni } from "@aws-sdk/credential-providers";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
@@ -269,9 +270,8 @@ export class BedrockAPIClient {
   }
 
   private getClientConfig(): BedrockClientConfig & BedrockRuntimeClientConfig {
-    return {
+    const base = {
       ...nodeNativeFetch,
-      profile: this.profileName,
       region: this.region,
       retryStrategy: new AdaptiveRetryStrategy(
         async () => 10, // maxAttempts provider function
@@ -281,7 +281,10 @@ export class BedrockAPIClient {
           }),
         },
       ),
-    };
+    } as BedrockClientConfig & BedrockRuntimeClientConfig;
+    return this.profileName
+      ? { ...base, credentials: fromIni({ profile: this.profileName }) }
+      : base;
   }
 
   private recreateClients(): void {
