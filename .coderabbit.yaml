@@ -42,6 +42,11 @@ reviews:
         Do not provide any review comments, suggestions, or analysis.
         Do not flag any issues or violations.
         Simply acknowledge these are test fixtures and skip detailed review.
+    - path: src/vscode.d.ts
+      instructions: |
+        Auto generated VSCode types, automatically downloaded by `dts dev`
+        Do not provide any review comments, suggestions, or analysis.
+        Do not flag any issues or violations.
   path_filters:
     - "!src/vscode.d.ts"
     - "!**/tests/fixtures/**"
