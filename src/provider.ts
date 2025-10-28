@@ -327,8 +327,8 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
-      // Get authentication configuration
-      const authConfig = await this.getAuthConfig();
+      // Get authentication configuration (silent to avoid prompting during active chat)
+      const authConfig = await this.getAuthConfig(true);
       if (!authConfig) {
         throw new Error("AWS Bedrock authentication not configured");
       }
