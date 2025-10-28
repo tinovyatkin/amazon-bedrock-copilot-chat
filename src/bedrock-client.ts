@@ -115,7 +115,7 @@ export class BedrockAPIClient {
       const paginator = paginateListInferenceProfiles(
         { client: this.bedrockClient },
         { typeEquals: "APPLICATION" },
-        abortSignal,
+        { abortSignal },
       );
 
       for await (const page of paginator) {
@@ -174,7 +174,7 @@ export class BedrockAPIClient {
       const paginator = paginateListInferenceProfiles(
         { client: this.bedrockClient },
         {},
-        abortSignal,
+        { abortSignal },
       );
 
       for await (const page of paginator) {
