@@ -12,7 +12,7 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 ## Features
 
 - **Native Amazon Bedrock Integration**: Access Claude, OpenAI OSS, DeepSeek, and other models directly in GitHub Copilot Chat
-- **AWS Profile Support**: Uses AWS named profiles from your `~/.aws/credentials` and `~/.aws/config` files
+- **Flexible Authentication**: Support for AWS Profiles, API Keys (bearer tokens), or Access Keys - all stored securely
 - **Streaming Support**: Real-time streaming responses for faster feedback
 - **Function Calling**: Full support for tool/function calling capabilities
 - **Cross-Region Inference**: Automatic support for cross-region inference profiles
@@ -25,7 +25,7 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 
 - Visual Studio Code version 1.104.0 or higher
 - GitHub Copilot extension
-- AWS credentials configured in `~/.aws/credentials` or `~/.aws/config`
+- AWS credentials (AWS Profile, API Key, or Access Keys)
 - Access to Amazon Bedrock in your AWS account
 
 ## Installation
@@ -37,19 +37,21 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 
 ## Configuration
 
-### Setting up AWS Profiles
+### Authentication Methods
 
-This extension uses AWS named profiles from your AWS configuration files. You can:
+This extension supports three authentication methods:
 
-1. Use the default AWS credentials chain (no profile selected)
-2. Select a specific named profile from your AWS configuration
+1. **AWS Profile** (recommended) - Uses named profiles from `~/.aws/credentials` and `~/.aws/config`
+2. **API Key** - Uses AWS Bedrock bearer token (stored securely in VSCode SecretStorage)
+3. **Access Keys** - Uses AWS access key ID and secret (stored securely in VSCode SecretStorage)
 
 To configure:
 
 1. Open the Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`)
 2. Run "Manage Amazon Bedrock Provider"
-3. Choose "Set AWS Profile" to select from your available profiles
-4. Choose "Set Region" to select your preferred AWS region
+3. Choose "Set Authentication Method" to select your preferred method
+4. Follow the prompts to enter credentials
+5. Choose "Set Region" to select your preferred AWS region
 
 ### Available Regions
 
