@@ -97,6 +97,74 @@ export class BedrockAPIClient {
     }
   }
 
+  /**
+   * Fetch application inference profiles (custom user-created profiles).
+   * These profiles are matched to foundation models to inherit their capabilities.
+   *
+   * @param foundationModels List of foundation models to match profiles against
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns Array of application profiles as BedrockModelSummary objects
+   */
+  async fetchApplicationInferenceProfiles(
+    foundationModels: BedrockModelSummary[],
+    abortSignal?: AbortSignal,
+  ): Promise<BedrockModelSummary[]> {
+    try {
+      const profiles: BedrockModelSummary[] = [];
+      const paginator = paginateListInferenceProfiles(
+        { client: this.bedrockClient },
+        { typeEquals: "APPLICATION" },
+        abortSignal,
+      );
+
+      for await (const page of paginator) {
+        // Check if the operation was cancelled
+        if (abortSignal?.aborted) {
+          const error = new Error("Operation cancelled");
+          error.name = "AbortError";
+          throw error;
+        }
+
+        for (const profile of page.inferenceProfileSummaries ?? []) {
+          if (!profile.inferenceProfileId || profile.status !== "ACTIVE") {
+            continue;
+          }
+
+          // Match profile to a foundation model to inherit capabilities
+          // Extract base model ID from the profile's models array (same pattern as resolveModelId)
+          let matchedModel: BedrockModelSummary | undefined;
+
+          if (profile.models && profile.models.length > 0) {
+            const baseModelId = profile.models[0].modelArn?.split("/").pop();
+            if (baseModelId) {
+              matchedModel = foundationModels.find((fm) => fm.modelId === baseModelId);
+            }
+          }
+
+          // Create profile summary with inherited or default capabilities
+          profiles.push({
+            customizationsSupported: matchedModel?.customizationsSupported,
+            inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
+            inputModalities: matchedModel?.inputModalities ?? [],
+            modelArn: profile.inferenceProfileArn ?? "",
+            modelId: profile.inferenceProfileId,
+            modelLifecycle: matchedModel?.modelLifecycle ?? { status: "" },
+            modelName: profile.inferenceProfileName ?? profile.inferenceProfileId,
+            outputModalities: matchedModel?.outputModalities ?? [],
+            providerName: matchedModel?.providerName ?? "Application Inference Profile",
+            responseStreamingSupported: matchedModel?.responseStreamingSupported ?? false,
+          });
+        }
+      }
+
+      logger.debug(`[Bedrock API Client] Found ${profiles.length} application inference profiles`);
+      return profiles;
+    } catch (error) {
+      logger.error("[Bedrock API Client] Failed to fetch application inference profiles", error);
+      return [];
+    }
+  }
+
   async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
     try {
       const profileIds = new Set<string>();

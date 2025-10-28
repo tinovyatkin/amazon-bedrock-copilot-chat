@@ -91,6 +91,12 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
             this.client.fetchInferenceProfiles(abortController.signal),
           ]);
 
+          // Fetch application inference profiles after we have foundation models
+          const applicationProfiles = await this.client.fetchApplicationInferenceProfiles(
+            models,
+            abortController.signal,
+          );
+
           const regionPrefix = settings.region.split("-")[0];
 
           // First, filter models by basic requirements and build candidate list
@@ -192,6 +198,44 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               version: "1.0.0",
             };
             infos.push(modelInfo);
+          }
+
+          // Add application inference profiles
+          progress?.report({
+            message: `Processing ${applicationProfiles.length} application profiles...`,
+          });
+
+          for (const profile of applicationProfiles) {
+            // Filter profiles similar to foundation models - must support streaming and text output
+            if (
+              !profile.responseStreamingSupported ||
+              !profile.outputModalities.includes(ModelModality.TEXT)
+            ) {
+              logger.debug(
+                `[Bedrock Model Provider] Excluding application profile: ${profile.modelId} (no streaming or text output)`,
+              );
+              continue;
+            }
+
+            const limits = getModelTokenLimits(profile.modelId, settings.context1M.enabled);
+            const maxInput = limits.maxInputTokens;
+            const maxOutput = limits.maxOutputTokens;
+            const vision = profile.inputModalities.includes(ModelModality.IMAGE);
+
+            const profileInfo: LanguageModelChatInformation = {
+              capabilities: {
+                imageInput: vision,
+                toolCalling: true,
+              },
+              family: "bedrock",
+              id: profile.modelId,
+              maxInputTokens: maxInput,
+              maxOutputTokens: maxOutput,
+              name: profile.modelName,
+              tooltip: `Amazon Bedrock - ${profile.providerName} (Application Inference Profile)`,
+              version: "1.0.0",
+            };
+            infos.push(profileInfo);
           }
 
           this.chatEndpoints = infos.map((info) => ({
