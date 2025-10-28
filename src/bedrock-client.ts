@@ -16,6 +16,7 @@ import {
   CountTokensCommand,
   type CountTokensCommandInput,
 } from "@aws-sdk/client-bedrock-runtime";
+import { fromIni } from "@aws-sdk/credential-providers";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
@@ -97,13 +98,83 @@ export class BedrockAPIClient {
     }
   }
 
+  /**
+   * Fetch application inference profiles (custom user-created profiles).
+   * These profiles are matched to foundation models to inherit their capabilities.
+   *
+   * @param foundationModels List of foundation models to match profiles against
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns Array of application profiles as BedrockModelSummary objects
+   */
+  async fetchApplicationInferenceProfiles(
+    foundationModels: BedrockModelSummary[],
+    abortSignal?: AbortSignal,
+  ): Promise<BedrockModelSummary[]> {
+    try {
+      const profiles: BedrockModelSummary[] = [];
+      const paginator = paginateListInferenceProfiles(
+        { client: this.bedrockClient },
+        { typeEquals: "APPLICATION" },
+        { abortSignal },
+      );
+
+      for await (const page of paginator) {
+        // Check if the operation was cancelled
+        if (abortSignal?.aborted) {
+          const error = new Error("Operation cancelled");
+          error.name = "AbortError";
+          throw error;
+        }
+
+        for (const profile of page.inferenceProfileSummaries ?? []) {
+          if (!profile.inferenceProfileId || profile.status !== "ACTIVE") {
+            continue;
+          }
+
+          // Match profile to a foundation model to inherit capabilities
+          // Extract base model ID from the profile's models array (same pattern as resolveModelId)
+          let matchedModel: BedrockModelSummary | undefined;
+          let baseModelId: string | undefined;
+
+          if (profile.models && profile.models.length > 0) {
+            baseModelId = profile.models[0].modelArn?.split("/").pop();
+            if (baseModelId) {
+              matchedModel = foundationModels.find((fm) => fm.modelId === baseModelId);
+            }
+          }
+
+          // Create profile summary with inherited or default capabilities
+          profiles.push({
+            baseModelId,
+            customizationsSupported: matchedModel?.customizationsSupported,
+            inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
+            inputModalities: matchedModel?.inputModalities ?? [],
+            modelArn: profile.inferenceProfileArn ?? "",
+            modelId: profile.inferenceProfileId,
+            modelLifecycle: matchedModel?.modelLifecycle ?? { status: "" },
+            modelName: profile.inferenceProfileName ?? profile.inferenceProfileId,
+            outputModalities: matchedModel?.outputModalities ?? [],
+            providerName: matchedModel?.providerName ?? "Application Inference Profile",
+            responseStreamingSupported: matchedModel?.responseStreamingSupported ?? false,
+          });
+        }
+      }
+
+      logger.debug(`[Bedrock API Client] Found ${profiles.length} application inference profiles`);
+      return profiles;
+    } catch (error) {
+      logger.error("[Bedrock API Client] Failed to fetch application inference profiles", error);
+      return [];
+    }
+  }
+
   async fetchInferenceProfiles(abortSignal?: AbortSignal): Promise<Set<string>> {
     try {
       const profileIds = new Set<string>();
       const paginator = paginateListInferenceProfiles(
         { client: this.bedrockClient },
         {},
-        abortSignal,
+        { abortSignal },
       );
 
       for await (const page of paginator) {
@@ -199,9 +270,8 @@ export class BedrockAPIClient {
   }
 
   private getClientConfig(): BedrockClientConfig & BedrockRuntimeClientConfig {
-    return {
+    const base = {
       ...nodeNativeFetch,
-      profile: this.profileName,
       region: this.region,
       retryStrategy: new AdaptiveRetryStrategy(
         async () => 10, // maxAttempts provider function
@@ -211,7 +281,10 @@ export class BedrockAPIClient {
           }),
         },
       ),
-    };
+    } as BedrockClientConfig & BedrockRuntimeClientConfig;
+    return this.profileName
+      ? { ...base, credentials: fromIni({ profile: this.profileName }) }
+      : base;
   }
 
   private recreateClients(): void {
@@ -227,15 +300,16 @@ export class BedrockAPIClient {
    * For inference profiles, this uses the GetInferenceProfile API
    * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
    *
-   * Inference profiles have format: {prefix}.{model-id}
-   * Examples:
+   * Inference profiles have various formats:
    * - Regional: "us.anthropic.claude-sonnet-4-20250514-v1:0" (routes to specific regions)
    * - Global: "global.anthropic.claude-sonnet-4-5-20250929-v1:0" (routes across all regions)
+   * - Application: "ip-..." (custom user-created profiles)
+   * - ARN: "arn:aws:bedrock:region:account:inference-profile/..." (full ARN format)
    *
    * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
    * start with a known inference profile prefix.
    *
-   * @param modelId The model ID or inference profile ID
+   * @param modelId The model ID or inference profile ID/ARN
    * @param abortSignal Optional AbortSignal to cancel the request
    * @returns The base model ID (may be the same as input if not an inference profile)
    */
@@ -251,11 +325,17 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional: starts with 2-3 letter region code (us, eu, ap, sa, etc.)
-    // - Global: starts with "global"
-    // Examples: us.*, eu.*, ap.*, global.*, etc.
-    const inferenceProfilePattern = /^(global|[a-z]{2,3})\./;
-    if (!inferenceProfilePattern.test(modelId)) {
+    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
+    // - Application: starts with "ip-" (ip-...)
+    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...)
+    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
+    const arnProfilePattern = /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:inference-profile\//;
+    const appProfileIdPattern = /^ip-[a-z0-9]+/i;
+    const looksLikeProfile =
+      dotProfilePattern.test(modelId) ||
+      arnProfilePattern.test(modelId) ||
+      appProfileIdPattern.test(modelId);
+    if (!looksLikeProfile) {
       // Not an inference profile, return as-is
       return modelId;
     }
