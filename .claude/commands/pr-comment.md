@@ -6,7 +6,7 @@ You are handling a GitHub PR review comment. Follow this procedure exactly:
 
 The user will provide a URL in this format:
 
-```
+```text
 https://github.com/<owner>/<repo>/pull/<PR_NUMBER>#discussion_r<COMMENT_ID>
 ```
 
@@ -54,7 +54,7 @@ After applying all changes:
 1. Stage the changed files
 2. Create a commit with this format:
 
-   ```
+   ```text
    fix: address PR review comment
 
    <brief description of what was changed>
