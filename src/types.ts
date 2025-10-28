@@ -1,14 +1,16 @@
 /**
  * Authentication configuration for AWS Bedrock.
+ * Discriminated union ensures type-safe field combinations.
  */
-export interface AuthConfig {
-  accessKeyId?: string;
-  apiKey?: string;
-  method: AuthMethod;
-  profile?: string;
-  secretAccessKey?: string;
-  sessionToken?: string;
-}
+export type AuthConfig =
+  | {
+      accessKeyId: string;
+      method: "access-keys";
+      secretAccessKey: string;
+      sessionToken?: string;
+    }
+  | { apiKey: string; method: "api-key"; }
+  | { method: "profile"; profile?: string };
 
 /**
  * Authentication method for AWS Bedrock.
