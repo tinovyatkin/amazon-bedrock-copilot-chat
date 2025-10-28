@@ -83,7 +83,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     }
 
     this.client.setRegion(settings.region);
-    this.client.setProfile(settings.profile);
+    if (authConfig.method === "profile") {
+      this.client.setProfile(settings.profile);
+    }
     this.client.setAuthConfig(authConfig);
 
     try {
