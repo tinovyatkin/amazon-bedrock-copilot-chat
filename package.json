@@ -124,6 +124,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.913.0",
     "@aws-sdk/client-ssm": "^3.913.0",
     "@aws-sdk/credential-providers": "^3.913.0",
+    "@aws-sdk/protocol-http": "^3.374.0",
     "@smithy/shared-ini-file-loader": "^4.3.3",
     "@smithy/util-retry": "^4.2.3",
     "smithy-node-native-fetch": "^1.2.1"
@@ -138,7 +139,7 @@
     "@stylistic/eslint-plugin": "5.5.0",
     "@types/mocha": "10.0.10",
     "@types/node": "22.18.12",
-    "@types/vscode": "1.105.0",
+    "@types/vscode": "1.104.0",
     "@typescript/native-preview": "7.0.0-dev.20251027.1",
     "@vscode/dts": "0.4.1",
     "@vscode/test-cli": "0.0.12",
