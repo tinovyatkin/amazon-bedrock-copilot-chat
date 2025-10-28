@@ -133,9 +133,10 @@ export class BedrockAPIClient {
           // Match profile to a foundation model to inherit capabilities
           // Extract base model ID from the profile's models array (same pattern as resolveModelId)
           let matchedModel: BedrockModelSummary | undefined;
+          let baseModelId: string | undefined;
 
           if (profile.models && profile.models.length > 0) {
-            const baseModelId = profile.models[0].modelArn?.split("/").pop();
+            baseModelId = profile.models[0].modelArn?.split("/").pop();
             if (baseModelId) {
               matchedModel = foundationModels.find((fm) => fm.modelId === baseModelId);
             }
@@ -143,11 +144,12 @@ export class BedrockAPIClient {
 
           // Create profile summary with inherited or default capabilities
           profiles.push({
+            baseModelId,
             customizationsSupported: matchedModel?.customizationsSupported,
             inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
             inputModalities: matchedModel?.inputModalities ?? [],
             modelArn: profile.inferenceProfileArn ?? "",
-            modelId: profile.inferenceProfileId,
+            modelId: profile.inferenceProfileArn ?? profile.inferenceProfileId,
             modelLifecycle: matchedModel?.modelLifecycle ?? { status: "" },
             modelName: profile.inferenceProfileName ?? profile.inferenceProfileId,
             outputModalities: matchedModel?.outputModalities ?? [],

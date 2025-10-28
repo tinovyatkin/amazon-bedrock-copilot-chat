@@ -217,7 +217,9 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
               continue;
             }
 
-            const limits = getModelTokenLimits(profile.modelId, settings.context1M.enabled);
+            // Use base model ID for token limits (falls back to profile ID if not available)
+            const modelIdForLimits = profile.baseModelId ?? profile.modelId;
+            const limits = getModelTokenLimits(modelIdForLimits, settings.context1M.enabled);
             const maxInput = limits.maxInputTokens;
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
