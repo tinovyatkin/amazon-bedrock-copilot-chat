@@ -6,12 +6,13 @@ import { logger } from "../logger";
 import { BedrockChatModelProvider } from "../provider";
 
 // Mock implementations extracted to avoid function nesting depth issues
-const mockSecretStorage: vscode.SecretStorage = {
+const mockSecretStorage = {
   delete: async () => {},
   get: async () => undefined as string | undefined,
+  keys: async () => [],
   onDidChange: () => ({ dispose: () => {} }),
   store: async () => {},
-};
+} as vscode.SecretStorage;
 
 const mockGlobalState: vscode.Memento = {
   get: async () => {},
