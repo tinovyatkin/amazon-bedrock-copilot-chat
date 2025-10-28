@@ -300,15 +300,16 @@ export class BedrockAPIClient {
    * For inference profiles, this uses the GetInferenceProfile API
    * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
    *
-   * Inference profiles have format: {prefix}.{model-id}
-   * Examples:
+   * Inference profiles have various formats:
    * - Regional: "us.anthropic.claude-sonnet-4-20250514-v1:0" (routes to specific regions)
    * - Global: "global.anthropic.claude-sonnet-4-5-20250929-v1:0" (routes across all regions)
+   * - Application: "ip-..." (custom user-created profiles)
+   * - ARN: "arn:aws:bedrock:region:account:inference-profile/..." (full ARN format)
    *
    * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
    * start with a known inference profile prefix.
    *
-   * @param modelId The model ID or inference profile ID
+   * @param modelId The model ID or inference profile ID/ARN
    * @param abortSignal Optional AbortSignal to cancel the request
    * @returns The base model ID (may be the same as input if not an inference profile)
    */
@@ -324,11 +325,17 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional: starts with 2-3 letter region code (us, eu, ap, sa, etc.)
-    // - Global: starts with "global"
-    // Examples: us.*, eu.*, ap.*, global.*, etc.
-    const inferenceProfilePattern = /^(global|[a-z]{2,3})\./;
-    if (!inferenceProfilePattern.test(modelId)) {
+    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
+    // - Application: starts with "ip-" (ip-...)
+    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...)
+    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
+    const arnProfilePattern = /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:inference-profile\//;
+    const appProfileIdPattern = /^ip-[a-z0-9]+/i;
+    const looksLikeProfile =
+      dotProfilePattern.test(modelId) ||
+      arnProfilePattern.test(modelId) ||
+      appProfileIdPattern.test(modelId);
+    if (!looksLikeProfile) {
       // Not an inference profile, return as-is
       return modelId;
     }
