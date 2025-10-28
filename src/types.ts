@@ -9,7 +9,7 @@ export type AuthConfig =
       secretAccessKey: string;
       sessionToken?: string;
     }
-  | { apiKey: string; method: "api-key"; }
+  | { apiKey: string; method: "api-key" }
   | { method: "profile"; profile?: string };
 
 /**
