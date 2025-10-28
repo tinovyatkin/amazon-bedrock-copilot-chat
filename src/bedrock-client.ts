@@ -150,7 +150,7 @@ export class BedrockAPIClient {
             inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
             inputModalities: matchedModel?.inputModalities ?? [],
             modelArn: profile.inferenceProfileArn ?? "",
-            modelId: profile.inferenceProfileArn ?? profile.inferenceProfileId,
+            modelId: profile.inferenceProfileId,
             modelLifecycle: matchedModel?.modelLifecycle ?? { status: "" },
             modelName: profile.inferenceProfileName ?? profile.inferenceProfileId,
             outputModalities: matchedModel?.outputModalities ?? [],
