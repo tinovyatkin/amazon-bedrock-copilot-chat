@@ -399,6 +399,11 @@ async function handleRegionSelection(
 async function promptForManualRegion(
   cancellationToken?: vscode.CancellationToken,
 ): Promise<string | undefined> {
+  // Inform the user why manual input is needed
+  vscode.window.showInformationMessage(
+    "Unable to fetch Bedrock regions automatically. Please enter your AWS region manually.",
+  );
+
   const region = await vscode.window.showInputBox(
     {
       ignoreFocusOut: true,
