@@ -404,33 +404,35 @@ async function promptForManualRegion(
     "Unable to fetch Bedrock regions automatically. Please enter your AWS region manually.",
   );
 
-  const region = await vscode.window.showInputBox(
-    {
-      ignoreFocusOut: true,
-      prompt: "Enter the AWS region you want to use",
-      title: "AWS Region",
-    },
-    cancellationToken,
-  );
-
-  if (region === undefined) return;
-
-  const trimmedRegion = region.trim().toLowerCase();
-
-  if (!trimmedRegion) {
-    vscode.window.showWarningMessage("Region cannot be empty.");
-    return;
-  }
-
-  // Validate AWS region format (e.g., us-east-1, eu-west-2)
-  const regionPattern = /^[a-z]{2}(-[a-z]+)?-[a-z]+-\d+$/;
-
-  if (!regionPattern.test(trimmedRegion)) {
-    vscode.window.showWarningMessage(
-      "Invalid AWS region. Please enter a region such as us-east-1.",
+  while (true) {
+    const region = await vscode.window.showInputBox(
+      {
+        ignoreFocusOut: true,
+        prompt: "Enter the AWS region you want to use",
+        title: "AWS Region",
+      },
+      cancellationToken,
     );
-    return;
-  }
 
-  return trimmedRegion;
+    if (region === undefined) return;
+
+    const trimmedRegion = region.trim().toLowerCase();
+
+    if (!trimmedRegion) {
+      vscode.window.showWarningMessage("Region cannot be empty.");
+      continue;
+    }
+
+    // Validate AWS region format (e.g., us-east-1, eu-west-2)
+    const regionPattern = /^[a-z]{2}(-[a-z]+)?-[a-z]+-\d+$/;
+
+    if (!regionPattern.test(trimmedRegion)) {
+      vscode.window.showWarningMessage(
+        "Invalid AWS region. Please enter a region such as us-east-1.",
+      );
+      continue;
+    }
+
+    return trimmedRegion;
+  }
 }
