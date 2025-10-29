@@ -35,8 +35,6 @@ export async function getBedrockRegionsFromSSM(
     } catch (error) {
       providedLogger?.error("Error fetching Bedrock regions from SSM", error);
     }
-
-    if (AWS_REGIONS.size === 0) AWS_REGIONS.add("us-east-1");
   }
 
   // sorting regions to keep geographies together
@@ -367,15 +365,20 @@ async function handleRegionSelection(
   });
 
   try {
-    const region = await vscode.window.showQuickPick(
-      getBedrockRegionsFromSSM(abortController.signal, logger),
-      {
-        ignoreFocusOut: true,
-        placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
-        title: "Amazon Bedrock Region",
-      },
-      cancellationToken.token,
-    );
+    const regions = await getBedrockRegionsFromSSM(abortController.signal, logger);
+
+    const region: string | undefined =
+      regions.length === 0
+        ? await promptForManualRegion(cancellationToken.token)
+        : await vscode.window.showQuickPick(
+            regions,
+            {
+              ignoreFocusOut: true,
+              placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
+              title: "Amazon Bedrock Region",
+            },
+            cancellationToken.token,
+          );
 
     if (!region) return;
 
@@ -390,5 +393,46 @@ async function handleRegionSelection(
     );
   } finally {
     cancellationToken.dispose();
+  }
+}
+
+async function promptForManualRegion(
+  cancellationToken?: vscode.CancellationToken,
+): Promise<string | undefined> {
+  // Inform the user why manual input is needed
+  vscode.window.showInformationMessage(
+    "Unable to fetch Bedrock regions automatically. Please enter your AWS region manually.",
+  );
+
+  while (true) {
+    const region = await vscode.window.showInputBox(
+      {
+        ignoreFocusOut: true,
+        prompt: "Enter the AWS region you want to use",
+        title: "AWS Region",
+      },
+      cancellationToken,
+    );
+
+    if (region === undefined) return;
+
+    const trimmedRegion = region.trim().toLowerCase();
+
+    if (!trimmedRegion) {
+      vscode.window.showWarningMessage("Region cannot be empty.");
+      continue;
+    }
+
+    // Validate AWS region format (e.g., us-east-1, eu-west-2)
+    const regionPattern = /^[a-z]{2}(-[a-z]+)?-[a-z]+-\d+$/;
+
+    if (!regionPattern.test(trimmedRegion)) {
+      vscode.window.showWarningMessage(
+        "Invalid AWS region. Please enter a region such as us-east-1.",
+      );
+      continue;
+    }
+
+    return trimmedRegion;
   }
 }

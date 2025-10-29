@@ -109,21 +109,6 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
     console.log(`✓ SSM parameter path query successful: ${regions.length} regions`);
   });
 
-  test("should return at least us-east-1 as fallback", async function () {
-    this.timeout(30_000);
-
-    const regions = await getBedrockRegionsFromSSM();
-
-    // The function has a fallback that adds 'us-east-1' if no regions are found
-    // In practice, the SSM call should succeed, but this validates the fallback logic
-    assert.ok(
-      regions.includes("us-east-1"),
-      "Should always include us-east-1 (either from SSM or fallback)",
-    );
-
-    console.log("✓ Fallback region (us-east-1) is present");
-  });
-
   test("should return expected region snapshot", async function () {
     this.timeout(30_000);
 
