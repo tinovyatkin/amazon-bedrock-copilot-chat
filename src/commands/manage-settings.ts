@@ -369,7 +369,7 @@ async function handleRegionSelection(
 
     const region: string | undefined =
       regions.length === 0
-        ? await promptForManualRegion()
+        ? await promptForManualRegion(cancellationToken.token)
         : await vscode.window.showQuickPick(
             regions,
             {
@@ -396,12 +396,17 @@ async function handleRegionSelection(
   }
 }
 
-async function promptForManualRegion(): Promise<string | undefined> {
-  const region = await vscode.window.showInputBox({
-    ignoreFocusOut: true,
-    prompt: "Enter the AWS region you want to use",
-    title: "AWS Region",
-  });
+async function promptForManualRegion(
+  cancellationToken?: vscode.CancellationToken,
+): Promise<string | undefined> {
+  const region = await vscode.window.showInputBox(
+    {
+      ignoreFocusOut: true,
+      prompt: "Enter the AWS region you want to use",
+      title: "AWS Region",
+    },
+    cancellationToken,
+  );
 
   if (region === undefined) return;
 
