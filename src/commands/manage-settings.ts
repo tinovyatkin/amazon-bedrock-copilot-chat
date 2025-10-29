@@ -417,5 +417,15 @@ async function promptForManualRegion(
     return;
   }
 
+  // Validate AWS region format (e.g., us-east-1, eu-west-2)
+  const regionPattern = /^[a-z]{2}(-[a-z]+)?-[a-z]+-\d+$/;
+
+  if (!regionPattern.test(trimmedRegion)) {
+    vscode.window.showWarningMessage(
+      "Invalid AWS region. Please enter a region such as us-east-1.",
+    );
+    return;
+  }
+
   return trimmedRegion;
 }
