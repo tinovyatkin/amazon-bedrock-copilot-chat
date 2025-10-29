@@ -35,8 +35,6 @@ export async function getBedrockRegionsFromSSM(
     } catch (error) {
       providedLogger?.error("Error fetching Bedrock regions from SSM", error);
     }
-
-    if (AWS_REGIONS.size === 0) AWS_REGIONS.add("us-east-1");
   }
 
   // sorting regions to keep geographies together
@@ -367,15 +365,20 @@ async function handleRegionSelection(
   });
 
   try {
-    const region = await vscode.window.showQuickPick(
-      getBedrockRegionsFromSSM(abortController.signal, logger),
-      {
-        ignoreFocusOut: true,
-        placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
-        title: "Amazon Bedrock Region",
-      },
-      cancellationToken.token,
-    );
+    const regions = await getBedrockRegionsFromSSM(abortController.signal, logger);
+
+    const region: string | undefined =
+      regions.length === 0
+        ? await promptForManualRegion()
+        : await vscode.window.showQuickPick(
+            regions,
+            {
+              ignoreFocusOut: true,
+              placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
+              title: "Amazon Bedrock Region",
+            },
+            cancellationToken.token,
+          );
 
     if (!region) return;
 
@@ -391,4 +394,23 @@ async function handleRegionSelection(
   } finally {
     cancellationToken.dispose();
   }
+}
+
+async function promptForManualRegion(): Promise<string | undefined> {
+  const region = await vscode.window.showInputBox({
+    ignoreFocusOut: true,
+    prompt: "Enter the AWS region you want to use",
+    title: "AWS Region",
+  });
+
+  if (region === undefined) return;
+
+  const trimmedRegion = region.trim().toLowerCase();
+
+  if (!trimmedRegion) {
+    vscode.window.showWarningMessage("Region cannot be empty.");
+    return;
+  }
+
+  return trimmedRegion;
 }
