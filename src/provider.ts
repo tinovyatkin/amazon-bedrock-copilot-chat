@@ -247,7 +247,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
                 toolCalling: true,
               },
               family: "bedrock",
-              id: profile.modelId,
+              id: profile.modelArn,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: profile.modelName,
