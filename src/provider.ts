@@ -272,7 +272,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 toolCalling: true,
               },
               family: "bedrock",
-              id: profile.modelId,
+              id: profile.modelArn,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: profile.modelName,
