@@ -149,6 +149,10 @@ The extension automatically filters models to show only text generation models (
 4. Ensure your AWS account has access to Bedrock in the selected region
 5. Check the "Bedrock Chat" output channel for error messages
 
+## Maintainer Notes
+
+- VS Code's `secrets.onDidChange` event is global to the workspace and fires for any extension that updates secrets. It cannot be filtered by key. To avoid noisy refreshes in the Bedrock provider, secret-change handling is debounced (~400ms) and coalesces rapid or unrelated updates into a single refresh.
+
 ### Authentication errors
 
 1. Verify your AWS credentials are valid and not expired

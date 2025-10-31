@@ -18,6 +18,8 @@ CLAUDE.md
 bun*
 .*
 .github
+docs/
+*.chatreplay.json
 renovate.json
 !README.md
 !CHANGELOG.md
