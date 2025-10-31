@@ -28,6 +28,10 @@ import type { AuthConfig, AuthMethod } from "./types";
 import { validateBedrockMessages } from "./validation";
 
 export class BedrockChatModelProvider implements LanguageModelChatProvider {
+  // Event to notify VS Code that model information has changed
+  private readonly _onDidChangeLanguageModelInformation = new vscode.EventEmitter<void>();
+  readonly onDidChangeLanguageModelInformation = this._onDidChangeLanguageModelInformation.event;
+
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
   private lastThinkingBlock?: ThinkingBlock;
@@ -40,6 +44,16 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
     // Initialize with default region - will be updated on first use
     this.client = new BedrockAPIClient("us-east-1", undefined);
     this.streamProcessor = new StreamProcessor();
+  }
+
+  /**
+   * Notify the workbench that the available model information should be refreshed.
+   * Hooked up from extension activation to configuration, secrets, and model selection changes.
+   */
+  public notifyModelInformationChanged(reason?: string): void {
+    const suffix = reason ? `: ${reason}` : "";
+    logger.debug(`[Bedrock Model Provider] Signaling model info refresh${suffix}`);
+    this._onDidChangeLanguageModelInformation.fire();
   }
 
   async prepareLanguageModelChatInformation(

@@ -23,6 +23,32 @@ export function activate(context: vscode.ExtensionContext) {
       await manageSettings(context.secrets, context.globalState);
     }),
   );
+
+  // Refresh provider model list when relevant things change so UI updates immediately
+  const cfgDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
+    if (
+      e.affectsConfiguration("bedrock.region") ||
+      e.affectsConfiguration("bedrock.profile") ||
+      e.affectsConfiguration("bedrock.preferredModel") ||
+      e.affectsConfiguration("bedrock.context1M.enabled") ||
+      e.affectsConfiguration("bedrock.promptCaching.enabled") ||
+      e.affectsConfiguration("bedrock.thinking.enabled") ||
+      e.affectsConfiguration("bedrock.thinking.budgetTokens")
+    ) {
+      provider.notifyModelInformationChanged("configuration changed");
+    }
+  });
+
+  const secretsDisposable = context.secrets.onDidChange(() => {
+    provider.notifyModelInformationChanged("secrets changed");
+  });
+
+  // When user selects/deselects models in the global quick pick, mirror that to refresh lists
+  const lmDisposable = vscode.lm.onDidChangeChatModels(() => {
+    provider.notifyModelInformationChanged("selected chat models changed");
+  });
+
+  context.subscriptions.push(cfgDisposable, secretsDisposable, lmDisposable);
 }
 
 export function deactivate() {
