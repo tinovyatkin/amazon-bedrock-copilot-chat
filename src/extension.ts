@@ -49,6 +49,14 @@ export function activate(context: vscode.ExtensionContext) {
     }, 400);
   });
 
+  // Clear any pending debounce timer on extension dispose to prevent firing after cleanup
+  const secretsDebounceDisposable = new vscode.Disposable(() => {
+    if (secretsRefreshHandle) {
+      clearTimeout(secretsRefreshHandle);
+      secretsRefreshHandle = undefined;
+    }
+  });
+
   // When user selects/deselects models in the global quick pick, mirror that to refresh lists
   const lmDisposable = vscode.lm.onDidChangeChatModels(() => {
     provider.notifyModelInformationChanged("selected chat models changed");
@@ -61,6 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
     manageCmdDisposable,
     cfgDisposable,
     secretsDisposable,
+    secretsDebounceDisposable,
     lmDisposable,
   );
 }
