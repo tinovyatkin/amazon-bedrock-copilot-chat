@@ -1,4 +1,6 @@
 import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
+import { fromIni } from "@aws-sdk/credential-providers";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 import * as vscode from "vscode";
 
@@ -12,9 +14,19 @@ const AWS_REGIONS = new Set<string>();
 export async function getBedrockRegionsFromSSM(
   abortSignal?: AbortSignal,
   providedLogger?: typeof logger,
+  options?: { globalState?: vscode.Memento; secrets?: vscode.SecretStorage },
 ): Promise<string[]> {
   if (AWS_REGIONS.size === 0) {
-    const client = new SSMClient({ region: "us-east-1", ...nodeNativeFetch });
+    // Prefer previously provided credentials (profile or access keys) if available
+    const credentials = options
+      ? await resolveSsmCredentials(options.globalState, options.secrets)
+      : undefined;
+
+    const client = new SSMClient({
+      region: "us-east-1",
+      ...(credentials ? { credentials } : {}),
+      ...nodeNativeFetch,
+    });
 
     try {
       // AWS maintains service availability info in SSM Parameter Store
@@ -92,7 +104,7 @@ export async function manageSettings(
       break;
     }
     case "region": {
-      await handleRegionSelection(settings.region, globalState);
+      await handleRegionSelection(settings.region, globalState, secrets);
       break;
     }
   }
@@ -357,6 +369,7 @@ async function handleProfileSelection(
 async function handleRegionSelection(
   existingRegion: string | undefined,
   globalState: vscode.Memento,
+  secrets?: vscode.SecretStorage,
 ): Promise<void> {
   const abortController = new AbortController();
   const cancellationToken = new vscode.CancellationTokenSource();
@@ -365,7 +378,10 @@ async function handleRegionSelection(
   });
 
   try {
-    const regions = await getBedrockRegionsFromSSM(abortController.signal, logger);
+    const regions = await getBedrockRegionsFromSSM(abortController.signal, logger, {
+      globalState,
+      secrets,
+    });
 
     const region: string | undefined =
       regions.length === 0
@@ -434,5 +450,77 @@ async function promptForManualRegion(
     }
 
     return trimmedRegion;
+  }
+}
+
+/**
+ * Resolve credentials for SSM calls used during region selection.
+ * Priority:
+ * 1) Use selected auth method (access-keys > profile) if configured
+ * 2) Otherwise, fall back to any stored access keys or profile if present
+ * 3) Otherwise, use default provider chain (return undefined)
+ */
+async function resolveSsmCredentials(
+  globalState?: vscode.Memento,
+  secrets?: vscode.SecretStorage,
+): Promise<AwsCredentialIdentity | AwsCredentialIdentityProvider | undefined> {
+  try {
+    const method = globalState?.get<AuthMethod>("bedrock.authMethod") ?? "profile";
+
+    // Helper to read stored profile (from settings helper when possible)
+    const readProfile = async (): Promise<string | undefined> => {
+      try {
+        if (globalState) {
+          const settings = await getBedrockSettings(globalState);
+          return settings.profile ?? undefined;
+        }
+      } catch {
+        // ignore and try config directly
+      }
+      const cfg = vscode.workspace.getConfiguration("bedrock");
+      const prof = cfg.get<null | string>("profile");
+      return prof ?? undefined;
+    };
+
+    // Helper to read access keys from SecretStorage if available
+    const readAccessKeys = async () => {
+      if (!secrets) return undefined as AwsCredentialIdentity | undefined;
+      const accessKeyId = await secrets.get("bedrock.accessKeyId");
+      const secretAccessKey = await secrets.get("bedrock.secretAccessKey");
+      const sessionToken = await secrets.get("bedrock.sessionToken");
+      if (!accessKeyId || !secretAccessKey) return;
+      return {
+        accessKeyId,
+        secretAccessKey,
+        ...(sessionToken ? { sessionToken } : {}),
+      } satisfies AwsCredentialIdentity;
+    };
+
+    // 1) Respect selected auth method when possible
+    if (method === "access-keys") {
+      const ak = await readAccessKeys();
+      if (ak) return ak;
+    }
+    if (method === "profile") {
+      const profile = await readProfile();
+      if (profile) {
+        // Return a refreshing provider from shared ini
+        // Note: SSMClient accepts a provider; typing keeps identity, runtime is fine
+        // Cast to any to satisfy union type without extra imports
+        return fromIni({ profile });
+      }
+    }
+
+    // 2) Fallbacks when method is api-key or above not available
+    const ak = await readAccessKeys();
+    if (ak) return ak;
+    const profile = await readProfile();
+    if (profile) return fromIni({ profile });
+
+    // 3) Default chain
+    return undefined;
+  } catch {
+    // If anything goes wrong, let SDK use default provider chain
+    return undefined;
   }
 }
