@@ -1,6 +1,6 @@
 import { paginateGetParametersByPath, SSMClient } from "@aws-sdk/client-ssm";
 import { fromIni } from "@aws-sdk/credential-providers";
-import type { AwsCredentialIdentity } from "@aws-sdk/types";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 import * as vscode from "vscode";
 
@@ -463,7 +463,7 @@ async function promptForManualRegion(
 async function resolveSsmCredentials(
   globalState?: vscode.Memento,
   secrets?: vscode.SecretStorage,
-): Promise<AwsCredentialIdentity | undefined> {
+): Promise<AwsCredentialIdentity | AwsCredentialIdentityProvider | undefined> {
   try {
     const method = globalState?.get<AuthMethod>("bedrock.authMethod") ?? "profile";
 
@@ -507,7 +507,7 @@ async function resolveSsmCredentials(
         // Return a refreshing provider from shared ini
         // Note: SSMClient accepts a provider; typing keeps identity, runtime is fine
         // Cast to any to satisfy union type without extra imports
-        return fromIni({ profile }) as unknown as AwsCredentialIdentity;
+        return fromIni({ profile });
       }
     }
 
@@ -515,7 +515,7 @@ async function resolveSsmCredentials(
     const ak = await readAccessKeys();
     if (ak) return ak;
     const profile = await readProfile();
-    if (profile) return fromIni({ profile }) as unknown as AwsCredentialIdentity;
+    if (profile) return fromIni({ profile });
 
     // 3) Default chain
     return undefined;
