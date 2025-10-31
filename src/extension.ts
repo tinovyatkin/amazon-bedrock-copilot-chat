@@ -35,8 +35,18 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Debounce secrets changes: this event is global and fires on any secret update
+  // across the workspace (all extensions); cannot filter by key. Debounce to
+  // coalesce rapid or unrelated updates into a single refresh.
+  let secretsRefreshHandle: ReturnType<typeof setTimeout> | undefined;
   const secretsDisposable = context.secrets.onDidChange(() => {
-    provider.notifyModelInformationChanged("secrets changed");
+    if (secretsRefreshHandle) {
+      clearTimeout(secretsRefreshHandle);
+    }
+    secretsRefreshHandle = setTimeout(() => {
+      provider.notifyModelInformationChanged("secrets changed (debounced)");
+      secretsRefreshHandle = undefined;
+    }, 400);
   });
 
   // When user selects/deselects models in the global quick pick, mirror that to refresh lists
