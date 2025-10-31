@@ -47,6 +47,17 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
   }
 
   /**
+   * Dispose resources held by the provider
+   */
+  public dispose(): void {
+    try {
+      this._onDidChangeLanguageModelInformation.dispose();
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
    * Notify the workbench that the available model information should be refreshed.
    * Hooked up from extension activation to configuration, secrets, and model selection changes.
    */

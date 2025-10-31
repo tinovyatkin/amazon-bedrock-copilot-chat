@@ -13,16 +13,12 @@ export function activate(context: vscode.ExtensionContext) {
     "Amazon Bedrock extension activated. For verbose debugging, set log level to Debug via the output channel dropdown menu.",
   );
 
-  context.subscriptions.push(outputChannel);
-
   const provider = new BedrockChatModelProvider(context.secrets, context.globalState);
-  vscode.lm.registerLanguageModelChatProvider("bedrock", provider);
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("bedrock.manage", async () => {
-      await manageSettings(context.secrets, context.globalState);
-    }),
-  );
+  // Register provider and ensure it is disposed with the extension
+  const providerDisposable = vscode.lm.registerLanguageModelChatProvider("bedrock", provider);
+  const manageCmdDisposable = vscode.commands.registerCommand("bedrock.manage", async () => {
+    await manageSettings(context.secrets, context.globalState);
+  });
 
   // Refresh provider model list when relevant things change so UI updates immediately
   const cfgDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -48,7 +44,15 @@ export function activate(context: vscode.ExtensionContext) {
     provider.notifyModelInformationChanged("selected chat models changed");
   });
 
-  context.subscriptions.push(cfgDisposable, secretsDisposable, lmDisposable);
+  context.subscriptions.push(
+    outputChannel,
+    provider,
+    providerDisposable,
+    manageCmdDisposable,
+    cfgDisposable,
+    secretsDisposable,
+    lmDisposable,
+  );
 }
 
 export function deactivate() {
