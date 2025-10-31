@@ -27,7 +27,7 @@ import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod } from "./types";
 import { validateBedrockMessages } from "./validation";
 
-export class BedrockChatModelProvider implements LanguageModelChatProvider {
+export class BedrockChatModelProvider implements vscode.Disposable, LanguageModelChatProvider {
   // Event to notify VS Code that model information has changed
   private readonly _onDidChangeLanguageModelInformation = new vscode.EventEmitter<void>();
   readonly onDidChangeLanguageModelInformation = this._onDidChangeLanguageModelInformation.event;
