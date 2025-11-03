@@ -138,7 +138,7 @@
     "@smithy/types": "4.8.1",
     "@stylistic/eslint-plugin": "5.5.0",
     "@types/mocha": "10.0.10",
-    "@types/node": "22.18.13",
+    "@types/node": "22.19.0",
     "@types/vscode": "1.105.0",
     "@typescript/native-preview": "7.0.0-dev.20251103.1",
     "@vscode/dts": "0.4.1",
