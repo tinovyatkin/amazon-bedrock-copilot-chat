@@ -332,7 +332,7 @@ export class BedrockAPIClient {
       const creds: AwsCredentialIdentity = {
         accessKeyId: authConfig.accessKeyId,
         secretAccessKey: authConfig.secretAccessKey,
-        ...(authConfig.sessionToken && { sessionToken: authConfig.sessionToken }),
+        ...(authConfig.sessionToken ? { sessionToken: authConfig.sessionToken } : {}),
       };
       return creds;
     }

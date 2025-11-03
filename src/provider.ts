@@ -509,7 +509,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           {
             converse: {
               messages: converted.messages,
-              ...(converted.system.length > 0 && { system: converted.system }),
+              ...(converted.system.length > 0 ? { system: converted.system } : {}),
             },
           },
           abortController.signal,
@@ -735,8 +735,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         const countInput: CountTokensCommandInput["input"] = {
           converse: {
             messages: input.messages,
-            ...(input.system && input.system.length > 0 && { system: input.system }),
-            ...(input.toolConfig && { toolConfig: input.toolConfig }),
+            ...(input.system && input.system.length > 0 ? { system: input.system } : {}),
+            ...(input.toolConfig ? { toolConfig: input.toolConfig } : {}),
           },
         };
 
@@ -821,12 +821,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         return undefined;
       }
 
-      return {
+      const result: AuthConfig = {
         accessKeyId,
         method: "access-keys",
         secretAccessKey,
-        ...(sessionToken && { sessionToken }),
       };
+      if (sessionToken) {
+        result.sessionToken = sessionToken;
+      }
+      return result;
     }
 
     return undefined;
