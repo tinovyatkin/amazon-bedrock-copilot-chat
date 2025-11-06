@@ -152,7 +152,7 @@ export class BedrockAPIClient {
             inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
             inputModalities: matchedModel?.inputModalities ?? [],
             modelArn: profile.inferenceProfileArn ?? "",
-            modelId: profile.inferenceProfileId,
+            modelId: profile.inferenceProfileArn ?? "", // Use ARN as ID for inference profiles
             modelLifecycle: matchedModel?.modelLifecycle ?? { status: "" },
             modelName: profile.inferenceProfileName ?? profile.inferenceProfileId,
             outputModalities: matchedModel?.outputModalities ?? [],
@@ -244,6 +244,83 @@ export class BedrockAPIClient {
     } catch (error) {
       logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);
       return false;
+    }
+  }
+
+  /**
+   * Resolve the base model ID for a given model ID or inference profile ID.
+   * For inference profiles, this uses the GetInferenceProfile API
+   * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
+   *
+   * Inference profiles have various formats:
+   * - Regional: "us.anthropic.claude-sonnet-4-20250514-v1:0" (routes to specific regions)
+   * - Global: "global.anthropic.claude-sonnet-4-5-20250929-v1:0" (routes across all regions)
+   * - Application: "ip-..." (custom user-created profiles)
+   * - ARN: "arn:aws:bedrock:region:account:inference-profile/..." (full ARN format)
+   *
+   * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
+   * start with a known inference profile prefix.
+   *
+   * @param modelId The model ID or inference profile ID/ARN
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns The base model ID (may be the same as input if not an inference profile)
+   */
+  async resolveModelId(modelId: string, abortSignal?: AbortSignal): Promise<string> {
+    // Check cache first
+    const cached = this.inferenceProfileCache.get(modelId);
+    if (cached) {
+      logger.trace(
+        `[Bedrock API Client] Using cached model ID for inference profile ${modelId}: ${cached}`,
+      );
+      return cached;
+    }
+
+    // Check if this looks like an inference profile
+    // Patterns:
+    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
+    // - Application: starts with "ip-" (ip-...)
+    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/... or application-inference-profile/...)
+    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
+    const arnProfilePattern =
+      /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
+    const appProfileIdPattern = /^ip-[a-z0-9]+/i;
+    const looksLikeProfile =
+      dotProfilePattern.test(modelId) ||
+      arnProfilePattern.test(modelId) ||
+      appProfileIdPattern.test(modelId);
+    if (!looksLikeProfile) {
+      // Not an inference profile, return as-is
+      return modelId;
+    }
+
+    try {
+      // Try to get the inference profile to resolve the base model ID
+      const command = new GetInferenceProfileCommand({
+        inferenceProfileIdentifier: modelId,
+      });
+
+      const response = await this.bedrockClient.send(command, { abortSignal });
+
+      // Extract the model ID from the models array
+      // According to AWS docs, inference profiles can contain multiple models, but we take the first one
+      const baseModelId = response.models?.[0]?.modelArn?.split("/").pop() ?? modelId;
+
+      // Cache the result
+      this.inferenceProfileCache.set(modelId, baseModelId);
+
+      logger.trace(
+        `[Bedrock API Client] Resolved inference profile ${modelId} to model ID: ${baseModelId}`,
+      );
+
+      return baseModelId;
+    } catch (error) {
+      // If GetInferenceProfile fails, assume it's a regular model ID
+      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
+      logger.trace(
+        `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
+        error,
+      );
+      return modelId;
     }
   }
 
@@ -344,81 +421,5 @@ export class BedrockAPIClient {
 
     // Clear inference profile cache since profiles may differ across regions/credentials
     this.inferenceProfileCache.clear();
-  }
-
-  /**
-   * Resolve the base model ID for a given model ID or inference profile ID.
-   * For inference profiles, this uses the GetInferenceProfile API
-   * to retrieve the underlying model ID. Results are cached to avoid repeated API calls.
-   *
-   * Inference profiles have various formats:
-   * - Regional: "us.anthropic.claude-sonnet-4-20250514-v1:0" (routes to specific regions)
-   * - Global: "global.anthropic.claude-sonnet-4-5-20250929-v1:0" (routes across all regions)
-   * - Application: "ip-..." (custom user-created profiles)
-   * - ARN: "arn:aws:bedrock:region:account:inference-profile/..." (full ARN format)
-   *
-   * Regular model IDs may also contain dots (e.g., "anthropic.claude-...") but don't
-   * start with a known inference profile prefix.
-   *
-   * @param modelId The model ID or inference profile ID/ARN
-   * @param abortSignal Optional AbortSignal to cancel the request
-   * @returns The base model ID (may be the same as input if not an inference profile)
-   */
-  private async resolveModelId(modelId: string, abortSignal?: AbortSignal): Promise<string> {
-    // Check cache first
-    const cached = this.inferenceProfileCache.get(modelId);
-    if (cached) {
-      logger.trace(
-        `[Bedrock API Client] Using cached model ID for inference profile ${modelId}: ${cached}`,
-      );
-      return cached;
-    }
-
-    // Check if this looks like an inference profile
-    // Patterns:
-    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
-    // - Application: starts with "ip-" (ip-...)
-    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...)
-    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
-    const arnProfilePattern = /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:inference-profile\//;
-    const appProfileIdPattern = /^ip-[a-z0-9]+/i;
-    const looksLikeProfile =
-      dotProfilePattern.test(modelId) ||
-      arnProfilePattern.test(modelId) ||
-      appProfileIdPattern.test(modelId);
-    if (!looksLikeProfile) {
-      // Not an inference profile, return as-is
-      return modelId;
-    }
-
-    try {
-      // Try to get the inference profile to resolve the base model ID
-      const command = new GetInferenceProfileCommand({
-        inferenceProfileIdentifier: modelId,
-      });
-
-      const response = await this.bedrockClient.send(command, { abortSignal });
-
-      // Extract the model ID from the models array
-      // According to AWS docs, inference profiles can contain multiple models, but we take the first one
-      const baseModelId = response.models?.[0]?.modelArn?.split("/").pop() ?? modelId;
-
-      // Cache the result
-      this.inferenceProfileCache.set(modelId, baseModelId);
-
-      logger.trace(
-        `[Bedrock API Client] Resolved inference profile ${modelId} to model ID: ${baseModelId}`,
-      );
-
-      return baseModelId;
-    } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID
-      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
-      logger.trace(
-        `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
-        error,
-      );
-      return modelId;
-    }
   }
 }

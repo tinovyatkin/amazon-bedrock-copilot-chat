@@ -336,13 +336,39 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       // Configure client with authentication
       this.client.setAuthConfig(authConfig);
 
+      // Resolve model ID for application inference profiles (ARNs) to base model ID
+      // This is needed because internal logic (getModelProfile, getModelTokenLimits) expects base model IDs
+      // Note: For the actual API call, we still use the original model.id (ARN for app profiles)
+      const abortController = new AbortController();
+      const cancellationListener = token.onCancellationRequested(() => {
+        abortController.abort();
+      });
+
+      let baseModelId: string;
+      try {
+        baseModelId = await this.client.resolveModelId(model.id, abortController.signal);
+        logger.info("[Bedrock Model Provider] Resolved model ID", {
+          originalModelId: model.id,
+          resolvedBaseModelId: baseModelId,
+        });
+      } catch (error) {
+        // If resolution fails, use the original model ID
+        baseModelId = model.id;
+        logger.warn("[Bedrock Model Provider] Failed to resolve model ID, using original", {
+          error: error instanceof Error ? error.message : String(error),
+          modelId: model.id,
+        });
+      } finally {
+        cancellationListener.dispose();
+      }
+
       // Log incoming messages
       this.logIncomingMessages(messages);
 
       // Get settings and model configuration
       const settings = await getBedrockSettings(this.globalState);
-      const modelProfile = getModelProfile(model.id);
-      const modelLimits = getModelTokenLimits(model.id, settings.context1M.enabled);
+      const modelProfile = getModelProfile(baseModelId);
+      const modelLimits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
 
       // Calculate thinking configuration
       const maxTokensForRequest =
@@ -357,7 +383,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
       );
 
       // Convert messages with thinking configuration
-      const converted = convertMessages(messages, model.id, {
+      const converted = convertMessages(messages, baseModelId, {
         extendedThinkingEnabled,
         lastThinkingBlock: this.lastThinkingBlock,
         promptCachingEnabled: settings.promptCaching.enabled,
@@ -371,7 +397,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
       const toolConfig = convertTools(
         options,
-        model.id,
+        baseModelId,
         extendedThinkingEnabled,
         settings.promptCaching.enabled,
       );
@@ -464,6 +490,24 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
         abortController.abort();
       });
 
+      // Resolve model ID for application inference profiles (ARNs) to base model ID
+      // This is needed because convertMessages calls getModelProfile which expects base model IDs
+      let baseModelId: string;
+      try {
+        baseModelId = await this.client.resolveModelId(model.id, abortController.signal);
+        logger.debug("[Bedrock Model Provider] Resolved model ID", {
+          originalModelId: model.id,
+          resolvedBaseModelId: baseModelId,
+        });
+      } catch (error) {
+        // If resolution fails, use the original model ID
+        baseModelId = model.id;
+        logger.warn("[Bedrock Model Provider] Failed to resolve model ID, using original", {
+          error: error instanceof Error ? error.message : String(error),
+          modelId: model.id,
+        });
+      }
+
       try {
         // For simple string input, use estimation (CountTokens API expects structured messages)
         if (typeof text === "string") {
@@ -472,7 +516,7 @@ export class BedrockChatModelProvider implements LanguageModelChatProvider {
 
         // Convert the message to Bedrock format
         const settings = await getBedrockSettings(this.globalState);
-        const converted = convertMessages([text], model.id, {
+        const converted = convertMessages([text], baseModelId, {
           extendedThinkingEnabled: false,
           lastThinkingBlock: undefined,
           promptCachingEnabled: settings.promptCaching.enabled,
