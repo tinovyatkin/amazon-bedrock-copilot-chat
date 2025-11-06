@@ -131,7 +131,7 @@
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.5.0",
-    "@eslint/js": "9.39.0",
+    "@eslint/js": "9.39.1",
     "@eslint/markdown": "7.5.1",
     "@eslint/mcp": "0.1.1",
     "@homer0/prettier-plugin-jsdoc": "10.0.0",
@@ -145,7 +145,7 @@
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
     "commitlint": "20.1.0",
-    "eslint": "9.39.0",
+    "eslint": "9.39.1",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
     "eslint-plugin-perfectionist": "4.15.1",
