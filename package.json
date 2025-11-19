@@ -136,7 +136,7 @@
     "@eslint/mcp": "0.2.0",
     "@homer0/prettier-plugin-jsdoc": "10.0.0",
     "@smithy/types": "4.9.0",
-    "@stylistic/eslint-plugin": "5.5.0",
+    "@stylistic/eslint-plugin": "5.6.1",
     "@types/mocha": "10.0.10",
     "@types/node": "22.19.1",
     "@types/vscode": "1.104.0",
