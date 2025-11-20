@@ -1,19 +1,8 @@
 {
   "mcpServers": {
-    "awslabs-core-mcp-server": {
-      "args": ["awslabs.core-mcp-server@latest"],
-      "command": "uvx",
-      "env": {
-        "FASTMCP_LOG_LEVEL": "ERROR"
-      }
-    },
-    "awslabs-aws-documentation-mcp-server": {
-      "command": "uvx",
-      "args": ["awslabs.aws-documentation-mcp-server@latest"],
-      "env": {
-        "FASTMCP_LOG_LEVEL": "ERROR",
-        "AWS_DOCUMENTATION_PARTITION": "aws"
-      }
+    "aws-knowledge-mcp-server": {
+      "url": "https://knowledge-mcp.global.api.aws",
+      "type": "http"
     },
     "eslint": {
       "type": "stdio",
