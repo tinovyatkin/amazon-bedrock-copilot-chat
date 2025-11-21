@@ -1,11 +1,13 @@
 import type { BedrockClientConfig } from "@aws-sdk/client-bedrock";
 import {
+  AccessDeniedException,
   BedrockClient,
   GetFoundationModelAvailabilityCommand,
   GetInferenceProfileCommand,
   ListFoundationModelsCommand,
   ModelModality,
   paginateListInferenceProfiles,
+  ResourceNotFoundException,
 } from "@aws-sdk/client-bedrock";
 import type { BedrockRuntimeClientConfig } from "@aws-sdk/client-bedrock-runtime";
 import {
@@ -28,6 +30,8 @@ export class BedrockAPIClient {
   private authConfig?: AuthConfig;
   private bedrockClient: BedrockClient;
   private bedrockRuntimeClient: BedrockRuntimeClient;
+  // Tracks which inference profile IDs we were able to detect when ListFoundationModels is denied
+  private readonly fallbackInferenceProfileIds = new Set<string>();
   // Cache for inference profile ID -> base model ID mappings
   // This avoids repeated API calls to GetInferenceProfile
   private readonly inferenceProfileCache = new Map<string, string>();
@@ -203,6 +207,9 @@ export class BedrockAPIClient {
 
   async fetchModels(abortSignal?: AbortSignal): Promise<BedrockModelSummary[]> {
     try {
+      // Clear any fallback state before fetching
+      this.fallbackInferenceProfileIds.clear();
+
       const command = new ListFoundationModelsCommand({
         byOutputModality: ModelModality.TEXT,
       });
@@ -221,9 +228,34 @@ export class BedrockAPIClient {
         responseStreamingSupported: summary.responseStreamingSupported ?? false,
       }));
     } catch (error) {
+      if (error instanceof AccessDeniedException) {
+        logger.warn(
+          "[Bedrock API Client] ListFoundationModels denied, attempting fallback Anthropic profiles",
+          error,
+        );
+
+        const fallbackModels = await this.detectAnthropicFallbackModels(abortSignal);
+        if (fallbackModels.length > 0) {
+          return fallbackModels;
+        }
+
+        const accessError = new Error("ListFoundationModelsAccessDenied", { cause: error });
+        (accessError as Error & { cause?: unknown; code?: string }).code =
+          "LIST_FOUNDATION_MODELS_DENIED";
+        throw accessError;
+      }
+
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
       throw error;
     }
+  }
+
+  /**
+   * Return inference profile IDs detected via fallback when ListFoundationModels is denied.
+   * Consumers should merge this with results from fetchInferenceProfiles().
+   */
+  getFallbackInferenceProfileIds(): Set<string> {
+    return new Set(this.fallbackInferenceProfileIds);
   }
 
   /**
@@ -242,6 +274,14 @@ export class BedrockAPIClient {
         response.authorizationStatus === "AUTHORIZED" && response.regionAvailability === "AVAILABLE"
       );
     } catch (error) {
+      if (error instanceof AccessDeniedException || error instanceof ResourceNotFoundException) {
+        logger.warn(
+          `[Bedrock API Client] Availability check denied for ${modelId}, assuming accessible due to limited permissions`,
+          error,
+        );
+        return true;
+      }
+
       logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);
       return false;
     }
@@ -351,6 +391,78 @@ export class BedrockAPIClient {
     }
 
     return response.stream;
+  }
+
+  /**
+   * Detect Anthropic models reachable via known global inference profiles when ListFoundationModels is blocked.
+   */
+  private async detectAnthropicFallbackModels(
+    abortSignal?: AbortSignal,
+  ): Promise<BedrockModelSummary[]> {
+    const candidates: {
+      baseModelId: string;
+      displayName: string;
+      globalProfileId: string;
+    }[] = [
+      {
+        baseModelId: "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        displayName: "Claude Sonnet 4.5",
+        globalProfileId: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      },
+      {
+        baseModelId: "anthropic.claude-opus-4-1-20250805-v1:0",
+        displayName: "Claude Opus 4.1",
+        globalProfileId: "global.anthropic.claude-opus-4-1-20250805-v1:0",
+      },
+      {
+        baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
+        displayName: "Claude Haiku 4.5",
+        globalProfileId: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+      },
+    ];
+
+    const detected: BedrockModelSummary[] = [];
+    const accessibilityChecks = await Promise.allSettled(
+      candidates.map(async (candidate) => {
+        const accessible = await this.isModelAccessible(candidate.baseModelId, abortSignal);
+        return { accessible, candidate };
+      }),
+    );
+
+    for (const result of accessibilityChecks) {
+      if (result.status !== "fulfilled") {
+        logger.debug(
+          "[Bedrock API Client] Fallback accessibility check failed, skipping candidate",
+          result.reason,
+        );
+        continue;
+      }
+
+      if (!result.value.accessible) {
+        continue;
+      }
+
+      const { candidate } = result.value;
+      this.fallbackInferenceProfileIds.add(candidate.globalProfileId);
+      detected.push({
+        baseModelId: candidate.baseModelId,
+        customizationsSupported: [],
+        inferenceTypesSupported: ["ON_DEMAND"],
+        inputModalities: [ModelModality.TEXT, ModelModality.IMAGE],
+        modelArn: candidate.baseModelId,
+        modelId: candidate.baseModelId,
+        modelLifecycle: { status: "ACTIVE" },
+        modelName: `${candidate.displayName} (Detected via inference profile)`,
+        outputModalities: [ModelModality.TEXT],
+        providerName: "Anthropic",
+        responseStreamingSupported: true,
+      });
+    }
+
+    logger.info(
+      `[Bedrock API Client] Fallback detection found ${detected.length} Anthropic model(s)`,
+    );
+    return detected;
   }
 
   private getClientConfig(): BedrockClientConfig & BedrockRuntimeClientConfig {

@@ -67,6 +67,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     this._onDidChangeLanguageModelInformation.fire();
   }
 
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- Provider bootstrapping requires multiple guarded flows
   async prepareLanguageModelChatInformation(
     options: { silent: boolean },
     token: CancellationToken,
@@ -128,10 +129,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         ): Promise<LanguageModelChatInformation[]> => {
           progress?.report({ message: "Fetching model list..." });
 
-          const [models, availableProfileIds] = await Promise.all([
+          const [models, apiProfileIds] = await Promise.all([
             this.client.fetchModels(abortController.signal),
             this.client.fetchInferenceProfiles(abortController.signal),
           ]);
+
+          // Merge normal profile detection with any fallback profiles we detected when ListFoundationModels is blocked
+          const availableProfileIds = new Set<string>(apiProfileIds);
+          for (const fallbackId of this.client.getFallbackInferenceProfileIds()) {
+            availableProfileIds.add(fallbackId);
+          }
 
           // Fetch application inference profiles after we have foundation models
           const applicationProfiles = await this.client.fetchApplicationInferenceProfiles(
@@ -315,9 +322,39 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       if (!options.silent) {
         logger.error("[Bedrock Model Provider] Failed to fetch models", error);
-        vscode.window.showErrorMessage(
-          `Failed to fetch Bedrock models. Please check your AWS profile and region settings. Error: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        if ((error as { code?: string }).code === "LIST_FOUNDATION_MODELS_DENIED") {
+          const manualModelId = await vscode.window.showInputBox({
+            placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            prompt:
+              "Model listing is blocked by AWS permissions. Enter a Bedrock model ID or inference profile ID to use.",
+          });
+
+          if (manualModelId) {
+            const manualInfo = await this.buildManualModelInformation(
+              manualModelId,
+              settings,
+              token,
+            );
+
+            if (manualInfo) {
+              this.chatEndpoints = [
+                {
+                  model: manualInfo.id,
+                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
+                },
+              ];
+              return [manualInfo];
+            }
+          }
+
+          vscode.window.showErrorMessage(
+            "Could not detect any Bedrock models with current permissions. Please update your AWS policy or provide a reachable model ID.",
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to fetch Bedrock models. Please check your AWS profile and region settings. Error: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
       return [];
     }
@@ -608,6 +645,57 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     return anthropicBeta;
+  }
+
+  /**
+   * Allow users with restricted permissions to manually supply a model or inference profile ID.
+   */
+  private async buildManualModelInformation(
+    modelId: string,
+    settings: Awaited<ReturnType<typeof getBedrockSettings>>,
+    token: CancellationToken,
+  ): Promise<LanguageModelChatInformation | undefined> {
+    const abortController = new AbortController();
+    const cancellationListener = token.onCancellationRequested(() => abortController.abort());
+
+    try {
+      let baseModelId = modelId;
+      try {
+        baseModelId = await this.client.resolveModelId(modelId, abortController.signal);
+      } catch (resolveError) {
+        logger.warn("[Bedrock Model Provider] Manual model resolution failed, using provided ID", {
+          error:
+            resolveError instanceof Error
+              ? { message: resolveError.message, name: resolveError.name }
+              : String(resolveError),
+          modelId,
+        });
+      }
+
+      const limits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
+      const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
+
+      return {
+        capabilities: {
+          imageInput: likelyVisionCapable,
+          toolCalling: true,
+        },
+        family: "bedrock",
+        id: modelId,
+        maxInputTokens: limits.maxInputTokens,
+        maxOutputTokens: limits.maxOutputTokens,
+        name: modelId,
+        tooltip: "Amazon Bedrock - manual model entry",
+        version: "1.0.0",
+      };
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        logger.error("[Bedrock Model Provider] Manual model setup failed", error);
+      }
+      return undefined;
+    } finally {
+      cancellationListener.dispose();
+    }
   }
 
   /**
