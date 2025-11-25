@@ -19,6 +19,8 @@ import {
   CountTokensCommand,
   type CountTokensCommandInput,
   AccessDeniedException as RuntimeAccessDeniedException,
+  ThrottlingException,
+  ValidationException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
@@ -417,8 +419,28 @@ export class BedrockAPIClient {
         logger.debug(`[Bedrock API Client] Inference profile ${profileId} not accessible`, error);
         return false;
       }
-      // Other errors (validation, throttling, etc.) mean the profile is accessible
-      return true;
+      if (error instanceof ValidationException) {
+        // Validation errors indicate invalid profile ID format
+        logger.debug(
+          `[Bedrock API Client] Inference profile ${profileId} validation failed`,
+          error,
+        );
+        return false;
+      }
+      if (error instanceof ThrottlingException) {
+        // Throttling means the service is accessible but rate limited
+        logger.debug(
+          `[Bedrock API Client] Inference profile ${profileId} accessible (throttled)`,
+          error,
+        );
+        return true;
+      }
+      // For other errors, log and treat as inaccessible to be conservative
+      logger.warn(
+        `[Bedrock API Client] Unexpected error testing inference profile ${profileId}`,
+        error,
+      );
+      return false;
     }
   }
 
@@ -636,8 +658,19 @@ export class BedrockAPIClient {
         logger.debug(`[Bedrock API Client] Model ${modelId} not accessible`, error);
         return false;
       }
-      // Other errors (validation, throttling, etc.) mean the model is accessible
-      return true;
+      if (error instanceof ValidationException) {
+        // Validation errors indicate invalid model ID format
+        logger.debug(`[Bedrock API Client] Model ${modelId} validation failed`, error);
+        return false;
+      }
+      if (error instanceof ThrottlingException) {
+        // Throttling means the service is accessible but rate limited
+        logger.debug(`[Bedrock API Client] Model ${modelId} accessible (throttled)`, error);
+        return true;
+      }
+      // For other errors, log and treat as inaccessible to be conservative
+      logger.warn(`[Bedrock API Client] Unexpected error testing model ${modelId}`, error);
+      return false;
     }
   }
 }
