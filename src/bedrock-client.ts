@@ -394,6 +394,35 @@ export class BedrockAPIClient {
   }
 
   /**
+   * Test inference profile accessibility by making a minimal Converse call.
+   * This method is specifically designed for testing inference profiles and should be used
+   * instead of isModelAccessible() when verifying profile access.
+   * @param profileId The inference profile ID to test
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns true if the profile is accessible, false otherwise
+   */
+  async testInferenceProfileAccess(profileId: string, abortSignal?: AbortSignal): Promise<boolean> {
+    try {
+      await this.bedrockRuntimeClient.send(
+        new ConverseCommand({
+          inferenceConfig: { maxTokens: 1 },
+          messages: [{ content: [{ text: "hi" }], role: "user" }],
+          modelId: profileId,
+        }),
+        { abortSignal },
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof RuntimeAccessDeniedException) {
+        logger.debug(`[Bedrock API Client] Inference profile ${profileId} not accessible`, error);
+        return false;
+      }
+      // Other errors (validation, throttling, etc.) mean the profile is accessible
+      return true;
+    }
+  }
+
+  /**
    * Detect Anthropic models reachable via known global/regional inference profiles when ListFoundationModels is blocked.
    * Checks global profiles first, then falls back to regional profiles if access is denied.
    */
@@ -585,37 +614,6 @@ export class BedrockAPIClient {
 
     // Clear inference profile cache since profiles may differ across regions/credentials
     this.inferenceProfileCache.clear();
-  }
-
-  /**
-   * Test inference profile accessibility by making a minimal Converse call.
-   * Returns the profile ID if accessible, or undefined if denied.
-   * @param profileId The inference profile ID to test
-   * @param abortSignal Optional AbortSignal to cancel the request
-   * @returns The profile ID if accessible, undefined otherwise
-   */
-  private async testInferenceProfileAccess(
-    profileId: string,
-    abortSignal?: AbortSignal,
-  ): Promise<string | undefined> {
-    try {
-      await this.bedrockRuntimeClient.send(
-        new ConverseCommand({
-          inferenceConfig: { maxTokens: 1 },
-          messages: [{ content: [{ text: "hi" }], role: "user" }],
-          modelId: profileId,
-        }),
-        { abortSignal },
-      );
-      return profileId;
-    } catch (error) {
-      if (error instanceof RuntimeAccessDeniedException) {
-        logger.debug(`[Bedrock API Client] Inference profile ${profileId} not accessible`, error);
-        return undefined;
-      }
-      // Other errors (validation, throttling, etc.) mean the profile is accessible
-      return profileId;
-    }
   }
 
   /**

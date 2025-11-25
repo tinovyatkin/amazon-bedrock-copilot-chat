@@ -205,7 +205,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               // Base model is accessible, now check if the selected profile is accessible
               // This is crucial for accounts with regional deny policies
               if (candidate.hasInferenceProfile) {
-                const profileAccessible = await this.client.isModelAccessible(
+                const profileAccessible = await this.client.testInferenceProfileAccess(
                   candidate.modelIdToUse,
                   abortController.signal,
                 );
@@ -223,7 +223,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 if (candidate.modelIdToUse.startsWith("global.")) {
                   const regionalProfileId = `${regionPrefix}.${candidate.model.modelId}`;
                   if (availableProfileIds.has(regionalProfileId)) {
-                    const regionalAccessible = await this.client.isModelAccessible(
+                    const regionalAccessible = await this.client.testInferenceProfileAccess(
                       regionalProfileId,
                       abortController.signal,
                     );
