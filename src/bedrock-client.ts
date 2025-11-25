@@ -21,7 +21,8 @@ import {
   AccessDeniedException as RuntimeAccessDeniedException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
-import type { AwsCredentialIdentity } from "@aws-sdk/types";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
+import type { TokenIdentity, TokenIdentityProvider } from "@smithy/types";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
@@ -480,8 +481,11 @@ export class BedrockAPIClient {
 
     // If authConfig is set, use it (new approach)
     if (this.authConfig) {
-      const credentials = this.getCredentials(this.authConfig);
-      return credentials ? { ...base, credentials } : base;
+      const authResult = this.getCredentialsOrToken(this.authConfig);
+      if (authResult) {
+        return { ...base, ...authResult };
+      }
+      return base;
     }
 
     // Otherwise, use profileName (legacy approach for backward compatibility)
@@ -491,30 +495,41 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Get AWS credentials based on the authentication configuration.
-   * For API key authentication, sets the AWS_BEARER_TOKEN_BEDROCK environment variable.
+   * Get AWS credentials or token configuration based on the authentication configuration.
+   * For API key authentication, returns a token provider using AWS SDK's native bearer token support.
    * @param authConfig Authentication configuration
-   * @returns Credentials provider or undefined for default credentials
+   * @returns Object with credentials or token provider, or undefined for default credentials
    */
-  private getCredentials(authConfig: AuthConfig) {
+  private getCredentialsOrToken(
+    authConfig: AuthConfig,
+  ):
+    | undefined
+    | {
+        credentials?: AwsCredentialIdentity | AwsCredentialIdentityProvider;
+        token?: TokenIdentityProvider;
+      } {
     if (authConfig.method === "api-key") {
-      // API key is passed via environment variable
-      if (authConfig.apiKey) {
-        process.env.AWS_BEARER_TOKEN_BEDROCK = authConfig.apiKey;
+      // Use AWS SDK's native bearer token support instead of environment variables
+      if (!authConfig.apiKey) {
+        return undefined;
       }
-      return;
+
+      const tokenProvider: TokenIdentityProvider = async (): Promise<TokenIdentity> => ({
+        token: authConfig.apiKey,
+      });
+
+      return { token: tokenProvider };
     }
 
-    // Clear API key from environment if not using api-key method
-    delete process.env.AWS_BEARER_TOKEN_BEDROCK;
-
     if (authConfig.method === "profile") {
-      return authConfig.profile ? fromIni({ profile: authConfig.profile }) : undefined;
+      return authConfig.profile
+        ? { credentials: fromIni({ profile: authConfig.profile }) }
+        : undefined;
     }
 
     if (authConfig.method === "access-keys") {
       if (!authConfig.accessKeyId || !authConfig.secretAccessKey) {
-        return;
+        return undefined;
       }
       // Static credentials are process-scoped and not refreshed automatically
       const creds: AwsCredentialIdentity = {
@@ -522,8 +537,10 @@ export class BedrockAPIClient {
         secretAccessKey: authConfig.secretAccessKey,
         ...(authConfig.sessionToken ? { sessionToken: authConfig.sessionToken } : {}),
       };
-      return creds;
+      return { credentials: creds };
     }
+
+    return undefined;
   }
 
   private recreateClients(): void {
