@@ -24,7 +24,7 @@ import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
 import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
-import type { AuthConfig, AuthMethod } from "./types";
+import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
 
 export class BedrockChatModelProvider implements vscode.Disposable, LanguageModelChatProvider {
@@ -192,11 +192,39 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           // Check model accessibility in parallel using allSettled to handle failures gracefully
           const accessibilityChecks = await Promise.allSettled(
             candidates.map(async (candidate) => {
-              const isAccessible = await this.client.isModelAccessible(
+              // First check if base model is accessible
+              const baseModelAccessible = await this.client.isModelAccessible(
                 candidate.model.modelId,
                 abortController.signal,
               );
-              return { ...candidate, isAccessible };
+
+              if (!baseModelAccessible) {
+                return { ...candidate, isAccessible: false };
+              }
+
+              // Base model is accessible, now check if the selected profile is accessible
+              // This is crucial for accounts with regional deny policies
+              if (candidate.hasInferenceProfile) {
+                const profileAccessible = await this.client.testInferenceProfileAccess(
+                  candidate.modelIdToUse,
+                  abortController.signal,
+                );
+
+                if (profileAccessible) {
+                  return { ...candidate, isAccessible: true };
+                }
+
+                // Profile is denied, try to find an alternative
+                return this.findAlternativeProfile(
+                  candidate,
+                  regionPrefix,
+                  availableProfileIds,
+                  abortController.signal,
+                );
+              }
+
+              // No inference profile, base model is accessible
+              return { ...candidate, isAccessible: true };
             }),
           );
 
@@ -902,6 +930,84 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
       return estimateTokens();
     }
+  }
+
+  /**
+   * Try to find an accessible alternative inference profile when the initially selected one is denied.
+   * Attempts regional profile when global is denied, or global when regional is denied.
+   * Falls back to base model if no profiles are accessible.
+   */
+  private async findAlternativeProfile(
+    candidate: {
+      hasInferenceProfile: boolean;
+      model: BedrockModelSummary;
+      modelIdToUse: string;
+    },
+    regionPrefix: string,
+    availableProfileIds: Set<string>,
+    abortSignal: AbortSignal,
+  ): Promise<{
+    hasInferenceProfile: boolean;
+    isAccessible: boolean;
+    model: BedrockModelSummary;
+    modelIdToUse: string;
+  }> {
+    logger.info(
+      `[Bedrock Model Provider] Inference profile ${candidate.modelIdToUse} denied, trying alternatives for ${candidate.model.modelId}`,
+    );
+
+    // If this was a global profile, try regional
+    if (candidate.modelIdToUse.startsWith("global.")) {
+      const regionalProfileId = `${regionPrefix}.${candidate.model.modelId}`;
+      if (availableProfileIds.has(regionalProfileId)) {
+        const regionalAccessible = await this.client.testInferenceProfileAccess(
+          regionalProfileId,
+          abortSignal,
+        );
+        if (regionalAccessible) {
+          logger.info(
+            `[Bedrock Model Provider] Using regional profile ${regionalProfileId} instead of global profile`,
+          );
+          return {
+            ...candidate,
+            hasInferenceProfile: true,
+            isAccessible: true,
+            modelIdToUse: regionalProfileId,
+          };
+        }
+      }
+    } else if (candidate.modelIdToUse.startsWith(`${regionPrefix}.`)) {
+      // If this was a regional profile, try global
+      const globalProfileId = `global.${candidate.model.modelId}`;
+      if (availableProfileIds.has(globalProfileId)) {
+        const globalAccessible = await this.client.testInferenceProfileAccess(
+          globalProfileId,
+          abortSignal,
+        );
+        if (globalAccessible) {
+          logger.info(
+            `[Bedrock Model Provider] Using global profile ${globalProfileId} instead of regional profile`,
+          );
+          return {
+            ...candidate,
+            hasInferenceProfile: true,
+            isAccessible: true,
+            modelIdToUse: globalProfileId,
+          };
+        }
+      }
+    }
+
+    // No accessible profile found, fall back to base model
+    logger.info(
+      `[Bedrock Model Provider] No accessible inference profile found for ${candidate.model.modelId}, using base model`,
+    );
+    return {
+      ...candidate,
+      hasInferenceProfile: false,
+      isAccessible: true,
+      modelIdToUse: candidate.model.modelId,
+    };
   }
 
   /**

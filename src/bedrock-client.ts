@@ -19,6 +19,8 @@ import {
   CountTokensCommand,
   type CountTokensCommandInput,
   AccessDeniedException as RuntimeAccessDeniedException,
+  ThrottlingException,
+  ValidationException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
@@ -394,7 +396,20 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Detect Anthropic models reachable via known global inference profiles when ListFoundationModels is blocked.
+   * Test inference profile accessibility by making a minimal Converse call.
+   * This method is specifically designed for testing inference profiles and should be used
+   * instead of isModelAccessible() when verifying profile access.
+   * @param profileId The inference profile ID to test
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns true if the profile is accessible, false otherwise
+   */
+  async testInferenceProfileAccess(profileId: string, abortSignal?: AbortSignal): Promise<boolean> {
+    return this.testAccessViaConverse(profileId, "Inference profile", abortSignal);
+  }
+
+  /**
+   * Detect Anthropic models reachable via known global/regional inference profiles when ListFoundationModels is blocked.
+   * Checks global profiles first, then falls back to regional profiles if access is denied.
    */
   private async detectAnthropicFallbackModels(
     abortSignal?: AbortSignal,
@@ -403,29 +418,66 @@ export class BedrockAPIClient {
       baseModelId: string;
       displayName: string;
       globalProfileId: string;
+      regionalProfileIds: string[];
     }[] = [
       {
         baseModelId: "anthropic.claude-sonnet-4-5-20250929-v1:0",
         displayName: "Claude Sonnet 4.5",
         globalProfileId: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-opus-4-1-20250805-v1:0",
         displayName: "Claude Opus 4.1",
         globalProfileId: "global.anthropic.claude-opus-4-1-20250805-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-opus-4-1-20250805-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
         displayName: "Claude Haiku 4.5",
         globalProfileId: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-haiku-4-5-20251001-v1:0"],
       },
     ];
 
     const detected: BedrockModelSummary[] = [];
     const accessibilityChecks = await Promise.allSettled(
       candidates.map(async (candidate) => {
+        // First check if base model is accessible
         const accessible = await this.isModelAccessible(candidate.baseModelId, abortSignal);
-        return { accessible, candidate };
+        if (!accessible) {
+          return { accessible: false, candidate, profileId: undefined };
+        }
+
+        // Base model is accessible, now check which profile to use
+        // Try global profile first
+        const globalProfileAccessible = await this.testInferenceProfileAccess(
+          candidate.globalProfileId,
+          abortSignal,
+        );
+        if (globalProfileAccessible) {
+          return { accessible: true, candidate, profileId: candidate.globalProfileId };
+        }
+
+        // Global profile denied, try regional profiles
+        for (const regionalProfileId of candidate.regionalProfileIds) {
+          const regionalProfileAccessible = await this.testInferenceProfileAccess(
+            regionalProfileId,
+            abortSignal,
+          );
+          if (regionalProfileAccessible) {
+            logger.info(
+              `[Bedrock API Client] Global profile ${candidate.globalProfileId} denied, using regional profile ${regionalProfileId}`,
+            );
+            return { accessible: true, candidate, profileId: regionalProfileId };
+          }
+        }
+
+        // No accessible profile found, fall back to base model
+        logger.info(
+          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available, will use base model`,
+        );
+        return { accessible: true, candidate, profileId: candidate.baseModelId };
       }),
     );
 
@@ -442,8 +494,14 @@ export class BedrockAPIClient {
         continue;
       }
 
-      const { candidate } = result.value;
-      this.fallbackInferenceProfileIds.add(candidate.globalProfileId);
+      const { candidate, profileId } = result.value;
+      if (!profileId) {
+        logger.warn(
+          `[Bedrock API Client] Skipping ${candidate.baseModelId}: accessible but no profileId`,
+        );
+        continue;
+      }
+      this.fallbackInferenceProfileIds.add(profileId);
       detected.push({
         baseModelId: candidate.baseModelId,
         customizationsSupported: [],
@@ -550,10 +608,18 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Test model access by making a minimal Converse call.
-   * @returns true if the model is accessible, false otherwise
+   * Internal helper to test access via a minimal Converse call.
+   * Used by both testInferenceProfileAccess and testModelAccess.
+   * @param modelId The model ID or inference profile ID to test
+   * @param resourceType Description of resource type for logging (e.g., "Model", "Inference profile")
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns true if accessible, false otherwise
    */
-  private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
+  private async testAccessViaConverse(
+    modelId: string,
+    resourceType: string,
+    abortSignal?: AbortSignal,
+  ): Promise<boolean> {
     try {
       await this.bedrockRuntimeClient.send(
         new ConverseCommand({
@@ -566,11 +632,33 @@ export class BedrockAPIClient {
       return true;
     } catch (error) {
       if (error instanceof RuntimeAccessDeniedException) {
-        logger.debug(`[Bedrock API Client] Model ${modelId} not accessible`, error);
+        logger.debug(`[Bedrock API Client] ${resourceType} ${modelId} not accessible`, error);
         return false;
       }
-      // Other errors (validation, throttling, etc.) mean the model is accessible
-      return true;
+      if (error instanceof ValidationException) {
+        logger.debug(`[Bedrock API Client] ${resourceType} ${modelId} validation failed`, error);
+        return false;
+      }
+      if (error instanceof ThrottlingException) {
+        logger.debug(
+          `[Bedrock API Client] ${resourceType} ${modelId} accessible (throttled)`,
+          error,
+        );
+        return true;
+      }
+      logger.warn(
+        `[Bedrock API Client] Unexpected error testing ${resourceType} ${modelId}`,
+        error,
+      );
+      return false;
     }
+  }
+
+  /**
+   * Test model access by making a minimal Converse call.
+   * @returns true if the model is accessible, false otherwise
+   */
+  private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
+    return this.testAccessViaConverse(modelId, "Model", abortSignal);
   }
 }
