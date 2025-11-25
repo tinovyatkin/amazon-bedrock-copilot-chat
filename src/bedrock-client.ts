@@ -404,44 +404,7 @@ export class BedrockAPIClient {
    * @returns true if the profile is accessible, false otherwise
    */
   async testInferenceProfileAccess(profileId: string, abortSignal?: AbortSignal): Promise<boolean> {
-    try {
-      await this.bedrockRuntimeClient.send(
-        new ConverseCommand({
-          inferenceConfig: { maxTokens: 1 },
-          messages: [{ content: [{ text: "hi" }], role: "user" }],
-          modelId: profileId,
-        }),
-        { abortSignal },
-      );
-      return true;
-    } catch (error) {
-      if (error instanceof RuntimeAccessDeniedException) {
-        logger.debug(`[Bedrock API Client] Inference profile ${profileId} not accessible`, error);
-        return false;
-      }
-      if (error instanceof ValidationException) {
-        // Validation errors indicate invalid profile ID format
-        logger.debug(
-          `[Bedrock API Client] Inference profile ${profileId} validation failed`,
-          error,
-        );
-        return false;
-      }
-      if (error instanceof ThrottlingException) {
-        // Throttling means the service is accessible but rate limited
-        logger.debug(
-          `[Bedrock API Client] Inference profile ${profileId} accessible (throttled)`,
-          error,
-        );
-        return true;
-      }
-      // For other errors, log and treat as inaccessible to be conservative
-      logger.warn(
-        `[Bedrock API Client] Unexpected error testing inference profile ${profileId}`,
-        error,
-      );
-      return false;
-    }
+    return this.testAccessViaConverse(profileId, "Inference profile", abortSignal);
   }
 
   /**
@@ -645,10 +608,18 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Test model access by making a minimal Converse call.
-   * @returns true if the model is accessible, false otherwise
+   * Internal helper to test access via a minimal Converse call.
+   * Used by both testInferenceProfileAccess and testModelAccess.
+   * @param modelId The model ID or inference profile ID to test
+   * @param resourceType Description of resource type for logging (e.g., "Model", "Inference profile")
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns true if accessible, false otherwise
    */
-  private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
+  private async testAccessViaConverse(
+    modelId: string,
+    resourceType: string,
+    abortSignal?: AbortSignal,
+  ): Promise<boolean> {
     try {
       await this.bedrockRuntimeClient.send(
         new ConverseCommand({
@@ -661,22 +632,33 @@ export class BedrockAPIClient {
       return true;
     } catch (error) {
       if (error instanceof RuntimeAccessDeniedException) {
-        logger.debug(`[Bedrock API Client] Model ${modelId} not accessible`, error);
+        logger.debug(`[Bedrock API Client] ${resourceType} ${modelId} not accessible`, error);
         return false;
       }
       if (error instanceof ValidationException) {
-        // Validation errors indicate invalid model ID format
-        logger.debug(`[Bedrock API Client] Model ${modelId} validation failed`, error);
+        logger.debug(`[Bedrock API Client] ${resourceType} ${modelId} validation failed`, error);
         return false;
       }
       if (error instanceof ThrottlingException) {
-        // Throttling means the service is accessible but rate limited
-        logger.debug(`[Bedrock API Client] Model ${modelId} accessible (throttled)`, error);
+        logger.debug(
+          `[Bedrock API Client] ${resourceType} ${modelId} accessible (throttled)`,
+          error,
+        );
         return true;
       }
-      // For other errors, log and treat as inaccessible to be conservative
-      logger.warn(`[Bedrock API Client] Unexpected error testing model ${modelId}`, error);
+      logger.warn(
+        `[Bedrock API Client] Unexpected error testing ${resourceType} ${modelId}`,
+        error,
+      );
       return false;
     }
+  }
+
+  /**
+   * Test model access by making a minimal Converse call.
+   * @returns true if the model is accessible, false otherwise
+   */
+  private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
+    return this.testAccessViaConverse(modelId, "Model", abortSignal);
   }
 }
