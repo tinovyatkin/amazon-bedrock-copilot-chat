@@ -5,7 +5,7 @@ import { logger } from "./logger";
 import { BedrockChatModelProvider } from "./provider";
 
 export function activate(context: vscode.ExtensionContext) {
-  const outputChannel = vscode.window.createOutputChannel("Bedrock Chat", { log: true });
+  const outputChannel = vscode.window.createOutputChannel("Amazon Bedrock Models", { log: true });
   logger.initialize(outputChannel, context.extensionMode);
 
   // Log activation message with debugging tips
