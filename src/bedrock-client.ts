@@ -500,9 +500,7 @@ export class BedrockAPIClient {
    * @param authConfig Authentication configuration
    * @returns Object with credentials or token provider, or undefined for default credentials
    */
-  private getCredentialsOrToken(
-    authConfig: AuthConfig,
-  ):
+  private getCredentialsOrToken(authConfig: AuthConfig):
     | undefined
     | {
         credentials?: AwsCredentialIdentity | AwsCredentialIdentityProvider;
