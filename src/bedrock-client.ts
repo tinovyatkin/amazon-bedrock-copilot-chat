@@ -12,11 +12,13 @@ import {
 import type { BedrockRuntimeClientConfig } from "@aws-sdk/client-bedrock-runtime";
 import {
   BedrockRuntimeClient,
+  ConverseCommand,
   ConverseStreamCommand,
   type ConverseStreamCommandInput,
   type ConverseStreamOutput,
   CountTokensCommand,
   type CountTokensCommandInput,
+  AccessDeniedException as RuntimeAccessDeniedException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
 import type { AwsCredentialIdentity } from "@aws-sdk/types";
@@ -275,11 +277,8 @@ export class BedrockAPIClient {
       );
     } catch (error) {
       if (error instanceof AccessDeniedException || error instanceof ResourceNotFoundException) {
-        logger.warn(
-          `[Bedrock API Client] Availability check denied for ${modelId}, assuming accessible due to limited permissions`,
-          error,
-        );
-        return true;
+        // Fall back to a test Converse call to verify actual model access
+        return this.testModelAccess(modelId, abortSignal);
       }
 
       logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);
@@ -533,5 +532,30 @@ export class BedrockAPIClient {
 
     // Clear inference profile cache since profiles may differ across regions/credentials
     this.inferenceProfileCache.clear();
+  }
+
+  /**
+   * Test model access by making a minimal Converse call.
+   * @returns true if the model is accessible, false otherwise
+   */
+  private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
+    try {
+      await this.bedrockRuntimeClient.send(
+        new ConverseCommand({
+          inferenceConfig: { maxTokens: 1 },
+          messages: [{ content: [{ text: "hi" }], role: "user" }],
+          modelId,
+        }),
+        { abortSignal },
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof RuntimeAccessDeniedException) {
+        logger.debug(`[Bedrock API Client] Model ${modelId} not accessible`, error);
+        return false;
+      }
+      // Other errors (validation, throttling, etc.) mean the model is accessible
+      return true;
+    }
   }
 }
