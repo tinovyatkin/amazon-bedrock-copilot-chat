@@ -510,11 +510,11 @@ export class BedrockAPIClient {
           }
         }
 
-        // No accessible profile found
-        logger.warn(
-          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available`,
+        // No accessible profile found, fall back to base model
+        logger.info(
+          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available, will use base model`,
         );
-        return { accessible: false, candidate, profileId: undefined };
+        return { accessible: true, candidate, profileId: candidate.baseModelId };
       }),
     );
 
@@ -527,11 +527,17 @@ export class BedrockAPIClient {
         continue;
       }
 
-      if (!result.value.accessible || !result.value.profileId) {
+      if (!result.value.accessible) {
         continue;
       }
 
       const { candidate, profileId } = result.value;
+      if (!profileId) {
+        logger.warn(
+          `[Bedrock API Client] Skipping ${candidate.baseModelId}: accessible but no profileId`,
+        );
+        continue;
+      }
       this.fallbackInferenceProfileIds.add(profileId);
       detected.push({
         baseModelId: candidate.baseModelId,
