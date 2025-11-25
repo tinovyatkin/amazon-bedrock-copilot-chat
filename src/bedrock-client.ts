@@ -394,7 +394,8 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Detect Anthropic models reachable via known global inference profiles when ListFoundationModels is blocked.
+   * Detect Anthropic models reachable via known global/regional inference profiles when ListFoundationModels is blocked.
+   * Checks global profiles first, then falls back to regional profiles if access is denied.
    */
   private async detectAnthropicFallbackModels(
     abortSignal?: AbortSignal,
@@ -403,29 +404,66 @@ export class BedrockAPIClient {
       baseModelId: string;
       displayName: string;
       globalProfileId: string;
+      regionalProfileIds: string[];
     }[] = [
       {
         baseModelId: "anthropic.claude-sonnet-4-5-20250929-v1:0",
         displayName: "Claude Sonnet 4.5",
         globalProfileId: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-opus-4-1-20250805-v1:0",
         displayName: "Claude Opus 4.1",
         globalProfileId: "global.anthropic.claude-opus-4-1-20250805-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-opus-4-1-20250805-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
         displayName: "Claude Haiku 4.5",
         globalProfileId: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-haiku-4-5-20251001-v1:0"],
       },
     ];
 
     const detected: BedrockModelSummary[] = [];
     const accessibilityChecks = await Promise.allSettled(
       candidates.map(async (candidate) => {
+        // First check if base model is accessible
         const accessible = await this.isModelAccessible(candidate.baseModelId, abortSignal);
-        return { accessible, candidate };
+        if (!accessible) {
+          return { accessible: false, candidate, profileId: undefined };
+        }
+
+        // Base model is accessible, now check which profile to use
+        // Try global profile first
+        const globalProfileAccessible = await this.testInferenceProfileAccess(
+          candidate.globalProfileId,
+          abortSignal,
+        );
+        if (globalProfileAccessible) {
+          return { accessible: true, candidate, profileId: candidate.globalProfileId };
+        }
+
+        // Global profile denied, try regional profiles
+        for (const regionalProfileId of candidate.regionalProfileIds) {
+          const regionalProfileAccessible = await this.testInferenceProfileAccess(
+            regionalProfileId,
+            abortSignal,
+          );
+          if (regionalProfileAccessible) {
+            logger.info(
+              `[Bedrock API Client] Global profile ${candidate.globalProfileId} denied, using regional profile ${regionalProfileId}`,
+            );
+            return { accessible: true, candidate, profileId: regionalProfileId };
+          }
+        }
+
+        // No accessible profile found
+        logger.warn(
+          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available`,
+        );
+        return { accessible: false, candidate, profileId: undefined };
       }),
     );
 
@@ -438,12 +476,12 @@ export class BedrockAPIClient {
         continue;
       }
 
-      if (!result.value.accessible) {
+      if (!result.value.accessible || !result.value.profileId) {
         continue;
       }
 
-      const { candidate } = result.value;
-      this.fallbackInferenceProfileIds.add(candidate.globalProfileId);
+      const { candidate, profileId } = result.value;
+      this.fallbackInferenceProfileIds.add(profileId);
       detected.push({
         baseModelId: candidate.baseModelId,
         customizationsSupported: [],
@@ -547,6 +585,37 @@ export class BedrockAPIClient {
 
     // Clear inference profile cache since profiles may differ across regions/credentials
     this.inferenceProfileCache.clear();
+  }
+
+  /**
+   * Test inference profile accessibility by making a minimal Converse call.
+   * Returns the profile ID if accessible, or undefined if denied.
+   * @param profileId The inference profile ID to test
+   * @param abortSignal Optional AbortSignal to cancel the request
+   * @returns The profile ID if accessible, undefined otherwise
+   */
+  private async testInferenceProfileAccess(
+    profileId: string,
+    abortSignal?: AbortSignal,
+  ): Promise<string | undefined> {
+    try {
+      await this.bedrockRuntimeClient.send(
+        new ConverseCommand({
+          inferenceConfig: { maxTokens: 1 },
+          messages: [{ content: [{ text: "hi" }], role: "user" }],
+          modelId: profileId,
+        }),
+        { abortSignal },
+      );
+      return profileId;
+    } catch (error) {
+      if (error instanceof RuntimeAccessDeniedException) {
+        logger.debug(`[Bedrock API Client] Inference profile ${profileId} not accessible`, error);
+        return undefined;
+      }
+      // Other errors (validation, throttling, etc.) mean the profile is accessible
+      return profileId;
+    }
   }
 
   /**
