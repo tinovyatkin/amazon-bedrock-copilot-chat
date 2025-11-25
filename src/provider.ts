@@ -219,7 +219,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                   candidate,
                   regionPrefix,
                   availableProfileIds,
-                  abortController,
+                  abortController.signal,
                 );
               }
 
@@ -945,7 +945,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     },
     regionPrefix: string,
     availableProfileIds: Set<string>,
-    abortController: AbortController,
+    abortSignal: AbortSignal,
   ): Promise<{
     hasInferenceProfile: boolean;
     isAccessible: boolean;
@@ -962,7 +962,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       if (availableProfileIds.has(regionalProfileId)) {
         const regionalAccessible = await this.client.testInferenceProfileAccess(
           regionalProfileId,
-          abortController.signal,
+          abortSignal,
         );
         if (regionalAccessible) {
           logger.info(
@@ -982,7 +982,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       if (availableProfileIds.has(globalProfileId)) {
         const globalAccessible = await this.client.testInferenceProfileAccess(
           globalProfileId,
-          abortController.signal,
+          abortSignal,
         );
         if (globalAccessible) {
           logger.info(
