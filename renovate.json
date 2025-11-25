@@ -14,5 +14,11 @@
   "commitMessagePrefix": "chore(deps):",
   "semanticCommits": "enabled",
   "rebaseWhen": "conflicted",
-  "bumpVersion": "patch"
+  "rangeStrategy": "bump",
+  "packageRules": [
+    {
+      "matchDepTypes": ["dependencies"],
+      "bumpVersion": "patch"
+    }
+  ]
 }
