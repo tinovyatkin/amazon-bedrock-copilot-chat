@@ -78,8 +78,14 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
 
   // Read thinking settings with defaults
-  const thinkingEnabled = config.get<boolean>("thinking.enabled") ?? true;
-  const thinkingBudgetTokens = config.get<number>("thinking.budgetTokens") ?? 10_000;
+  // Check GitHub Copilot's anthropic thinking settings first, then fall back to bedrock settings
+  const copilotConfig = vscode.workspace.getConfiguration("github.copilot.chat.anthropic");
+  const copilotThinkingEnabled = copilotConfig.get<boolean>("thinking.enabled");
+  const copilotThinkingMaxTokens = copilotConfig.get<number>("thinking.maxTokens");
+
+  const thinkingEnabled = copilotThinkingEnabled ?? config.get<boolean>("thinking.enabled") ?? true;
+  const thinkingBudgetTokens =
+    copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
   return {
     context1M: {

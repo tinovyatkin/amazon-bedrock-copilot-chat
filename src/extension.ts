@@ -29,7 +29,9 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("bedrock.context1M.enabled") ||
       e.affectsConfiguration("bedrock.promptCaching.enabled") ||
       e.affectsConfiguration("bedrock.thinking.enabled") ||
-      e.affectsConfiguration("bedrock.thinking.budgetTokens")
+      e.affectsConfiguration("bedrock.thinking.budgetTokens") ||
+      e.affectsConfiguration("github.copilot.chat.anthropic.thinking.enabled") ||
+      e.affectsConfiguration("github.copilot.chat.anthropic.thinking.maxTokens")
     ) {
       provider.notifyModelInformationChanged("configuration changed");
     }
