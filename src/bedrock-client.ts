@@ -35,6 +35,8 @@ export class BedrockAPIClient {
   private authConfig?: AuthConfig;
   private bedrockClient: BedrockClient;
   private bedrockRuntimeClient: BedrockRuntimeClient;
+  // Tracks base model IDs detected when no inference profile is accessible
+  private readonly fallbackBaseModelIds = new Set<string>();
   // Tracks which inference profile IDs we were able to detect when ListFoundationModels is denied
   private readonly fallbackInferenceProfileIds = new Set<string>();
   // Cache for inference profile ID -> base model ID mappings
@@ -214,6 +216,7 @@ export class BedrockAPIClient {
     try {
       // Clear any fallback state before fetching
       this.fallbackInferenceProfileIds.clear();
+      this.fallbackBaseModelIds.clear();
 
       const command = new ListFoundationModelsCommand({
         byOutputModality: ModelModality.TEXT,
@@ -253,6 +256,13 @@ export class BedrockAPIClient {
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
       throw error;
     }
+  }
+
+  /**
+   * Return base model IDs detected via fallback when no inference profile is available.
+   */
+  getFallbackBaseModelIds(): Set<string> {
+    return new Set(this.fallbackBaseModelIds);
   }
 
   /**
@@ -505,7 +515,11 @@ export class BedrockAPIClient {
         );
         continue;
       }
-      this.fallbackInferenceProfileIds.add(profileId);
+      if (profileId === candidate.baseModelId) {
+        this.fallbackBaseModelIds.add(profileId);
+      } else {
+        this.fallbackInferenceProfileIds.add(profileId);
+      }
       detected.push({
         baseModelId: candidate.baseModelId,
         customizationsSupported: [],
