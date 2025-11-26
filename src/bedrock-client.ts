@@ -427,10 +427,10 @@ export class BedrockAPIClient {
         regionalProfileIds: ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
       },
       {
-        baseModelId: "anthropic.claude-opus-4-1-20250805-v1:0",
-        displayName: "Claude Opus 4.1",
-        globalProfileId: "global.anthropic.claude-opus-4-1-20250805-v1:0",
-        regionalProfileIds: ["us.anthropic.claude-opus-4-1-20250805-v1:0"],
+        baseModelId: "anthropic.claude-opus-4-5-20251101-v1:0",
+        displayName: "Claude Opus 4.5",
+        globalProfileId: "global.anthropic.claude-opus-4-5-20251101-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-opus-4-5-20251101-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -443,13 +443,6 @@ export class BedrockAPIClient {
     const detected: BedrockModelSummary[] = [];
     const accessibilityChecks = await Promise.allSettled(
       candidates.map(async (candidate) => {
-        // First check if base model is accessible
-        const accessible = await this.isModelAccessible(candidate.baseModelId, abortSignal);
-        if (!accessible) {
-          return { accessible: false, candidate, profileId: undefined };
-        }
-
-        // Base model is accessible, now check which profile to use
         // Try global profile first
         const globalProfileAccessible = await this.testInferenceProfileAccess(
           candidate.globalProfileId,
@@ -473,11 +466,22 @@ export class BedrockAPIClient {
           }
         }
 
-        // No accessible profile found, fall back to base model
-        logger.info(
-          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available, will use base model`,
+        // No accessible profile found, fall back to base model if reachable
+        const baseModelAccessible = await this.isModelAccessible(
+          candidate.baseModelId,
+          abortSignal,
         );
-        return { accessible: true, candidate, profileId: candidate.baseModelId };
+        if (baseModelAccessible) {
+          logger.info(
+            `[Bedrock API Client] No accessible inference profile for ${candidate.baseModelId}, using base model`,
+          );
+          return { accessible: true, candidate, profileId: candidate.baseModelId };
+        }
+
+        logger.info(
+          `[Bedrock API Client] No accessible inference profile or base model for ${candidate.baseModelId}`,
+        );
+        return { accessible: false, candidate, profileId: undefined };
       }),
     );
 
