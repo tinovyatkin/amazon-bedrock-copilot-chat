@@ -34,6 +34,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
+  /** Tracks whether the initial model fetch has completed (for avoiding startup feedback loops) */
+  private initialFetchComplete = false;
   private lastThinkingBlock?: ThinkingBlock;
   private readonly streamProcessor: StreamProcessor;
 
@@ -55,6 +57,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     } catch {
       // ignore
     }
+  }
+
+  /**
+   * Returns true if the initial model fetch has completed.
+   * Used to avoid feedback loops when responding to onDidChangeChatModels during startup.
+   */
+  public isInitialFetchComplete(): boolean {
+    return this.initialFetchComplete;
   }
 
   /**
@@ -321,6 +331,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             model: info.id,
             modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
           }));
+
+          // Mark initial fetch as complete to allow onDidChangeChatModels handling
+          this.initialFetchComplete = true;
 
           return infos;
         };

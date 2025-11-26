@@ -57,9 +57,39 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // When user selects/deselects models in the global quick pick, mirror that to refresh lists
+  // When user selects/deselects models in the global quick pick, refresh the list.
+  // However, we need to skip events during the initial model fetch to avoid feedback loops:
+  // 1. Extension activates → 2. Provider returns models → 3. VS Code fires onDidChangeChatModels →
+  // 4. If we immediately refresh, model IDs may differ (due to profile accessibility tests) →
+  // 5. This can cause the user's model selection to be lost
+  //
+  // We use the provider's isInitialFetchComplete() flag to know when the first fetch is done,
+  // and only respond to subsequent onDidChangeChatModels events (user-initiated changes).
+  let lmRefreshHandle: ReturnType<typeof setTimeout> | undefined;
+
   const lmDisposable = vscode.lm.onDidChangeChatModels(() => {
-    provider.notifyModelInformationChanged("selected chat models changed");
+    // Skip events until the initial model fetch is complete to avoid feedback loops
+    if (!provider.isInitialFetchComplete()) {
+      logger.debug("[Extension] Ignoring onDidChangeChatModels before initial fetch complete");
+      return;
+    }
+
+    // Debounce to coalesce rapid changes
+    if (lmRefreshHandle) {
+      clearTimeout(lmRefreshHandle);
+    }
+    lmRefreshHandle = setTimeout(() => {
+      provider.notifyModelInformationChanged("selected chat models changed");
+      lmRefreshHandle = undefined;
+    }, 500);
+  });
+
+  // Clear any pending lm refresh timer on extension dispose
+  const lmDebounceDisposable = new vscode.Disposable(() => {
+    if (lmRefreshHandle) {
+      clearTimeout(lmRefreshHandle);
+      lmRefreshHandle = undefined;
+    }
   });
 
   context.subscriptions.push(
@@ -71,6 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
     secretsDisposable,
     secretsDebounceDisposable,
     lmDisposable,
+    lmDebounceDisposable,
   );
 }
 
