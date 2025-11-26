@@ -18,7 +18,7 @@ jobs:
       - run: bun run compile
 
       - name: Package VSIX
-        run: bunx @vscode/vsce package -o extension.vsix
+        run: bunx @vscode/vsce package --no-dependencies -o extension.vsix
 
       - name: Upload artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
