@@ -3,6 +3,8 @@ telemetry = false
 
 [install]
 linkWorkspacePackages = true
+saveTextLockfile = true
+linker = "hoisted"
 
 [run]
 bun = true
