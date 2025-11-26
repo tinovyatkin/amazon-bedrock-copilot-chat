@@ -17,7 +17,7 @@ import type {
 } from "vscode";
 import * as vscode from "vscode";
 
-import { BedrockAPIClient } from "./bedrock-client";
+import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
@@ -26,6 +26,13 @@ import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
+
+class NoAccessibleModelsError extends Error {
+  constructor() {
+    super("No accessible Bedrock models detected");
+    this.name = "NoAccessibleModelsError";
+  }
+}
 
 export class BedrockChatModelProvider implements vscode.Disposable, LanguageModelChatProvider {
   // Event to notify VS Code that model information has changed
@@ -157,43 +164,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           );
 
           const regionPrefix = settings.region.split("-")[0];
-
-          // First, filter models by basic requirements and build candidate list
-          const candidates: {
-            hasInferenceProfile: boolean;
-            model: (typeof models)[0];
-            modelIdToUse: string;
-          }[] = [];
-
-          for (const m of models) {
-            if (!m.responseStreamingSupported || !m.outputModalities.includes(ModelModality.TEXT)) {
-              continue;
-            }
-
-            // Determine which model ID to use (with or without inference profile)
-            // Prefer global inference profiles for best availability, then regional, then base model
-            const globalProfileId = `global.${m.modelId}`;
-            const regionalProfileId = `${regionPrefix}.${m.modelId}`;
-
-            let modelIdToUse = m.modelId;
-            let hasInferenceProfile = false;
-
-            if (availableProfileIds.has(globalProfileId)) {
-              modelIdToUse = globalProfileId;
-              hasInferenceProfile = true;
-              logger.trace(
-                `[Bedrock Model Provider] Using global inference profile for ${m.modelId}`,
-              );
-            } else if (availableProfileIds.has(regionalProfileId)) {
-              modelIdToUse = regionalProfileId;
-              hasInferenceProfile = true;
-              logger.trace(
-                `[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`,
-              );
-            }
-
-            candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
-          }
+          const candidates = this.buildModelCandidates(models, availableProfileIds, regionPrefix);
 
           progress?.report({
             message: `Checking availability of ${candidates.length} models...`,
@@ -201,41 +172,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           // Check model accessibility in parallel using allSettled to handle failures gracefully
           const accessibilityChecks = await Promise.allSettled(
-            candidates.map(async (candidate) => {
-              // First check if base model is accessible
-              const baseModelAccessible = await this.client.isModelAccessible(
-                candidate.model.modelId,
+            candidates.map(async (candidate) =>
+              this.evaluateCandidateAccessibility(
+                candidate,
+                regionPrefix,
+                availableProfileIds,
                 abortController.signal,
-              );
-
-              if (!baseModelAccessible) {
-                return { ...candidate, isAccessible: false };
-              }
-
-              // Base model is accessible, now check if the selected profile is accessible
-              // This is crucial for accounts with regional deny policies
-              if (candidate.hasInferenceProfile) {
-                const profileAccessible = await this.client.testInferenceProfileAccess(
-                  candidate.modelIdToUse,
-                  abortController.signal,
-                );
-
-                if (profileAccessible) {
-                  return { ...candidate, isAccessible: true };
-                }
-
-                // Profile is denied, try to find an alternative
-                return this.findAlternativeProfile(
-                  candidate,
-                  regionPrefix,
-                  availableProfileIds,
-                  abortController.signal,
-                );
-              }
-
-              // No inference profile, base model is accessible
-              return { ...candidate, isAccessible: true };
-            }),
+              ),
+            ),
           );
 
           progress?.report({ message: "Building model list..." });
@@ -327,6 +271,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             infos.push(profileInfo);
           }
 
+          if (infos.length === 0) {
+            throw new NoAccessibleModelsError();
+          }
+
           this.chatEndpoints = infos.map((info) => ({
             model: info.id,
             modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
@@ -363,7 +311,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       if (!options.silent) {
         logger.error("[Bedrock Model Provider] Failed to fetch models", error);
-        if ((error as { code?: string }).code === "LIST_FOUNDATION_MODELS_DENIED") {
+        if (error instanceof ListFoundationModelsDeniedError) {
           const manualModelId = await vscode.window.showInputBox({
             placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
             prompt:
@@ -390,6 +338,34 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           vscode.window.showErrorMessage(
             "Could not detect any Bedrock models with current permissions. Please update your AWS policy or provide a reachable model ID.",
+          );
+        } else if (error instanceof NoAccessibleModelsError) {
+          const manualModelId = await vscode.window.showInputBox({
+            placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            prompt:
+              "No accessible Bedrock models were detected. Enter a Bedrock model ID or inference profile ID to use.",
+          });
+
+          if (manualModelId) {
+            const manualInfo = await this.buildManualModelInformation(
+              manualModelId,
+              settings,
+              token,
+            );
+
+            if (manualInfo) {
+              this.chatEndpoints = [
+                {
+                  model: manualInfo.id,
+                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
+                },
+              ];
+              return [manualInfo];
+            }
+          }
+
+          vscode.window.showErrorMessage(
+            "Could not detect any accessible Bedrock models. Please update your AWS policy or provide a reachable model ID.",
           );
         } else {
           vscode.window.showErrorMessage(
@@ -739,6 +715,50 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
   }
 
+  private buildModelCandidates(
+    models: BedrockModelSummary[],
+    availableProfileIds: Set<string>,
+    regionPrefix: string,
+  ): {
+    hasInferenceProfile: boolean;
+    model: BedrockModelSummary;
+    modelIdToUse: string;
+  }[] {
+    const candidates: {
+      hasInferenceProfile: boolean;
+      model: BedrockModelSummary;
+      modelIdToUse: string;
+    }[] = [];
+
+    for (const m of models) {
+      if (!m.responseStreamingSupported || !m.outputModalities.includes(ModelModality.TEXT)) {
+        continue;
+      }
+
+      // Determine which model ID to use (with or without inference profile)
+      // Prefer global inference profiles for best availability, then regional, then base model
+      const globalProfileId = `global.${m.modelId}`;
+      const regionalProfileId = `${regionPrefix}.${m.modelId}`;
+
+      let modelIdToUse = m.modelId;
+      let hasInferenceProfile = false;
+
+      if (availableProfileIds.has(globalProfileId)) {
+        modelIdToUse = globalProfileId;
+        hasInferenceProfile = true;
+        logger.trace(`[Bedrock Model Provider] Using global inference profile for ${m.modelId}`);
+      } else if (availableProfileIds.has(regionalProfileId)) {
+        modelIdToUse = regionalProfileId;
+        hasInferenceProfile = true;
+        logger.trace(`[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`);
+      }
+
+      candidates.push({ hasInferenceProfile, model: m, modelIdToUse });
+    }
+
+    return candidates;
+  }
+
   /**
    * Build and configure the request input for Bedrock API
    */
@@ -945,6 +965,44 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
   }
 
+  private async evaluateCandidateAccessibility(
+    candidate: {
+      hasInferenceProfile: boolean;
+      model: BedrockModelSummary;
+      modelIdToUse: string;
+    },
+    regionPrefix: string,
+    availableProfileIds: Set<string>,
+    abortSignal: AbortSignal,
+  ): Promise<{
+    hasInferenceProfile: boolean;
+    isAccessible: boolean;
+    model: BedrockModelSummary;
+    modelIdToUse: string;
+  }> {
+    if (candidate.hasInferenceProfile) {
+      const profileAccessible = await this.client.testInferenceProfileAccess(
+        candidate.modelIdToUse,
+        abortSignal,
+      );
+
+      if (profileAccessible) {
+        return { ...candidate, isAccessible: true };
+      }
+
+      // Profile is denied, try to find an alternative
+      return this.findAlternativeProfile(candidate, regionPrefix, availableProfileIds, abortSignal);
+    }
+
+    // No inference profile; check base model directly
+    const baseModelAccessible = await this.client.isModelAccessible(
+      candidate.model.modelId,
+      abortSignal,
+    );
+
+    return { ...candidate, isAccessible: baseModelAccessible };
+  }
+
   /**
    * Try to find an accessible alternative inference profile when the initially selected one is denied.
    * Attempts regional profile when global is denied, or global when regional is denied.
@@ -1012,15 +1070,26 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     // No accessible profile found, fall back to base model
-    logger.info(
-      `[Bedrock Model Provider] No accessible inference profile found for ${candidate.model.modelId}, using base model`,
+    const baseModelAccessible = await this.client.isModelAccessible(
+      candidate.model.modelId,
+      abortSignal,
     );
-    return {
-      ...candidate,
-      hasInferenceProfile: false,
-      isAccessible: true,
-      modelIdToUse: candidate.model.modelId,
-    };
+    if (baseModelAccessible) {
+      logger.info(
+        `[Bedrock Model Provider] No accessible inference profile found for ${candidate.model.modelId}, using base model`,
+      );
+      return {
+        ...candidate,
+        hasInferenceProfile: false,
+        isAccessible: true,
+        modelIdToUse: candidate.model.modelId,
+      };
+    }
+
+    logger.info(
+      `[Bedrock Model Provider] No accessible inference profile or base model for ${candidate.model.modelId}`,
+    );
+    return { ...candidate, isAccessible: false };
   }
 
   /**

@@ -247,10 +247,7 @@ export class BedrockAPIClient {
           return fallbackModels;
         }
 
-        const accessError = new Error("ListFoundationModelsAccessDenied", { cause: error });
-        (accessError as Error & { cause?: unknown; code?: string }).code =
-          "LIST_FOUNDATION_MODELS_DENIED";
-        throw accessError;
+        throw new ListFoundationModelsDeniedError(error);
       }
 
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
@@ -678,5 +675,12 @@ export class BedrockAPIClient {
    */
   private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
     return this.testAccessViaConverse(modelId, "Model", abortSignal);
+  }
+}
+
+export class ListFoundationModelsDeniedError extends Error {
+  constructor(cause?: unknown) {
+    super("ListFoundationModelsAccessDenied", { cause });
+    this.name = "ListFoundationModelsDeniedError";
   }
 }
