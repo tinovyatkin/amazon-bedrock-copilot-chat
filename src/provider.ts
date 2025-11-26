@@ -17,7 +17,7 @@ import type {
 } from "vscode";
 import * as vscode from "vscode";
 
-import { BedrockAPIClient } from "./bedrock-client";
+import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
@@ -311,7 +311,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       if (!options.silent) {
         logger.error("[Bedrock Model Provider] Failed to fetch models", error);
-        if ((error as { code?: string }).code === "LIST_FOUNDATION_MODELS_DENIED") {
+        if (error instanceof ListFoundationModelsDeniedError) {
           const manualModelId = await vscode.window.showInputBox({
             placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
             prompt:
