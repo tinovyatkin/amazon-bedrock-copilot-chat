@@ -35,6 +35,8 @@ export class BedrockAPIClient {
   private authConfig?: AuthConfig;
   private bedrockClient: BedrockClient;
   private bedrockRuntimeClient: BedrockRuntimeClient;
+  // Tracks base model IDs detected when no inference profile is accessible
+  private readonly fallbackBaseModelIds = new Set<string>();
   // Tracks which inference profile IDs we were able to detect when ListFoundationModels is denied
   private readonly fallbackInferenceProfileIds = new Set<string>();
   // Cache for inference profile ID -> base model ID mappings
@@ -214,6 +216,7 @@ export class BedrockAPIClient {
     try {
       // Clear any fallback state before fetching
       this.fallbackInferenceProfileIds.clear();
+      this.fallbackBaseModelIds.clear();
 
       const command = new ListFoundationModelsCommand({
         byOutputModality: ModelModality.TEXT,
@@ -253,6 +256,13 @@ export class BedrockAPIClient {
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
       throw error;
     }
+  }
+
+  /**
+   * Return base model IDs detected via fallback when no inference profile is available.
+   */
+  getFallbackBaseModelIds(): Set<string> {
+    return new Set(this.fallbackBaseModelIds);
   }
 
   /**
@@ -427,10 +437,10 @@ export class BedrockAPIClient {
         regionalProfileIds: ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
       },
       {
-        baseModelId: "anthropic.claude-opus-4-1-20250805-v1:0",
-        displayName: "Claude Opus 4.1",
-        globalProfileId: "global.anthropic.claude-opus-4-1-20250805-v1:0",
-        regionalProfileIds: ["us.anthropic.claude-opus-4-1-20250805-v1:0"],
+        baseModelId: "anthropic.claude-opus-4-5-20251101-v1:0",
+        displayName: "Claude Opus 4.5",
+        globalProfileId: "global.anthropic.claude-opus-4-5-20251101-v1:0",
+        regionalProfileIds: ["us.anthropic.claude-opus-4-5-20251101-v1:0"],
       },
       {
         baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -443,13 +453,6 @@ export class BedrockAPIClient {
     const detected: BedrockModelSummary[] = [];
     const accessibilityChecks = await Promise.allSettled(
       candidates.map(async (candidate) => {
-        // First check if base model is accessible
-        const accessible = await this.isModelAccessible(candidate.baseModelId, abortSignal);
-        if (!accessible) {
-          return { accessible: false, candidate, profileId: undefined };
-        }
-
-        // Base model is accessible, now check which profile to use
         // Try global profile first
         const globalProfileAccessible = await this.testInferenceProfileAccess(
           candidate.globalProfileId,
@@ -473,11 +476,22 @@ export class BedrockAPIClient {
           }
         }
 
-        // No accessible profile found, fall back to base model
-        logger.info(
-          `[Bedrock API Client] Base model ${candidate.baseModelId} is accessible but no inference profile is available, will use base model`,
+        // No accessible profile found, fall back to base model if reachable
+        const baseModelAccessible = await this.isModelAccessible(
+          candidate.baseModelId,
+          abortSignal,
         );
-        return { accessible: true, candidate, profileId: candidate.baseModelId };
+        if (baseModelAccessible) {
+          logger.info(
+            `[Bedrock API Client] No accessible inference profile for ${candidate.baseModelId}, using base model`,
+          );
+          return { accessible: true, candidate, profileId: candidate.baseModelId };
+        }
+
+        logger.info(
+          `[Bedrock API Client] No accessible inference profile or base model for ${candidate.baseModelId}`,
+        );
+        return { accessible: false, candidate, profileId: undefined };
       }),
     );
 
@@ -501,7 +515,11 @@ export class BedrockAPIClient {
         );
         continue;
       }
-      this.fallbackInferenceProfileIds.add(profileId);
+      if (profileId === candidate.baseModelId) {
+        this.fallbackBaseModelIds.add(profileId);
+      } else {
+        this.fallbackInferenceProfileIds.add(profileId);
+      }
       detected.push({
         baseModelId: candidate.baseModelId,
         customizationsSupported: [],

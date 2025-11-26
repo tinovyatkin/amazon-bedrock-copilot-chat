@@ -39,5 +39,6 @@
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "coderabbit.autoReviewMode": "disabled"
+  "coderabbit.autoReviewMode": "disabled",
+  "npm.packageManager": "bun"
 }
