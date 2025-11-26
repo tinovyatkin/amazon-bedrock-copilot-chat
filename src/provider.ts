@@ -27,6 +27,13 @@ import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
 
+class NoAccessibleModelsError extends Error {
+  constructor() {
+    super("No accessible Bedrock models detected");
+    this.name = "NoAccessibleModelsError";
+  }
+}
+
 export class BedrockChatModelProvider implements vscode.Disposable, LanguageModelChatProvider {
   // Event to notify VS Code that model information has changed
   private readonly _onDidChangeLanguageModelInformation = new vscode.EventEmitter<void>();
@@ -265,9 +272,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           }
 
           if (infos.length === 0) {
-            const noModelsError = new Error("No accessible Bedrock models detected");
-            (noModelsError as Error & { code?: string }).code = "NO_ACCESSIBLE_MODELS";
-            throw noModelsError;
+            throw new NoAccessibleModelsError();
           }
 
           this.chatEndpoints = infos.map((info) => ({
@@ -334,7 +339,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           vscode.window.showErrorMessage(
             "Could not detect any Bedrock models with current permissions. Please update your AWS policy or provide a reachable model ID.",
           );
-        } else if ((error as { code?: string }).code === "NO_ACCESSIBLE_MODELS") {
+        } else if (error instanceof NoAccessibleModelsError) {
           const manualModelId = await vscode.window.showInputBox({
             placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
             prompt:
