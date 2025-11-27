@@ -121,7 +121,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.940.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.940.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.941.0",
     "@aws-sdk/client-ssm": "^3.940.0",
     "@aws-sdk/credential-providers": "^3.940.0",
     "@aws-sdk/protocol-http": "^3.374.0",
