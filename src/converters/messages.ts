@@ -289,14 +289,23 @@ function injectExtendedThinking(
  * Check if a part is an image data part
  */
 function isImageDataPart(part: unknown): part is ImageDataPart {
-  return (
+  if (
     typeof part === "object" &&
     part != null &&
     "mimeType" in part &&
     typeof part.mimeType === "string" &&
     "data" in part &&
     types.isUint8Array(part.data)
-  );
+  ) {
+    // Verify it's an actual image MIME type, not metadata like "cache_control"
+    try {
+      const mime = new MIMEType(part.mimeType);
+      return mime.type === "image";
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 /**
