@@ -20,6 +20,8 @@ export type AuthMethod = "access-keys" | "api-key" | "profile";
 export interface BedrockModelSummary {
   /** For application inference profiles, the underlying base model ID used for token limits */
   baseModelId?: string;
+  /** For inference profiles, when the profile was created */
+  createdAt?: Date;
   customizationsSupported?: string[];
   inferenceTypesSupported?: string[];
   inputModalities: string[];
@@ -32,4 +34,6 @@ export interface BedrockModelSummary {
   outputModalities: string[];
   providerName: string;
   responseStreamingSupported: boolean;
+  /** For inference profiles, when the profile was last updated */
+  updatedAt?: Date;
 }

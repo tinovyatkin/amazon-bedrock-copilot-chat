@@ -159,6 +159,7 @@ export class BedrockAPIClient {
           // Create profile summary with inherited or default capabilities
           profiles.push({
             baseModelId,
+            createdAt: profile.createdAt,
             customizationsSupported: matchedModel?.customizationsSupported,
             inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
             inputModalities: matchedModel?.inputModalities ?? [],
@@ -169,6 +170,7 @@ export class BedrockAPIClient {
             outputModalities: matchedModel?.outputModalities ?? [],
             providerName: matchedModel?.providerName ?? "Application Inference Profile",
             responseStreamingSupported: matchedModel?.responseStreamingSupported ?? false,
+            updatedAt: profile.updatedAt,
           });
         }
       }
@@ -223,7 +225,8 @@ export class BedrockAPIClient {
       });
       const response = await this.bedrockClient.send(command, { abortSignal });
 
-      return (response.modelSummaries ?? []).map((summary) => ({
+      // Filter out deprecated (LEGACY) models
+      const allModels = (response.modelSummaries ?? []).map((summary) => ({
         customizationsSupported: summary.customizationsSupported,
         inferenceTypesSupported: summary.inferenceTypesSupported,
         inputModalities: summary.inputModalities ?? [],
@@ -235,6 +238,22 @@ export class BedrockAPIClient {
         providerName: summary.providerName ?? "",
         responseStreamingSupported: summary.responseStreamingSupported ?? false,
       }));
+
+      const activeModels = allModels.filter((model) => {
+        const isDeprecated = model.modelLifecycle?.status === "LEGACY";
+        if (isDeprecated) {
+          logger.debug(
+            `[Bedrock API Client] Excluding deprecated model: ${model.modelId} (${model.modelName})`,
+          );
+        }
+        return !isDeprecated;
+      });
+
+      logger.debug(
+        `[Bedrock API Client] Excluded ${allModels.length - activeModels.length} deprecated models`,
+      );
+
+      return activeModels;
     } catch (error) {
       if (error instanceof AccessDeniedException) {
         logger.warn(
@@ -286,9 +305,19 @@ export class BedrockAPIClient {
         response.authorizationStatus === "AUTHORIZED" && response.regionAvailability === "AVAILABLE"
       );
     } catch (error) {
-      if (error instanceof AccessDeniedException || error instanceof ResourceNotFoundException) {
-        // Fall back to a test Converse call to verify actual model access
+      if (error instanceof AccessDeniedException) {
+        // Only fall back to Converse test when GetFoundationModelAvailability API is denied
+        // This is the last resort validation method
+        logger.debug(
+          `[Bedrock API Client] GetFoundationModelAvailability denied for ${modelId}, falling back to Converse test`,
+        );
         return this.testModelAccess(modelId, abortSignal);
+      }
+
+      if (error instanceof ResourceNotFoundException) {
+        // Model doesn't exist, don't waste time with Converse call
+        logger.debug(`[Bedrock API Client] Model ${modelId} not found`);
+        return false;
       }
 
       logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);
