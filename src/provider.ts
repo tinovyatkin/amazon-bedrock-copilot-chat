@@ -564,14 +564,41 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         throw new Error(errorMessage);
       }
 
-      logger.error("[Bedrock Model Provider] Chat request failed", {
-        error:
-          error instanceof Error
-            ? { message: error.message, name: error.name, stack: error.stack }
-            : String(error),
+      // Extract detailed error information from AWS SDK error
+      const errorDetails: Record<string, unknown> = {
         messageCount: messages.length,
         modelId: model.id,
-      });
+      };
+
+      if (error instanceof Error) {
+        errorDetails.error = {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        };
+
+        // AWS SDK errors have additional metadata in hidden fields
+        const awsError = error as unknown as Record<string, unknown>;
+
+        // Extract $metadata
+        if (awsError.$metadata) {
+          errorDetails.awsMetadata = awsError.$metadata;
+        }
+
+        // Use util.format with %O to capture hidden fields like $response
+        // This properly shows non-enumerable properties that inspect might miss
+        errorDetails.fullErrorWithFormat = inspect(error, {
+          depth: 10,
+          getters: true,
+          maxArrayLength: 100,
+          maxStringLength: 1000,
+          showHidden: true,
+        });
+      } else {
+        errorDetails.error = String(error);
+      }
+
+      logger.error("[Bedrock Model Provider] Chat request failed", errorDetails);
       throw error;
     }
   }
