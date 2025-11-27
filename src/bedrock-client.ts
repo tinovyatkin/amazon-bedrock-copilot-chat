@@ -286,9 +286,19 @@ export class BedrockAPIClient {
         response.authorizationStatus === "AUTHORIZED" && response.regionAvailability === "AVAILABLE"
       );
     } catch (error) {
-      if (error instanceof AccessDeniedException || error instanceof ResourceNotFoundException) {
-        // Fall back to a test Converse call to verify actual model access
+      if (error instanceof AccessDeniedException) {
+        // Only fall back to Converse test when GetFoundationModelAvailability API is denied
+        // This is the last resort validation method
+        logger.debug(
+          `[Bedrock API Client] GetFoundationModelAvailability denied for ${modelId}, falling back to Converse test`,
+        );
         return this.testModelAccess(modelId, abortSignal);
+      }
+
+      if (error instanceof ResourceNotFoundException) {
+        // Model doesn't exist, don't waste time with Converse call
+        logger.debug(`[Bedrock API Client] Model ${modelId} not found`);
+        return false;
       }
 
       logger.error(`[Bedrock API Client] Failed to check availability for model ${modelId}`, error);

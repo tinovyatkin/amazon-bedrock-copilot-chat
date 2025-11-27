@@ -981,6 +981,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelIdToUse: string;
   }> {
     if (candidate.hasInferenceProfile) {
+      // If the profile was returned by ListInferenceProfiles, trust it
+      // This avoids expensive Converse API validation calls
+      if (availableProfileIds.has(candidate.modelIdToUse)) {
+        logger.trace(
+          `[Bedrock Model Provider] Trusting inference profile from ListInferenceProfiles: ${candidate.modelIdToUse}`,
+        );
+        return { ...candidate, isAccessible: true };
+      }
+
+      // Profile not in list, validate with Converse as last resort
       const profileAccessible = await this.client.testInferenceProfileAccess(
         candidate.modelIdToUse,
         abortSignal,
@@ -1031,41 +1041,31 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     if (candidate.modelIdToUse.startsWith("global.")) {
       const regionalProfileId = `${regionPrefix}.${candidate.model.modelId}`;
       if (availableProfileIds.has(regionalProfileId)) {
-        const regionalAccessible = await this.client.testInferenceProfileAccess(
-          regionalProfileId,
-          abortSignal,
+        // Profile is in ListInferenceProfiles, trust it
+        logger.info(
+          `[Bedrock Model Provider] Using regional profile ${regionalProfileId} instead of global profile`,
         );
-        if (regionalAccessible) {
-          logger.info(
-            `[Bedrock Model Provider] Using regional profile ${regionalProfileId} instead of global profile`,
-          );
-          return {
-            ...candidate,
-            hasInferenceProfile: true,
-            isAccessible: true,
-            modelIdToUse: regionalProfileId,
-          };
-        }
+        return {
+          ...candidate,
+          hasInferenceProfile: true,
+          isAccessible: true,
+          modelIdToUse: regionalProfileId,
+        };
       }
     } else if (candidate.modelIdToUse.startsWith(`${regionPrefix}.`)) {
       // If this was a regional profile, try global
       const globalProfileId = `global.${candidate.model.modelId}`;
       if (availableProfileIds.has(globalProfileId)) {
-        const globalAccessible = await this.client.testInferenceProfileAccess(
-          globalProfileId,
-          abortSignal,
+        // Profile is in ListInferenceProfiles, trust it
+        logger.info(
+          `[Bedrock Model Provider] Using global profile ${globalProfileId} instead of regional profile`,
         );
-        if (globalAccessible) {
-          logger.info(
-            `[Bedrock Model Provider] Using global profile ${globalProfileId} instead of regional profile`,
-          );
-          return {
-            ...candidate,
-            hasInferenceProfile: true,
-            isAccessible: true,
-            modelIdToUse: globalProfileId,
-          };
-        }
+        return {
+          ...candidate,
+          hasInferenceProfile: true,
+          isAccessible: true,
+          modelIdToUse: globalProfileId,
+        };
       }
     }
 
