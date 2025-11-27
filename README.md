@@ -42,7 +42,7 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 This extension supports three authentication methods:
 
 1. **AWS Profile** (recommended) - Uses named profiles from `~/.aws/credentials` and `~/.aws/config`
-2. **API Key** - Uses AWS Bedrock bearer token (stored securely in VSCode SecretStorage)
+2. **API Key** - Uses [Amazon Bedrock API key](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html) (stored securely in VSCode SecretStorage)
 3. **Access Keys** - Uses AWS access key ID and secret (stored securely in VSCode SecretStorage)
 
 To configure:
@@ -55,20 +55,7 @@ To configure:
 
 ### Available Regions
 
-- US East (N. Virginia) - us-east-1
-- US East (Ohio) - us-east-2
-- US West (Oregon) - us-west-2
-- Asia Pacific (Mumbai) - ap-south-1
-- Asia Pacific (Tokyo) - ap-northeast-1
-- Asia Pacific (Seoul) - ap-northeast-2
-- Asia Pacific (Singapore) - ap-southeast-1
-- Asia Pacific (Sydney) - ap-southeast-2
-- Canada (Central) - ca-central-1
-- Europe (Frankfurt) - eu-central-1
-- Europe (Ireland) - eu-west-1
-- Europe (London) - eu-west-2
-- Europe (Paris) - eu-west-3
-- South America (São Paulo) - sa-east-1
+See [Model support by AWS Region in Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html) for the latest list of supported regions for Amazon Bedrock.
 
 ## Usage
 
@@ -86,53 +73,6 @@ The extension automatically filters and displays only models that:
 - Support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations
 - Are **enabled** in your Amazon Bedrock console (models must be authorized and available in your selected region)
 
-### Supported Model Families
-
-**Anthropic Claude:**
-
-- Claude Sonnet 4.5 and Claude Sonnet 4
-- Claude Opus 4.1 and Claude Opus 4
-- Claude 3.7 Sonnet
-- Claude 3.5 Sonnet and Claude 3.5 Haiku (legacy)
-- Claude 3 family: Opus, Sonnet, Haiku (legacy)
-
-**OpenAI OSS:**
-
-- gpt-oss-120b (120B parameters, near o4-mini performance)
-- gpt-oss-20b (20B parameters, optimized for edge deployment)
-
-**Amazon Nova:**
-
-- Nova Premier, Nova Pro, Nova Lite, Nova Micro
-
-**Meta Llama:**
-
-- Llama 3.1 and later (8B, 70B, 405B variants)
-- Llama 3.2 (11B, 90B)
-- Llama 4 (Scout, Maverick)
-
-**Mistral AI:**
-
-- Mistral Large and Mistral Large 2
-- Mistral Small
-- Pixtral Large
-
-**Cohere:**
-
-- Command R and Command R+
-
-**AI21 Labs:**
-
-- Jamba 1.5 Large and Jamba 1.5 Mini
-
-**Writer:**
-
-- Palmyra X4 and Palmyra X5
-
-**DeepSeek:**
-
-- DeepSeek models (via Amazon Bedrock when available)
-
 ### Models Automatically Excluded
 
 The extension automatically filters models to show only text generation models (using `byOutputModality: "TEXT"` in the Bedrock API). This excludes embedding models and image generation models.
@@ -147,11 +87,7 @@ The extension automatically filters models to show only text generation models (
 2. Check that you've selected the correct AWS profile and region
 3. **Enable models in the Amazon Bedrock console**: Go to the [Bedrock Model Access page](https://console.aws.amazon.com/bedrock/home#/modelaccess) and request access to the models you want to use
 4. Ensure your AWS account has access to Bedrock in the selected region
-5. Check the "Bedrock Chat" output channel for error messages
-
-## Maintainer Notes
-
-- VS Code's `secrets.onDidChange` event is global to the workspace and fires for any extension that updates secrets. It cannot be filtered by key. To avoid noisy refreshes in the Bedrock provider, secret-change handling is debounced (~400ms) and coalesces rapid or unrelated updates into a single refresh.
+5. Check the "Amazon Bedrock Models" output channel for error messages
 
 ### Authentication errors
 
@@ -165,15 +101,11 @@ The extension automatically filters models to show only text generation models (
    **Option 2: Custom Policy with Specific Permissions**
 
    If you prefer granular control, ensure your policy includes:
-   - `bedrock:ListFoundationModels` - List available models
-   - `bedrock:GetFoundationModelAvailability` - Check model access status
+   - `bedrock:ListFoundationModels` - List available models (_optional but recommended - extension will fallback to check Anthropic models only_)
+   - `bedrock:GetFoundationModelAvailability` - Check model access status (_optional but recommended_)
    - `bedrock:ListInferenceProfiles` - List cross-region inference profiles
    - `bedrock:InvokeModel` - Invoke models
    - `bedrock:InvokeModelWithResponseStream` - Stream model responses
-
-## Credits
-
-This extension is based on [huggingface-vscode-chat](https://github.com/huggingface/huggingface-vscode-chat) and [vscode-copilot-chat PR#1046](https://github.com/microsoft/vscode-copilot-chat/pull/1046).
 
 ## License
 
