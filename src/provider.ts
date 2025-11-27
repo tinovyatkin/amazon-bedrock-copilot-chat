@@ -273,17 +273,23 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
           progress?.report({ message: "Sorting models..." });
-          infos.sort((a, b) => {
-            // Find the corresponding model summaries to get dates
-            const aModel = [...candidates.map((c) => c.model), ...applicationProfiles].find(
-              (m) => m.modelId === a.id || m.modelArn === a.id,
-            );
-            const bModel = [...candidates.map((c) => c.model), ...applicationProfiles].find(
-              (m) => m.modelId === b.id || m.modelArn === b.id,
-            );
 
-            const aDate = aModel?.updatedAt ?? aModel?.createdAt;
-            const bDate = bModel?.updatedAt ?? bModel?.createdAt;
+          // Build lookup map for O(1) access during sorting
+          const modelDateMap = new Map<string, Date | undefined>();
+          for (const c of candidates) {
+            const date = c.model.updatedAt ?? c.model.createdAt;
+            modelDateMap.set(c.model.modelId, date);
+            modelDateMap.set(c.model.modelArn, date);
+          }
+          for (const p of applicationProfiles) {
+            const date = p.updatedAt ?? p.createdAt;
+            modelDateMap.set(p.modelId, date);
+            modelDateMap.set(p.modelArn, date);
+          }
+
+          infos.sort((a, b) => {
+            const aDate = modelDateMap.get(a.id);
+            const bDate = modelDateMap.get(b.id);
 
             // If both have dates, sort by date (newest first)
             if (aDate && bDate) {
