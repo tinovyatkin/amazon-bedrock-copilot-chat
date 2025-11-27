@@ -271,6 +271,33 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             infos.push(profileInfo);
           }
 
+          // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
+          progress?.report({ message: "Sorting models..." });
+          infos.sort((a, b) => {
+            // Find the corresponding model summaries to get dates
+            const aModel = [...candidates.map((c) => c.model), ...applicationProfiles].find(
+              (m) => m.modelId === a.id || m.modelArn === a.id,
+            );
+            const bModel = [...candidates.map((c) => c.model), ...applicationProfiles].find(
+              (m) => m.modelId === b.id || m.modelArn === b.id,
+            );
+
+            const aDate = aModel?.updatedAt ?? aModel?.createdAt;
+            const bDate = bModel?.updatedAt ?? bModel?.createdAt;
+
+            // If both have dates, sort by date (newest first)
+            if (aDate && bDate) {
+              return bDate.getTime() - aDate.getTime();
+            }
+
+            // Models with dates come before models without dates
+            if (aDate) return -1;
+            if (bDate) return 1;
+
+            // If neither has a date, maintain original order
+            return 0;
+          });
+
           if (infos.length === 0) {
             throw new NoAccessibleModelsError();
           }

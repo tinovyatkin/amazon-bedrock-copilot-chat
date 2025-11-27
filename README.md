@@ -75,7 +75,13 @@ The extension automatically filters and displays only models that:
 
 ### Models Automatically Excluded
 
-The extension automatically filters models to show only text generation models (using `byOutputModality: "TEXT"` in the Bedrock API). This excludes embedding models and image generation models.
+The extension automatically filters models to show only text generation models (using `byOutputModality: "TEXT"` in the Bedrock API). This excludes:
+
+- Embedding models
+- Image generation models
+- **Deprecated models** (models with `LEGACY` lifecycle status)
+
+Models are sorted with newest inference profiles first (by creation/update date), making it easier to find recently released models.
 
 **Note**: Some text models that appear in the list may have limited or no tool calling support (e.g., legacy Amazon Titan Text, AI21 Jurassic 2, Meta Llama 2 and 3.0). These will fail gracefully if tool calls are attempted.
 

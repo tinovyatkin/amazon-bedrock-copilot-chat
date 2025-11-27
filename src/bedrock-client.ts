@@ -159,6 +159,7 @@ export class BedrockAPIClient {
           // Create profile summary with inherited or default capabilities
           profiles.push({
             baseModelId,
+            createdAt: profile.createdAt,
             customizationsSupported: matchedModel?.customizationsSupported,
             inferenceTypesSupported: matchedModel?.inferenceTypesSupported ?? [],
             inputModalities: matchedModel?.inputModalities ?? [],
@@ -169,6 +170,7 @@ export class BedrockAPIClient {
             outputModalities: matchedModel?.outputModalities ?? [],
             providerName: matchedModel?.providerName ?? "Application Inference Profile",
             responseStreamingSupported: matchedModel?.responseStreamingSupported ?? false,
+            updatedAt: profile.updatedAt,
           });
         }
       }
@@ -223,7 +225,8 @@ export class BedrockAPIClient {
       });
       const response = await this.bedrockClient.send(command, { abortSignal });
 
-      return (response.modelSummaries ?? []).map((summary) => ({
+      // Filter out deprecated (LEGACY) models
+      const allModels = (response.modelSummaries ?? []).map((summary) => ({
         customizationsSupported: summary.customizationsSupported,
         inferenceTypesSupported: summary.inferenceTypesSupported,
         inputModalities: summary.inputModalities ?? [],
@@ -235,6 +238,22 @@ export class BedrockAPIClient {
         providerName: summary.providerName ?? "",
         responseStreamingSupported: summary.responseStreamingSupported ?? false,
       }));
+
+      const activeModels = allModels.filter((model) => {
+        const isDeprecated = model.modelLifecycle?.status === "LEGACY";
+        if (isDeprecated) {
+          logger.debug(
+            `[Bedrock API Client] Excluding deprecated model: ${model.modelId} (${model.modelName})`,
+          );
+        }
+        return !isDeprecated;
+      });
+
+      logger.debug(
+        `[Bedrock API Client] Excluded ${allModels.length - activeModels.length} deprecated models`,
+      );
+
+      return activeModels;
     } catch (error) {
       if (error instanceof AccessDeniedException) {
         logger.warn(
