@@ -29,7 +29,7 @@
         "@vscode/dts": "0.4.1",
         "@vscode/test-cli": "0.0.12",
         "@vscode/test-electron": "2.5.2",
-        "commitlint": "20.1.0",
+        "commitlint": "20.2.0",
         "eslint": "9.39.1",
         "eslint-config-prettier": "10.1.8",
         "eslint-formatter-compact": "9.0.1",
@@ -457,7 +457,7 @@
 
     "comment-parser": ["comment-parser@1.4.1", "", {}, "sha512-buhp5kePrmda3vhc5B9t7pUQXAb2Tnd0qgpkIhPhkHXxJpiPJ11H0ZEU0oBpJ2QztSbzG/ZxMj/CHsYJqRHmyg=="],
 
-    "commitlint": ["commitlint@20.1.0", "", { "dependencies": { "@commitlint/cli": "^20.1.0", "@commitlint/types": "^20.0.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-3W3CTUpZl6R98UquFiZA/C9yGdzGJU2rmVIXlx6tvKNX8hzLuiPsoZINFfzKnfCnaSP07Xys5aXP+FE7vXZmEg=="],
+    "commitlint": ["commitlint@20.2.0", "", { "dependencies": { "@commitlint/cli": "^20.2.0", "@commitlint/types": "^20.2.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-AxjKCK4PVgd3RD9MzW3nSVR6DfJPXqRi2n9Gkyq1tPrJNxq0WWqLBhHKOcwXvVCMJjameyeALV2xbYYDHlL5fg=="],
 
     "compare-func": ["compare-func@2.0.0", "", { "dependencies": { "array-ify": "^1.0.0", "dot-prop": "^5.1.0" } }, "sha512-zHig5N+tPWARooBnb0Zx1MFcdfpyJrfTJ3Y5L+IFvUm8rM74hHz66z0gw0x4tijh5CorKkKUCnW82R2vmpeCRA=="],
 
