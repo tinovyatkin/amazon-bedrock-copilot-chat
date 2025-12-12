@@ -104,49 +104,12 @@ export function convertMessages(
  * @returns The same messages array with thinking content removed
  */
 export function stripThinkingContent(messages: BedrockMessage[]): BedrockMessage[] {
-  let filteredCount = 0;
-
-  for (const message of messages) {
-    if (message.content) {
-      const originalLength = message.content.length;
-      message.content = message.content.filter((block) => {
-        // Filter out reasoning content (Deepseek and Anthropic extended thinking format)
-        if ("reasoningContent" in block) {
-          filteredCount++;
-          return false;
-        }
-        // Filter out thinking blocks (Anthropic thinking format)
-        if ("thinking" in block || "redacted_thinking" in block) {
-          filteredCount++;
-          return false;
-        }
-        return true;
-      });
-
-      if (message.content.length === 0 && originalLength > 0) {
-        logger.trace(
-          "[Message Converter] Message became empty after filtering thinking content, will be removed",
-        );
-      }
-    }
-  }
-
-  // Remove empty messages
-  const messagesBeforeFilter = messages.length;
-  messages.splice(
-    0,
-    messages.length,
-    ...messages.filter((msg) => msg.content && msg.content.length > 0),
+  return filterContentBlocks(
+    messages,
+    (block) =>
+      !("reasoningContent" in block) && !("thinking" in block) && !("redacted_thinking" in block),
+    "Stripped thinking/reasoning content from messages",
   );
-
-  if (filteredCount > 0) {
-    logger.trace("[Message Converter] Stripped thinking/reasoning content from messages", {
-      blocksFiltered: filteredCount,
-      emptyMessagesRemoved: messagesBeforeFilter - messages.length,
-    });
-  }
-
-  return messages;
 }
 
 /**
@@ -243,18 +206,26 @@ function extractToolResultText(content: unknown): string {
 }
 
 /**
- * Filter out reasoning content for Deepseek models
+ * Common helper to filter content blocks from messages.
+ * Reduces code duplication between stripThinkingContent and filterDeepseekReasoningContent.
+ *
+ * @param messages The messages to filter (will be modified in place)
+ * @param predicate Function that returns true to KEEP a block, false to remove it
+ * @param logContext Description for logging purposes
+ * @returns The same messages array with filtered content
  */
-function filterDeepseekReasoningContent(bedrockMessages: BedrockMessage[], modelId: string): void {
-  const isDeepseekModel = modelId.toLowerCase().includes("deepseek");
-  if (!isDeepseekModel) return;
-
+function filterContentBlocks(
+  messages: BedrockMessage[],
+  predicate: (block: ContentBlock) => boolean,
+  logContext: string,
+): BedrockMessage[] {
   let filteredCount = 0;
-  for (const message of bedrockMessages) {
+
+  for (const message of messages) {
     if (message.content) {
       const originalLength = message.content.length;
       message.content = message.content.filter((block) => {
-        if ("reasoningContent" in block) {
+        if (!predicate(block)) {
           filteredCount++;
           return false;
         }
@@ -262,27 +233,43 @@ function filterDeepseekReasoningContent(bedrockMessages: BedrockMessage[], model
       });
 
       if (message.content.length === 0 && originalLength > 0) {
-        logger.debug(
-          "[Message Converter] Message became empty after filtering reasoningContent, will be removed",
+        logger.trace(
+          `[Message Converter] Message became empty after ${logContext}, will be removed`,
         );
       }
     }
   }
 
   // Remove empty messages
-  const messagesBeforeFilter = bedrockMessages.length;
-  bedrockMessages.splice(
+  const messagesBeforeFilter = messages.length;
+  messages.splice(
     0,
-    bedrockMessages.length,
-    ...bedrockMessages.filter((msg) => msg.content && msg.content.length > 0),
+    messages.length,
+    ...messages.filter((msg) => msg.content && msg.content.length > 0),
   );
 
   if (filteredCount > 0) {
-    logger.debug("[Message Converter] Filtered reasoningContent for Deepseek model", {
+    logger.trace(`[Message Converter] ${logContext}`, {
       blocksFiltered: filteredCount,
-      emptyMessagesRemoved: messagesBeforeFilter - bedrockMessages.length,
+      emptyMessagesRemoved: messagesBeforeFilter - messages.length,
     });
   }
+
+  return messages;
+}
+
+/**
+ * Filter out reasoning content for Deepseek models
+ */
+function filterDeepseekReasoningContent(bedrockMessages: BedrockMessage[], modelId: string): void {
+  const isDeepseekModel = modelId.toLowerCase().includes("deepseek");
+  if (!isDeepseekModel) return;
+
+  filterContentBlocks(
+    bedrockMessages,
+    (block) => !("reasoningContent" in block),
+    "Filtered reasoningContent for Deepseek model",
+  );
 }
 
 /**

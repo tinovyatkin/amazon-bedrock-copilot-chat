@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { convertMessages } from "../converters/messages";
+import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
 import { BedrockChatModelProvider } from "../provider";
@@ -180,6 +180,105 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(out.messages[0].content?.length, 2);
       assert.equal(out.messages[0].content?.[0]?.text, "First user message");
       assert.equal(out.messages[0].content?.[1]?.text, "Second user message");
+    });
+  });
+
+  suite("utils/stripThinkingContent", () => {
+    test("strips reasoningContent blocks from messages", () => {
+      const messages = [
+        {
+          content: [
+            { reasoningContent: { reasoningText: { signature: "sig123", text: "thinking..." } } },
+            { text: "Hello" },
+          ],
+          role: "assistant" as const,
+        },
+      ];
+
+      const result = stripThinkingContent(messages);
+
+      assert.equal(result.length, 1);
+      assert.equal(result[0].content?.length, 1);
+      assert.equal(result[0].content?.[0]?.text, "Hello");
+    });
+
+    test("strips thinking and redacted_thinking blocks from messages", () => {
+      // Using 'as any' because thinking/redacted_thinking are not standard ContentBlock types
+      // but may appear in responses from models with extended thinking enabled
+      const messages = [
+        {
+          content: [{ thinking: "internal thought process" } as any, { text: "Response" }],
+          role: "assistant" as const,
+        },
+        {
+          content: [{ redacted_thinking: "redacted" } as any, { text: "Another response" }],
+          role: "assistant" as const,
+        },
+      ] as any;
+
+      const result = stripThinkingContent(messages);
+
+      assert.equal(result.length, 2);
+      assert.equal(result[0].content?.length, 1);
+      assert.equal(result[0].content?.[0]?.text, "Response");
+      assert.equal(result[1].content?.length, 1);
+      assert.equal(result[1].content?.[0]?.text, "Another response");
+    });
+
+    test("preserves non-thinking content", () => {
+      const messages = [
+        {
+          content: [{ text: "User message" }],
+          role: "user" as const,
+        },
+        {
+          content: [
+            { text: "Assistant response" },
+            { toolUse: { input: {}, name: "search", toolUseId: "123" } },
+          ],
+          role: "assistant" as const,
+        },
+      ];
+
+      const result = stripThinkingContent(messages);
+
+      assert.equal(result.length, 2);
+      assert.equal(result[0].content?.length, 1);
+      assert.equal(result[1].content?.length, 2);
+    });
+
+    test("removes empty messages after stripping", () => {
+      const messages = [
+        {
+          content: [
+            { reasoningContent: { reasoningText: { signature: "sig", text: "only thinking" } } },
+          ],
+          role: "assistant" as const,
+        },
+        {
+          content: [{ text: "Keep this" }],
+          role: "user" as const,
+        },
+      ];
+
+      const result = stripThinkingContent(messages);
+
+      assert.equal(result.length, 1);
+      assert.equal(result[0].role, "user");
+      assert.equal(result[0].content?.[0]?.text, "Keep this");
+    });
+
+    test("handles messages without content", () => {
+      const messages = [
+        { content: undefined, role: "user" as const },
+        { content: [{ text: "Hello" }], role: "assistant" as const },
+      ];
+
+      const result = stripThinkingContent(messages as any);
+
+      // Message without content is removed (empty content array check)
+      assert.equal(result.length, 1);
+      assert.equal(result[0].content?.[0]?.text, "Hello");
     });
   });
 
