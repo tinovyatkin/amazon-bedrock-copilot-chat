@@ -96,6 +96,60 @@ export function convertMessages(
 }
 
 /**
+ * Strip thinking/reasoning content blocks from messages.
+ * This is used when sending messages to APIs that don't support thinking blocks
+ * (e.g., CountTokens API when thinking is not enabled).
+ *
+ * @param messages The messages to filter (will be modified in place)
+ * @returns The same messages array with thinking content removed
+ */
+export function stripThinkingContent(messages: BedrockMessage[]): BedrockMessage[] {
+  let filteredCount = 0;
+
+  for (const message of messages) {
+    if (message.content) {
+      const originalLength = message.content.length;
+      message.content = message.content.filter((block) => {
+        // Filter out reasoning content (Deepseek and Anthropic extended thinking format)
+        if ("reasoningContent" in block) {
+          filteredCount++;
+          return false;
+        }
+        // Filter out thinking blocks (Anthropic thinking format)
+        if ("thinking" in block || "redacted_thinking" in block) {
+          filteredCount++;
+          return false;
+        }
+        return true;
+      });
+
+      if (message.content.length === 0 && originalLength > 0) {
+        logger.trace(
+          "[Message Converter] Message became empty after filtering thinking content, will be removed",
+        );
+      }
+    }
+  }
+
+  // Remove empty messages
+  const messagesBeforeFilter = messages.length;
+  messages.splice(
+    0,
+    messages.length,
+    ...messages.filter((msg) => msg.content && msg.content.length > 0),
+  );
+
+  if (filteredCount > 0) {
+    logger.trace("[Message Converter] Stripped thinking/reasoning content from messages", {
+      blocksFiltered: filteredCount,
+      emptyMessagesRemoved: messagesBeforeFilter - messages.length,
+    });
+  }
+
+  return messages;
+}
+
+/**
  * Add prompt caching points to system and user messages
  */
 function addPromptCachingPoints(

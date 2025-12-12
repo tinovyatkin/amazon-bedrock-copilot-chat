@@ -18,7 +18,7 @@ import type {
 import * as vscode from "vscode";
 
 import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
-import { convertMessages } from "./converters/messages";
+import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
@@ -984,10 +984,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       });
 
       try {
+        // Deep copy messages and strip thinking content for CountTokens API
+        // The CountTokens API doesn't support thinking blocks when thinking mode is not enabled,
+        // but our messages may contain thinking blocks from previous responses (injected via lastThinkingBlock)
+        const messagesForCounting = structuredClone(input.messages);
+        stripThinkingContent(messagesForCounting);
+
         // Build the CountTokens API input
         const countInput: CountTokensCommandInput["input"] = {
           converse: {
-            messages: input.messages,
+            messages: messagesForCounting,
             ...(input.system && input.system.length > 0 ? { system: input.system } : {}),
             ...(input.toolConfig ? { toolConfig: input.toolConfig } : {}),
           },
