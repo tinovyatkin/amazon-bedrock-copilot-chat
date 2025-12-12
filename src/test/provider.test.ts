@@ -20,6 +20,9 @@ const mockGlobalState: vscode.Memento = {
   update: async () => {},
 } as unknown as vscode.Memento;
 
+// Helper to cast non-standard content blocks that may appear from models with extended thinking
+const nonStandardBlock = (b: unknown) => b as any;
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
@@ -203,18 +206,22 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("strips thinking and redacted_thinking blocks from messages", () => {
-      // Using 'as any' because thinking/redacted_thinking are not standard ContentBlock types
-      // but may appear in responses from models with extended thinking enabled
       const messages = [
         {
-          content: [{ thinking: "internal thought process" } as any, { text: "Response" }],
+          content: [
+            nonStandardBlock({ thinking: "internal thought process" }),
+            { text: "Response" },
+          ],
           role: "assistant" as const,
         },
         {
-          content: [{ redacted_thinking: "redacted" } as any, { text: "Another response" }],
+          content: [
+            nonStandardBlock({ redacted_thinking: "redacted" }),
+            { text: "Another response" },
+          ],
           role: "assistant" as const,
         },
-      ] as any;
+      ];
 
       const result = stripThinkingContent(messages);
 
