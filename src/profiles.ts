@@ -212,11 +212,21 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
       };
     }
 
-    // Claude Opus 4.1 and 4: 200K input, 32K output
+    // Claude Opus 4.5, 4.1 and 4: 200K input, 64K output
+    // https://platform.claude.com - All Opus 4+ models support 64K output
     if (normalizedModelId.includes("opus-4")) {
       return {
-        maxInputTokens: 200_000 - 32_000,
-        maxOutputTokens: 32_000,
+        maxInputTokens: 200_000 - 64_000,
+        maxOutputTokens: 64_000,
+      };
+    }
+
+    // Claude Haiku 4.5: 200K input, 64K output
+    // https://platform.claude.com - Haiku 4.5 supports 64K output (first Haiku with extended output)
+    if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
+      return {
+        maxInputTokens: 200_000 - 64_000,
+        maxOutputTokens: 64_000,
       };
     }
 
