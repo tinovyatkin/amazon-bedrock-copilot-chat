@@ -23,8 +23,7 @@ import {
   ValidationException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
-import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
-import type { TokenIdentity, TokenIdentityProvider } from "@smithy/types";
+import type { AwsCredentialIdentity } from "@aws-sdk/types";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
@@ -583,10 +582,36 @@ export class BedrockAPIClient {
 
     // If authConfig is set, use it (new approach)
     if (this.authConfig) {
-      const authResult = this.getCredentialsOrToken(this.authConfig);
-      if (authResult) {
-        return { ...base, ...authResult };
+      // API key auth uses a custom signer to inject bearer token
+      if (this.authConfig.method === "api-key" && this.authConfig.apiKey) {
+        return {
+          ...base,
+          // Dummy credentials required for SDK initialization (signer overrides actual signing)
+          credentials: { accessKeyId: "BEDROCK_API_KEY", secretAccessKey: "BEDROCK_API_KEY" },
+          // Custom signer that adds bearer token instead of SigV4 signature
+          signer: createBearerTokenSigner(this.authConfig.apiKey),
+        };
       }
+
+      // Profile-based auth
+      if (this.authConfig.method === "profile" && this.authConfig.profile) {
+        return { ...base, credentials: fromIni({ profile: this.authConfig.profile }) };
+      }
+
+      // Access keys auth
+      if (
+        this.authConfig.method === "access-keys" &&
+        this.authConfig.accessKeyId &&
+        this.authConfig.secretAccessKey
+      ) {
+        const creds: AwsCredentialIdentity = {
+          accessKeyId: this.authConfig.accessKeyId,
+          secretAccessKey: this.authConfig.secretAccessKey,
+          ...(this.authConfig.sessionToken ? { sessionToken: this.authConfig.sessionToken } : {}),
+        };
+        return { ...base, credentials: creds };
+      }
+
       return base;
     }
 
@@ -594,53 +619,6 @@ export class BedrockAPIClient {
     return this.profileName
       ? { ...base, credentials: fromIni({ profile: this.profileName }) }
       : base;
-  }
-
-  /**
-   * Get AWS credentials or token configuration based on the authentication configuration.
-   * For API key authentication, returns a token provider using AWS SDK's native bearer token support.
-   * @param authConfig Authentication configuration
-   * @returns Object with credentials or token provider, or undefined for default credentials
-   */
-  private getCredentialsOrToken(authConfig: AuthConfig):
-    | undefined
-    | {
-        credentials?: AwsCredentialIdentity | AwsCredentialIdentityProvider;
-        token?: TokenIdentityProvider;
-      } {
-    if (authConfig.method === "api-key") {
-      // Use AWS SDK's native bearer token support instead of environment variables
-      if (!authConfig.apiKey) {
-        return undefined;
-      }
-
-      const tokenProvider: TokenIdentityProvider = async (): Promise<TokenIdentity> => ({
-        token: authConfig.apiKey,
-      });
-
-      return { token: tokenProvider };
-    }
-
-    if (authConfig.method === "profile") {
-      return authConfig.profile
-        ? { credentials: fromIni({ profile: authConfig.profile }) }
-        : undefined;
-    }
-
-    if (authConfig.method === "access-keys") {
-      if (!authConfig.accessKeyId || !authConfig.secretAccessKey) {
-        return undefined;
-      }
-      // Static credentials are process-scoped and not refreshed automatically
-      const creds: AwsCredentialIdentity = {
-        accessKeyId: authConfig.accessKeyId,
-        secretAccessKey: authConfig.secretAccessKey,
-        ...(authConfig.sessionToken ? { sessionToken: authConfig.sessionToken } : {}),
-      };
-      return { credentials: creds };
-    }
-
-    return undefined;
   }
 
   private recreateClients(): void {
@@ -712,4 +690,17 @@ export class ListFoundationModelsDeniedError extends Error {
     super("ListFoundationModelsAccessDenied", { cause });
     this.name = "ListFoundationModelsDeniedError";
   }
+}
+
+/**
+ * Creates a custom signer that adds bearer token authentication.
+ * Used for Bedrock API key authentication instead of SigV4 signing.
+ */
+function createBearerTokenSigner(apiKey: string) {
+  return {
+    sign: async <T extends { headers: Record<string, string> }>(request: T): Promise<T> => {
+      request.headers.Authorization = `Bearer ${apiKey}`;
+      return request;
+    },
+  };
 }
