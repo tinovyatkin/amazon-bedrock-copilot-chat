@@ -148,6 +148,7 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/strict-boolean-expressions": "off",
       "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
       "no-restricted-syntax": "off",
     },
   },

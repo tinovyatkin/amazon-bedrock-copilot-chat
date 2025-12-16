@@ -174,6 +174,7 @@ export function getModelProfile(modelId: string): ModelProfile {
  * @param enable1MContext Whether to enable 1M context for supported models (default: false)
  * @returns Token limits with maxInputTokens and maxOutputTokens
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- keeping it as flat config
 export function getModelTokenLimits(modelId: string, enable1MContext = false): ModelTokenLimits {
   const defaultLimits: ModelTokenLimits = {
     maxInputTokens: 196_000, // 200K context - 4K output
