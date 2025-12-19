@@ -23,10 +23,11 @@ import {
   ValidationException,
 } from "@aws-sdk/client-bedrock-runtime";
 import { fromIni } from "@aws-sdk/credential-providers";
-import type { AwsCredentialIdentity } from "@aws-sdk/types";
+import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-sdk/types";
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
+import { getProfileSdkUaAppId } from "./aws-profiles";
 import { logger } from "./logger";
 import type { AuthConfig, BedrockModelSummary } from "./types";
 
@@ -41,6 +42,7 @@ export class BedrockAPIClient {
   // Cache for inference profile ID -> base model ID mappings
   // This avoids repeated API calls to GetInferenceProfile
   private readonly inferenceProfileCache = new Map<string, string>();
+  private readonly profileCredentialsProviders = new Map<string, AwsCredentialIdentityProvider>();
   private profileName?: string;
 
   private region: string;
@@ -595,7 +597,12 @@ export class BedrockAPIClient {
 
       // Profile-based auth
       if (this.authConfig.method === "profile" && this.authConfig.profile) {
-        return { ...base, credentials: fromIni({ profile: this.authConfig.profile }) };
+        return {
+          ...base,
+          credentials: this.getProfileCredentialsProvider(this.authConfig.profile, {
+            stsRegion: this.region,
+          }),
+        };
       }
 
       // Access keys auth
@@ -617,8 +624,42 @@ export class BedrockAPIClient {
 
     // Otherwise, use profileName (legacy approach for backward compatibility)
     return this.profileName
-      ? { ...base, credentials: fromIni({ profile: this.profileName }) }
+      ? { ...base, credentials: this.getProfileCredentialsProvider(this.profileName) }
       : base;
+  }
+
+  private getProfileCredentialsProvider(
+    profile: string,
+    options?: { stsRegion?: string },
+  ): AwsCredentialIdentityProvider {
+    const key = `${profile}::${options?.stsRegion ?? ""}`;
+    const existing = this.profileCredentialsProviders.get(key);
+    if (existing) return existing;
+
+    let provider: AwsCredentialIdentityProvider | undefined;
+    const wrapped: AwsCredentialIdentityProvider = async () => {
+      if (!provider) {
+        const userAgentAppId = await getProfileSdkUaAppId(profile);
+        if (userAgentAppId) {
+          logger.debug(
+            `[Bedrock API Client] Using sdk_ua_app_id (${userAgentAppId}) for AWS profile ${profile}`,
+          );
+        }
+
+        provider = fromIni({
+          clientConfig: {
+            ...(options?.stsRegion ? { region: options.stsRegion } : {}),
+            ...(userAgentAppId ? { userAgentAppId } : {}),
+          },
+          profile,
+        });
+      }
+
+      return provider();
+    };
+
+    this.profileCredentialsProviders.set(key, wrapped);
+    return wrapped;
   }
 
   private recreateClients(): void {
