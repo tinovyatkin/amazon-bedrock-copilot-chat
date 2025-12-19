@@ -728,7 +728,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     // Add effort beta header for Claude Opus 4.5 when thinking effort is configured
-    if (thinkingEffortEnabled && modelProfile.supportsThinkingEffort) {
+    if (thinkingEffortEnabled) {
       anthropicBeta.push("effort-2025-11-24");
     }
 
@@ -943,7 +943,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         modelId,
         supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
         temperature: 1,
-        thinkingEffort: thinkingEffort ?? "default",
+        thinkingEffort: thinkingEffort ?? "(not applicable)",
       });
       return;
     }
