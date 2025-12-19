@@ -5,6 +5,15 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-19
+
+### Added
+
+- **Thinking Effort Control**: New `bedrock.thinking.effort` setting for Claude Opus 4.5
+  - Choose between `high` (default), `medium`, or `low` effort levels
+  - Balances response quality vs. token usage
+  - Works with or without extended thinking enabled
+
 ## [0.5.13] - 2025-12-19
 
 ### Fixed

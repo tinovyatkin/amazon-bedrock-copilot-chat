@@ -26,6 +26,11 @@ export interface ModelProfile {
    */
   supportsThinking: boolean;
   /**
+   * Whether the model supports the thinking effort parameter (Claude Opus 4.5 only)
+   * Allows controlling token expenditure with "high", "medium", or "low" effort levels
+   */
+  supportsThinkingEffort: boolean;
+  /**
    * Whether the model supports the toolChoice parameter
    */
   supportsToolChoice: boolean;
@@ -59,6 +64,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
     supportsThinking: false,
+    supportsThinkingEffort: false,
     supportsToolChoice: false,
     supportsToolResultStatus: false,
     toolResultFormat: "text",
@@ -98,6 +104,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
           supportsThinking: false,
+          supportsThinkingEffort: false,
           supportsToolChoice: true,
           supportsToolResultStatus: false,
           toolResultFormat: "text",
@@ -122,12 +129,17 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
+      // Thinking effort parameter is only supported by Claude Opus 4.5
+      // Allows controlling token expenditure with "high", "medium", or "low" effort levels
+      const supportsThinkingEffort = modelId.includes("opus-4-5");
+
       return {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
         supportsPromptCaching: true,
         supportsThinking,
+        supportsThinkingEffort,
         supportsToolChoice: true,
         supportsToolResultStatus: true, // Claude models support status field in tool results
         toolResultFormat: "text",
@@ -141,6 +153,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsThinkingEffort: false,
         supportsToolChoice: false,
         supportsToolResultStatus: false,
         toolResultFormat: "json",
@@ -155,6 +168,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsThinkingEffort: false,
         supportsToolChoice: true,
         supportsToolResultStatus: false,
         toolResultFormat: "text",
