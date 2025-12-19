@@ -17,6 +17,7 @@ import type {
 } from "vscode";
 import * as vscode from "vscode";
 
+import { getRegionPrefix } from "./aws-partition";
 import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
 import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
@@ -163,7 +164,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             abortController.signal,
           );
 
-          const regionPrefix = settings.region.split("-")[0];
+          // Extract region prefix for inference profile IDs (handles GovCloud, China, and commercial regions)
+          const regionPrefix = getRegionPrefix(settings.region);
           const candidates = this.buildModelCandidates(models, availableProfileIds, regionPrefix);
 
           progress?.report({
