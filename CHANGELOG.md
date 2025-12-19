@@ -5,15 +5,11 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.13] - 2025-12-19
 
-### Added
+### Fixed
 
-- **Prompt Caching Control**: New setting to enable/disable prompt caching
-  - `bedrock.promptCaching.enabled` setting (default: true)
-  - When disabled, removes all cache points from system prompts, tool definitions, and tool results
-  - Useful for ensuring fully fresh responses or avoiding cache-related costs
-  - Configurable via VSCode Settings UI or settings.json
+- Profile auth now honors `sdk_ua_app_id` from AWS config by passing it as `userAgentAppId` during credential resolution (fixes role assumption failures for some profiles)
 
 ## [0.1.17] - 2025-10-17
 

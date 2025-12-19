@@ -1,5 +1,9 @@
 import * as assert from "node:assert";
-import { listAwsProfiles } from "../aws-profiles";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { getProfileSdkUaAppId, listAwsProfiles } from "../aws-profiles";
 
 suite("aws-profiles", () => {
   test("listAwsProfiles returns an array", async () => {
@@ -28,5 +32,56 @@ suite("aws-profiles", () => {
     const profiles = await listAwsProfiles();
     const uniqueProfiles = [...new Set(profiles)];
     assert.deepStrictEqual(profiles, uniqueProfiles, "Profiles should not contain duplicates");
+  });
+
+  test("getProfileSdkUaAppId reads sdk_ua_app_id from config profile section", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(
+        configFilepath,
+        ["[profile test]", "region=us-east-1", "sdk_ua_app_id =  example-app-id  ", ""].join("\n"),
+      );
+      await writeFile(
+        credentialsFilepath,
+        ["[test]", "aws_access_key_id = TEST", "aws_secret_access_key = TEST", ""].join("\n"),
+      );
+
+      const appId = await getProfileSdkUaAppId("test", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(appId, "example-app-id");
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
+  test("getProfileSdkUaAppId returns undefined when sdk_ua_app_id is not configured", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(configFilepath, ["[profile test]", "region=us-east-1", ""].join("\n"));
+      await writeFile(
+        credentialsFilepath,
+        ["[test]", "aws_access_key_id = TEST", "aws_secret_access_key = TEST", ""].join("\n"),
+      );
+
+      const appId = await getProfileSdkUaAppId("test", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(appId, undefined);
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
   });
 });

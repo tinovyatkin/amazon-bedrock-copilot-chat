@@ -4,7 +4,7 @@ import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 import * as vscode from "vscode";
 
-import { listAwsProfiles } from "../aws-profiles";
+import { getProfileSdkUaAppId, listAwsProfiles } from "../aws-profiles";
 import { logger } from "../logger";
 import { getBedrockSettings, updateBedrockSettings } from "../settings";
 import type { AuthMethod } from "../types";
@@ -504,10 +504,11 @@ async function resolveSsmCredentials(
     if (method === "profile") {
       const profile = await readProfile();
       if (profile) {
+        const userAgentAppId = await getProfileSdkUaAppId(profile);
+        const clientConfig = userAgentAppId ? { userAgentAppId } : undefined;
         // Return a refreshing provider from shared ini
         // Note: SSMClient accepts a provider; typing keeps identity, runtime is fine
-        // Cast to any to satisfy union type without extra imports
-        return fromIni({ profile });
+        return fromIni({ profile, ...(clientConfig ? { clientConfig } : {}) });
       }
     }
 
@@ -515,7 +516,11 @@ async function resolveSsmCredentials(
     const ak = await readAccessKeys();
     if (ak) return ak;
     const profile = await readProfile();
-    if (profile) return fromIni({ profile });
+    if (profile) {
+      const userAgentAppId = await getProfileSdkUaAppId(profile);
+      const clientConfig = userAgentAppId ? { userAgentAppId } : undefined;
+      return fromIni({ profile, ...(clientConfig ? { clientConfig } : {}) });
+    }
 
     // 3) Default chain
     return undefined;
