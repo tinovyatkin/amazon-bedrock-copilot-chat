@@ -99,7 +99,12 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
 
   // Read thinking effort setting (only for Claude Opus 4.5)
   // Default to "high" for maximum capability
-  const thinkingEffort = config.get<ThinkingEffort>("thinking.effort") ?? "high";
+  const validEffortValues: ThinkingEffort[] = ["high", "low", "medium"];
+  const rawEffort = config.get<string>("thinking.effort");
+  const thinkingEffort: ThinkingEffort =
+    rawEffort && validEffortValues.includes(rawEffort as ThinkingEffort)
+      ? (rawEffort as ThinkingEffort)
+      : "high";
 
   return {
     context1M: {
