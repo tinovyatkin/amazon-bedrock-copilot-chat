@@ -23,9 +23,19 @@ export interface BedrockSettings {
   region: string;
   thinking: {
     budgetTokens: number;
+    effort: ThinkingEffort;
     enabled: boolean;
   };
 }
+
+/**
+ * Thinking effort level for Claude Opus 4.5.
+ * Controls how eager Claude is about spending tokens when responding.
+ * - "high": Maximum capability—Claude uses as many tokens as needed for the best possible outcome
+ * - "medium": Balanced approach with moderate token savings
+ * - "low": Most efficient—significant token savings with some capability reduction
+ */
+export type ThinkingEffort = "high" | "low" | "medium";
 
 /**
  * Get Bedrock settings with priority order
@@ -87,6 +97,10 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const thinkingBudgetTokens =
     copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
+  // Read thinking effort setting (only for Claude Opus 4.5)
+  // Default to "high" for maximum capability
+  const thinkingEffort = config.get<ThinkingEffort>("thinking.effort") ?? "high";
+
   return {
     context1M: {
       enabled: context1MEnabled,
@@ -99,6 +113,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     region,
     thinking: {
       budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024
+      effort: thinkingEffort,
       enabled: thinkingEnabled,
     },
   };

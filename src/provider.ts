@@ -518,11 +518,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         throw new Error("Cannot have more than 128 tools per request.");
       }
 
+      // Determine if thinking effort should be applied (only for Opus 4.5)
+      const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
+
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
         extendedThinkingEnabled,
         settings.context1M.enabled,
+        thinkingEffortEnabled,
       );
 
       // Build request input
@@ -534,6 +538,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         extendedThinkingEnabled,
         budgetTokens,
         betaHeaders,
+        thinkingEffortEnabled ? settings.thinking.effort : undefined,
       );
 
       // Log request details
@@ -703,6 +708,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelProfile: ReturnType<typeof getModelProfile>,
     extendedThinkingEnabled: boolean,
     context1MEnabled: boolean,
+    thinkingEffortEnabled: boolean,
   ): string[] {
     const anthropicBeta: string[] = [];
 
@@ -719,6 +725,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     } else if (modelProfile.supports1MContext && context1MEnabled) {
       // Even if thinking is not enabled, add 1M context beta header
       anthropicBeta.push("context-1m-2025-08-07");
+    }
+
+    // Add effort beta header for Claude Opus 4.5 when thinking effort is configured
+    if (thinkingEffortEnabled && modelProfile.supportsThinkingEffort) {
+      anthropicBeta.push("effort-2025-11-24");
     }
 
     return anthropicBeta;
@@ -830,6 +841,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
+    thinkingEffort?: "high" | "low" | "medium",
   ): ConverseStreamCommandInput {
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
@@ -868,41 +880,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       requestInput.toolConfig = toolConfig;
     }
 
-    // Add thinking configuration if enabled
-    if (extendedThinkingEnabled) {
-      // Extended thinking requires temperature 1.0
-      requestInput.inferenceConfig!.temperature = 1;
-
-      // Add thinking configuration to additionalModelRequestFields
-      requestInput.additionalModelRequestFields = {
-        thinking: {
-          budget_tokens: budgetTokens,
-          type: "enabled",
-        },
-      };
-
-      if (betaHeaders.length > 0) {
-        requestInput.additionalModelRequestFields.anthropic_beta = betaHeaders;
-      }
-
-      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
-        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
-        budgetTokens,
-        interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
-        modelId: model.id,
-        supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        temperature: 1,
-      });
-    } else if (betaHeaders.length > 0) {
-      // Even if thinking is not enabled, add beta headers if needed
-      requestInput.additionalModelRequestFields = {
-        anthropic_beta: betaHeaders,
-      };
-
-      logger.debug("[Bedrock Model Provider] 1M context enabled", {
-        modelId: model.id,
-      });
-    }
+    // Add additional model request fields (thinking, effort, beta headers)
+    this.configureAdditionalModelFields(
+      requestInput,
+      model.id,
+      extendedThinkingEnabled,
+      budgetTokens,
+      betaHeaders,
+      thinkingEffort,
+    );
 
     return requestInput;
   }
@@ -922,6 +908,70 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
     return { budgetTokens, extendedThinkingEnabled };
+  }
+
+  /**
+   * Configure additional model request fields for thinking, effort, and beta headers
+   */
+  private configureAdditionalModelFields(
+    requestInput: ConverseStreamCommandInput,
+    modelId: string,
+    extendedThinkingEnabled: boolean,
+    budgetTokens: number,
+    betaHeaders: string[],
+    thinkingEffort?: "high" | "low" | "medium",
+  ): void {
+    if (extendedThinkingEnabled) {
+      // Extended thinking requires temperature 1.0
+      requestInput.inferenceConfig!.temperature = 1;
+
+      // Add thinking configuration to additionalModelRequestFields
+      requestInput.additionalModelRequestFields = {
+        thinking: {
+          budget_tokens: budgetTokens,
+          type: "enabled",
+        },
+        ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
+        // Add thinking effort for Claude Opus 4.5 (controls token expenditure)
+        ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
+      };
+
+      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+        budgetTokens,
+        interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
+        modelId,
+        supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
+        temperature: 1,
+        thinkingEffort: thinkingEffort ?? "default",
+      });
+      return;
+    }
+
+    if (thinkingEffort) {
+      // Claude Opus 4.5 effort parameter can be used even without extended thinking
+      // This affects all token spend including tool calls
+      requestInput.additionalModelRequestFields = {
+        ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
+        output_config: { effort: thinkingEffort },
+      };
+
+      logger.debug("[Bedrock Model Provider] Thinking effort enabled (without extended thinking)", {
+        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+        modelId,
+        thinkingEffort,
+      });
+      return;
+    }
+
+    if (betaHeaders.length > 0) {
+      // Add beta headers even without thinking or effort
+      requestInput.additionalModelRequestFields = {
+        anthropic_beta: betaHeaders,
+      };
+
+      logger.debug("[Bedrock Model Provider] 1M context enabled", { modelId });
+    }
   }
 
   /**
