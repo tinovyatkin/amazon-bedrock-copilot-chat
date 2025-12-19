@@ -56,7 +56,13 @@ To configure:
 
 ### Available Regions
 
-See [Model support by AWS Region in Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html) for the latest list of supported regions for Amazon Bedrock.
+The extension supports all AWS partitions including:
+
+- **Commercial AWS** - All standard regions (us-east-1, eu-west-1, ap-southeast-2, etc.)
+- **AWS GovCloud (US)** - us-gov-west-1, us-gov-east-1
+- **AWS China** - cn-north-1, cn-northwest-1
+
+See [Model support by AWS Region in Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html) for the latest list of supported regions and [GOVCLOUD-COMPATIBILITY.md](./GOVCLOUD-COMPATIBILITY.md) for partition-specific details.
 
 ## Usage
 

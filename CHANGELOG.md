@@ -5,6 +5,15 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-12-19
+
+### Fixed
+
+- **AWS GovCloud and China Regions**: Fixed region prefix parsing and inference profile detection for non-commercial partitions
+  - GovCloud regions (us-gov-west-1, us-gov-east-1) now use correct three-part prefixes
+  - Fallback model detection skips global profiles in GovCloud/China (not supported)
+  - See [GOVCLOUD-COMPATIBILITY.md](./GOVCLOUD-COMPATIBILITY.md) for details
+
 ## [0.6.0] - 2025-12-19
 
 ### Added

@@ -27,6 +27,11 @@ import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@aws-
 import { AdaptiveRetryStrategy, DefaultRateLimiter } from "@smithy/util-retry";
 import * as nodeNativeFetch from "smithy-node-native-fetch";
 
+import {
+  getPartitionFromRegion,
+  getRegionPrefix,
+  supportsGlobalInferenceProfiles,
+} from "./aws-partition";
 import { getProfileSdkUaAppId } from "./aws-profiles";
 import { logger } from "./logger";
 import type { AuthConfig, BedrockModelSummary } from "./types";
@@ -446,59 +451,95 @@ export class BedrockAPIClient {
 
   /**
    * Detect Anthropic models reachable via known global/regional inference profiles when ListFoundationModels is blocked.
-   * Checks global profiles first, then falls back to regional profiles if access is denied.
+   * Checks global profiles first (commercial partition only), then falls back to regional profiles if access is denied.
+   *
+   * Partition-aware detection:
+   * - Commercial (aws): Tries global profiles first, then regional profiles
+   * - GovCloud (aws-us-gov): Skips global profiles (not supported), uses regional profiles only
+   * - China (aws-cn): Skips global profiles (not supported), uses regional profiles only
    */
   private async detectAnthropicFallbackModels(
     abortSignal?: AbortSignal,
   ): Promise<BedrockModelSummary[]> {
+    // Determine partition and region prefix for this region
+    const partition = getPartitionFromRegion(this.region);
+    const regionPrefix = getRegionPrefix(this.region);
+    const hasGlobalProfiles = supportsGlobalInferenceProfiles(partition);
+
+    logger.debug("[Bedrock API Client] Fallback detection configuration", {
+      hasGlobalProfiles,
+      partition,
+      region: this.region,
+      regionPrefix,
+    });
+
     const candidates: {
       baseModelId: string;
       displayName: string;
-      globalProfileId: string;
+      globalProfileId: null | string;
       regionalProfileIds: string[];
     }[] = [
       {
         baseModelId: "anthropic.claude-sonnet-4-5-20250929-v1:0",
         displayName: "Claude Sonnet 4.5",
-        globalProfileId: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        regionalProfileIds: ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
+        // Global profiles only available in commercial partition
+        globalProfileId: hasGlobalProfiles
+          ? "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+          : null,
+        // Regional profile uses partition-appropriate prefix
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-sonnet-4-5-20250929-v1:0`],
       },
       {
         baseModelId: "anthropic.claude-opus-4-5-20251101-v1:0",
         displayName: "Claude Opus 4.5",
-        globalProfileId: "global.anthropic.claude-opus-4-5-20251101-v1:0",
-        regionalProfileIds: ["us.anthropic.claude-opus-4-5-20251101-v1:0"],
+        globalProfileId: hasGlobalProfiles
+          ? "global.anthropic.claude-opus-4-5-20251101-v1:0"
+          : null,
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-opus-4-5-20251101-v1:0`],
       },
       {
         baseModelId: "anthropic.claude-haiku-4-5-20251001-v1:0",
         displayName: "Claude Haiku 4.5",
-        globalProfileId: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-        regionalProfileIds: ["us.anthropic.claude-haiku-4-5-20251001-v1:0"],
+        globalProfileId: hasGlobalProfiles
+          ? "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+          : null,
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-haiku-4-5-20251001-v1:0`],
       },
     ];
 
     const detected: BedrockModelSummary[] = [];
     const accessibilityChecks = await Promise.allSettled(
       candidates.map(async (candidate) => {
-        // Try global profile first
-        const globalProfileAccessible = await this.testInferenceProfileAccess(
-          candidate.globalProfileId,
-          abortSignal,
-        );
-        if (globalProfileAccessible) {
-          return { accessible: true, candidate, profileId: candidate.globalProfileId };
+        // Try global profile first (if available in this partition)
+        if (candidate.globalProfileId) {
+          const globalProfileAccessible = await this.testInferenceProfileAccess(
+            candidate.globalProfileId,
+            abortSignal,
+          );
+          if (globalProfileAccessible) {
+            return { accessible: true, candidate, profileId: candidate.globalProfileId };
+          }
+          logger.debug(
+            `[Bedrock API Client] Global profile ${candidate.globalProfileId} not accessible, trying regional profiles`,
+          );
         }
 
-        // Global profile denied, try regional profiles
+        // Try regional profiles
         for (const regionalProfileId of candidate.regionalProfileIds) {
           const regionalProfileAccessible = await this.testInferenceProfileAccess(
             regionalProfileId,
             abortSignal,
           );
           if (regionalProfileAccessible) {
-            logger.info(
-              `[Bedrock API Client] Global profile ${candidate.globalProfileId} denied, using regional profile ${regionalProfileId}`,
-            );
+            if (candidate.globalProfileId) {
+              logger.info(
+                `[Bedrock API Client] Global profile ${candidate.globalProfileId} denied, using regional profile ${regionalProfileId}`,
+              );
+            } else {
+              logger.info(
+                `[Bedrock API Client] Using regional profile ${regionalProfileId} (global profiles not available in partition ${partition})`,
+              );
+            }
             return { accessible: true, candidate, profileId: regionalProfileId };
           }
         }
