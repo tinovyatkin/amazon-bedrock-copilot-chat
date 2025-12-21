@@ -141,7 +141,7 @@
     "@aws-sdk/client-ssm": "^3.954.0",
     "@aws-sdk/credential-providers": "^3.954.0",
     "@aws-sdk/protocol-http": "^3.374.0",
-    "@smithy/shared-ini-file-loader": "^4.4.1",
+    "@smithy/shared-ini-file-loader": "^4.4.2",
     "@smithy/util-retry": "^4.2.6",
     "smithy-node-native-fetch": "^1.2.1"
   },
