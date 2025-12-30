@@ -73,8 +73,8 @@ export function getModelProfile(modelId: string): ModelProfile {
   // Split the model name into parts
   let parts = modelId.split(".");
 
-  // Handle regional prefixes (e.g. "us.anthropic.claude-...")
-  if (parts.length > 2 && parts[0].length === 2) {
+  // Handle inference profile prefixes (regional: "us.", "eu.", etc. or global: "global.")
+  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
     parts = parts.slice(1);
   }
 
@@ -195,10 +195,10 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
     maxOutputTokens: 4096,
   };
 
-  // Handle regional prefixes (e.g. "us.anthropic.claude-...")
+  // Handle inference profile prefixes (regional: "us.", "eu.", etc. or global: "global.")
   let normalizedModelId = modelId;
   const parts = modelId.split(".");
-  if (parts.length > 2 && parts[0].length === 2) {
+  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
     normalizedModelId = parts.slice(1).join(".");
   }
 
