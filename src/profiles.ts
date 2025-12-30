@@ -70,13 +70,8 @@ export function getModelProfile(modelId: string): ModelProfile {
     toolResultFormat: "text",
   };
 
-  // Split the model name into parts
-  let parts = modelId.split(".");
-
-  // Handle inference profile prefixes (regional: "us.", "eu.", etc. or global: "global.")
-  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
-    parts = parts.slice(1);
-  }
+  const normalizedId = normalizeModelId(modelId);
+  const parts = normalizedId.split(".");
 
   if (parts.length < 2) {
     return defaultProfile;
@@ -188,19 +183,13 @@ export function getModelProfile(modelId: string): ModelProfile {
  * @param enable1MContext Whether to enable 1M context for supported models (default: false)
  * @returns Token limits with maxInputTokens and maxOutputTokens
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- keeping it as flat config
 export function getModelTokenLimits(modelId: string, enable1MContext = false): ModelTokenLimits {
   const defaultLimits: ModelTokenLimits = {
     maxInputTokens: 196_000, // 200K context - 4K output
     maxOutputTokens: 4096,
   };
 
-  // Handle inference profile prefixes (regional: "us.", "eu.", etc. or global: "global.")
-  let normalizedModelId = modelId;
-  const parts = modelId.split(".");
-  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
-    normalizedModelId = parts.slice(1).join(".");
-  }
+  const normalizedModelId = normalizeModelId(modelId);
 
   // Claude models have specific token limits based on model family
   if (normalizedModelId.startsWith("anthropic.claude")) {
@@ -280,6 +269,24 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
 
   // Default for unknown models
   return defaultLimits;
+}
+
+/**
+ * Normalize a Bedrock model ID by stripping inference profile prefixes.
+ * Handles both regional prefixes (us., eu., ap., etc.) and global prefix (global.)
+ * @param modelId The full Bedrock model ID with optional prefix
+ * @returns Normalized model ID without prefix
+ * @example
+ * normalizeModelId("global.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("us.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ */
+function normalizeModelId(modelId: string): string {
+  const parts = modelId.split(".");
+  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
+    return parts.slice(1).join(".");
+  }
+  return modelId;
 }
 
 /**
