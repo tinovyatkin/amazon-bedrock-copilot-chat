@@ -5,10 +5,10 @@
     "": {
       "name": "amazon-bedrock-copilot-chat",
       "dependencies": {
-        "@aws-sdk/client-bedrock": "^3.969.0",
-        "@aws-sdk/client-bedrock-runtime": "^3.969.0",
-        "@aws-sdk/client-ssm": "^3.969.0",
-        "@aws-sdk/credential-providers": "^3.969.0",
+        "@aws-sdk/client-bedrock": "^3.970.0",
+        "@aws-sdk/client-bedrock-runtime": "^3.970.0",
+        "@aws-sdk/client-ssm": "^3.970.0",
+        "@aws-sdk/credential-providers": "^3.970.0",
         "@aws-sdk/protocol-http": "^3.374.0",
         "@smithy/shared-ini-file-loader": "^4.4.3",
         "@smithy/util-retry": "^4.2.8",
