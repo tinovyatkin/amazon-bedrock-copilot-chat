@@ -419,6 +419,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- Chat response handling requires validation of thinking config and error handling
   async provideLanguageModelChatResponse(
     model: LanguageModelChatInformation,
     messages: readonly LanguageModelChatMessage[],
@@ -489,12 +490,47 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         typeof options.modelOptions?.max_tokens === "number"
           ? options.modelOptions.max_tokens
           : 4096;
-      const { budgetTokens, extendedThinkingEnabled } = this.calculateThinkingConfig(
-        modelProfile,
-        modelLimits,
-        maxTokensForRequest,
-        settings.thinking.enabled,
-      );
+      const { budgetTokens, extendedThinkingEnabled: initialThinkingEnabled } =
+        this.calculateThinkingConfig(
+          modelProfile,
+          modelLimits,
+          maxTokensForRequest,
+          settings.thinking.enabled,
+        );
+      let extendedThinkingEnabled = initialThinkingEnabled;
+
+      // Check if we can actually use extended thinking with the current conversation history
+      // When thinking is enabled, ALL assistant messages must have thinking blocks.
+      // VSCode doesn't preserve thinking blocks, so we can only inject our stored lastThinkingBlock.
+      // This means we can only support thinking when:
+      // - There are no previous assistant messages (first turn), OR
+      // - There is exactly one previous assistant message AND we have a stored thinking block
+      // If there are 2+ assistant messages, we can't provide thinking blocks for all of them.
+      if (extendedThinkingEnabled) {
+        const assistantMsgCount = messages.filter(
+          (m) => m.role === vscode.LanguageModelChatMessageRole.Assistant,
+        ).length;
+
+        if (assistantMsgCount > 1) {
+          // Can't inject thinking blocks for multiple previous assistant messages
+          // Each assistant message needs its own unique thinking block, but we only have one stored
+          logger.warn(
+            "[Bedrock Model Provider] Disabling extended thinking - multiple assistant messages in history require individual thinking blocks",
+            { assistantMsgCount },
+          );
+          extendedThinkingEnabled = false;
+          // Clear stale thinking block to prevent it from being misapplied if conversation
+          // history later truncates back to a single assistant message (signatures are
+          // integrity-bound to specific thinking blocks)
+          this.lastThinkingBlock = undefined;
+        } else if (assistantMsgCount === 1 && !this.lastThinkingBlock?.signature) {
+          // Have one assistant message but no thinking block to inject
+          logger.warn(
+            "[Bedrock Model Provider] Disabling extended thinking - no stored thinking block available for previous assistant message",
+          );
+          extendedThinkingEnabled = false;
+        }
+      }
 
       // Convert messages with thinking configuration
       const converted = convertMessages(messages, baseModelId, {
