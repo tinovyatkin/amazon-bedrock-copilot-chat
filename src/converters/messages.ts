@@ -273,7 +273,14 @@ function filterDeepseekReasoningContent(bedrockMessages: BedrockMessage[], model
 }
 
 /**
- * Inject extended thinking blocks into assistant messages
+ * Inject extended thinking block into the last assistant message only.
+ * We can only inject into the LAST assistant message because:
+ * 1. Each assistant message needs its own unique thinking block with a valid signature
+ * 2. VSCode doesn't preserve thinking blocks, so we only have the most recent one stored
+ * 3. Injecting the same thinking block into multiple assistant messages is invalid
+ *
+ * The provider should have already verified that there's at most one assistant message
+ * without a thinking block before calling this function.
  */
 function injectExtendedThinking(
   bedrockMessages: BedrockMessage[],
@@ -290,8 +297,11 @@ function injectExtendedThinking(
     return;
   }
 
-  let injectedCount = 0;
-  for (const message of bedrockMessages) {
+  // Find the LAST assistant message without reasoning content
+  // We only inject into the last one because that's the only one we have a valid thinking block for
+  let lastAssistantIdx = -1;
+  for (let i = bedrockMessages.length - 1; i >= 0; i--) {
+    const message = bedrockMessages[i];
     if (
       message.role === ConversationRole.ASSISTANT &&
       message.content &&
@@ -302,28 +312,33 @@ function injectExtendedThinking(
       );
 
       if (!hasReasoning) {
-        const reasoningBlock: ContentBlock.ReasoningContentMember = {
-          reasoningContent: {
-            reasoningText: {
-              signature: thinkingBlock.signature,
-              text: thinkingBlock.text,
-            },
-          },
-        };
-
-        message.content.unshift(reasoningBlock);
-        injectedCount++;
+        lastAssistantIdx = i;
+        break;
       }
     }
   }
 
-  if (injectedCount > 0) {
-    logger.debug("[Message Converter] Injected thinking into assistant messages", {
-      count: injectedCount,
-      signatureLength: thinkingBlock.signature.length,
-      textLength: thinkingBlock.text.length,
-    });
+  if (lastAssistantIdx === -1) {
+    logger.trace("[Message Converter] No assistant message found needing thinking block injection");
+    return;
   }
+
+  const message = bedrockMessages[lastAssistantIdx];
+  const reasoningBlock: ContentBlock.ReasoningContentMember = {
+    reasoningContent: {
+      reasoningText: {
+        signature: thinkingBlock.signature,
+        text: thinkingBlock.text,
+      },
+    },
+  };
+
+  message.content!.unshift(reasoningBlock);
+  logger.debug("[Message Converter] Injected thinking into last assistant message", {
+    messageIndex: lastAssistantIdx,
+    signatureLength: thinkingBlock.signature.length,
+    textLength: thinkingBlock.text.length,
+  });
 }
 
 /**
