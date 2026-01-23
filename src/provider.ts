@@ -519,6 +519,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             { assistantMsgCount },
           );
           extendedThinkingEnabled = false;
+          // Clear stale thinking block to prevent it from being misapplied if conversation
+          // history later truncates back to a single assistant message (signatures are
+          // integrity-bound to specific thinking blocks)
+          this.lastThinkingBlock = undefined;
         } else if (assistantMsgCount === 1 && !this.lastThinkingBlock?.signature) {
           // Have one assistant message but no thinking block to inject
           logger.warn(
