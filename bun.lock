@@ -19,7 +19,7 @@
         "@eslint/js": "9.39.2",
         "@eslint/markdown": "7.5.1",
         "@eslint/mcp": "0.2.0",
-        "@homer0/prettier-plugin-jsdoc": "11.0.1",
+        "@homer0/prettier-plugin-jsdoc": "11.0.2",
         "@smithy/types": "4.12.0",
         "@stylistic/eslint-plugin": "5.7.1",
         "@types/mocha": "10.0.10",
@@ -191,7 +191,7 @@
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
 
-    "@homer0/prettier-plugin-jsdoc": ["@homer0/prettier-plugin-jsdoc@11.0.1", "", { "dependencies": { "comment-parser": "^1.4.1", "ramda": "0.32.0" }, "peerDependencies": { "prettier": "^3.5.3" } }, "sha512-NpN8oJrNkZvEDlmXu9zzKYG6h96RybSbEYGIFYZZJs2EwL2CTaAn0Rd4rmXnKvQGS0f9i8l4UN2SNQAIhuCSzw=="],
+    "@homer0/prettier-plugin-jsdoc": ["@homer0/prettier-plugin-jsdoc@11.0.2", "", { "dependencies": { "comment-parser": "^1.4.5", "ramda": "0.32.0" }, "peerDependencies": { "prettier": "^3.5.3" } }, "sha512-+BzWB8z61dExvX1Z5EjBHeregU8M51MyTJvxOQdalO0LhGAXoBesSZqU1HWe1DnxAZvY69ItwXfTtCyj2f+4gQ=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.9", "", { "peerDependencies": { "hono": "^4" } }, "sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw=="],
 
