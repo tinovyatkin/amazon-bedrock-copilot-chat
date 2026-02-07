@@ -168,7 +168,7 @@
     "eslint-plugin-sonarjs": "3.0.6",
     "eslint-plugin-unicorn": "62.0.0",
     "globals": "17.3.0",
-    "lefthook": "2.0.16",
+    "lefthook": "2.1.0",
     "prettier": "3.8.1",
     "prettier-plugin-organize-imports": "4.3.0",
     "type-fest": "5.4.3",
