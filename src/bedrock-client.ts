@@ -480,6 +480,12 @@ export class BedrockAPIClient {
       regionalProfileIds: string[];
     }[] = [
       {
+        baseModelId: "anthropic.claude-opus-4-6-v1",
+        displayName: "Claude Opus 4.6",
+        globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-6-v1" : null,
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-opus-4-6-v1`],
+      },
+      {
         baseModelId: "anthropic.claude-sonnet-4-5-20250929-v1:0",
         displayName: "Claude Sonnet 4.5",
         // Global profiles only available in commercial partition
