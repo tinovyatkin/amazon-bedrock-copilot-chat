@@ -5,6 +5,17 @@ All notable changes to the "amazon-bedrock-copilot-chat" extension will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-02-08
+
+### Added
+
+- **Claude Opus 4.6 Support**: Full model configuration for `anthropic.claude-opus-4-6-v1`
+  - 128K max output tokens (up from 64K on previous Opus models)
+  - Optional 1M context window via `context-1m-2025-08-07` beta header
+  - Adaptive thinking (effort parameter) support, matching Opus 4.5 capability
+  - Fallback detection for restricted-permission environments
+  - Note: Opus 4.6 uses a new AWS naming convention without the `:0` suffix
+
 ## [0.6.1] - 2025-12-19
 
 ### Fixed
