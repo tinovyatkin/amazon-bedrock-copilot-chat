@@ -22,11 +22,11 @@ export interface ModelProfile {
    */
   supportsPromptCaching: boolean;
   /**
-   * Whether the model supports extended thinking (Claude Opus 4.1, Opus 4, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
+   * Whether the model supports extended thinking (Claude Opus 4.6, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
    */
   supportsThinking: boolean;
   /**
-   * Whether the model supports the thinking effort parameter (Claude Opus 4.5 only)
+   * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5)
    * Allows controlling token expenditure with "high", "medium", or "low" effort levels
    */
   supportsThinkingEffort: boolean;
@@ -124,9 +124,9 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Thinking effort parameter is only supported by Claude Opus 4.5
+      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6 and 4.5
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
-      const supportsThinkingEffort = modelId.includes("opus-4-5");
+      const supportsThinkingEffort = modelId.includes("opus-4-6") || modelId.includes("opus-4-5");
 
       return {
         requiresInterleavedThinkingHeader,
@@ -184,91 +184,81 @@ export function getModelProfile(modelId: string): ModelProfile {
  * @returns Token limits with maxInputTokens and maxOutputTokens
  */
 export function getModelTokenLimits(modelId: string, enable1MContext = false): ModelTokenLimits {
-  const defaultLimits: ModelTokenLimits = {
-    maxInputTokens: 196_000, // 200K context - 4K output
-    maxOutputTokens: 4096,
-  };
-
   const normalizedModelId = normalizeModelId(modelId);
 
   // Claude models have specific token limits based on model family
   if (normalizedModelId.startsWith("anthropic.claude")) {
-    // Claude Sonnet 4.5 and 4: 200K input (or 1M with setting enabled), 64K output
-    if (normalizedModelId.includes("sonnet-4")) {
-      // Return 1M context if enabled, otherwise 200K
-      if (enable1MContext) {
-        return {
-          maxInputTokens: 1_000_000 - 64_000,
-          maxOutputTokens: 64_000,
-        };
-      }
-      return {
-        maxInputTokens: 200_000 - 64_000,
-        maxOutputTokens: 64_000,
-      };
-    }
-
-    // Claude Sonnet 3.7: 200K input, 64K output
-    if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
-      return {
-        maxInputTokens: 200_000 - 64_000,
-        maxOutputTokens: 64_000,
-      };
-    }
-
-    // Claude Opus 4.5, 4.1 and 4: 200K input, 64K output
-    // https://platform.claude.com - All Opus 4+ models support 64K output
-    if (normalizedModelId.includes("opus-4")) {
-      return {
-        maxInputTokens: 200_000 - 64_000,
-        maxOutputTokens: 64_000,
-      };
-    }
-
-    // Claude Haiku 4.5: 200K input, 64K output
-    // https://platform.claude.com - Haiku 4.5 supports 64K output (first Haiku with extended output)
-    if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
-      return {
-        maxInputTokens: 200_000 - 64_000,
-        maxOutputTokens: 64_000,
-      };
-    }
-
-    // Claude Haiku 3.5: 200K input, 8,192 output
-    if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
-      return {
-        maxInputTokens: 200_000 - 8192,
-        maxOutputTokens: 8192,
-      };
-    }
-
-    // Claude Haiku 3: 200K input, 4,096 output
-    if (normalizedModelId.includes("haiku-3")) {
-      return {
-        maxInputTokens: 200_000 - 4096,
-        maxOutputTokens: 4096,
-      };
-    }
-
-    // Claude 3.5 Sonnet (older): 200K input, 8,192 output
-    if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
-      return {
-        maxInputTokens: 200_000 - 8192,
-        maxOutputTokens: 8192,
-      };
-    }
-
-    // Claude Opus 3: 200K input, 4,096 output
-    if (normalizedModelId.includes("opus-3")) {
-      return {
-        maxInputTokens: 200_000 - 4096,
-        maxOutputTokens: 4096,
-      };
-    }
+    return getClaudeTokenLimits(normalizedModelId, enable1MContext);
   }
 
   // Default for unknown models
-  return defaultLimits;
+  return {
+    maxInputTokens: 196_000, // 200K context - 4K output
+    maxOutputTokens: 4096,
+  };
+}
+
+/**
+ * Get token limits for a Claude model based on its normalized model ID
+ */
+function getClaudeTokenLimits(
+  normalizedModelId: string,
+  enable1MContext: boolean,
+): ModelTokenLimits {
+  // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output
+  // https://platform.claude.com - Opus 4.6 supports 128K output and optional 1M context
+  if (normalizedModelId.includes("opus-4-6")) {
+    return {
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 128_000,
+      maxOutputTokens: 128_000,
+    };
+  }
+
+  // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output
+  if (normalizedModelId.includes("sonnet-4")) {
+    return {
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
+      maxOutputTokens: 64_000,
+    };
+  }
+
+  // Claude Sonnet 3.7: 200K context, 64K output
+  if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Opus 4.5, 4.1 and 4: 200K context, 64K output
+  if (normalizedModelId.includes("opus-4")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Haiku 4.5: 200K context, 64K output
+  if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Haiku 3.5: 200K context, 8,192 output
+  if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
+  }
+
+  // Claude Haiku 3: 200K context, 4,096 output
+  if (normalizedModelId.includes("haiku-3")) {
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
+  }
+
+  // Claude 3.5 Sonnet (older): 200K context, 8,192 output
+  if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
+  }
+
+  // Claude Opus 3: 200K context, 4,096 output
+  if (normalizedModelId.includes("opus-3")) {
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
+  }
+
+  // Default for unknown Claude models
+  return { maxInputTokens: 196_000, maxOutputTokens: 4096 };
 }
 
 /**
@@ -291,10 +281,10 @@ function normalizeModelId(modelId: string): string {
 
 /**
  * Check if a model supports 1M context window
- * Claude Sonnet 4.x models support extended 1M context via anthropic_beta parameter
+ * Claude Opus 4.6 and Sonnet 4.x models support extended 1M context via anthropic_beta parameter
  */
 function supports1MContext(modelId: string): boolean {
-  return modelId.includes("sonnet-4");
+  return modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
 }
 
 /**
