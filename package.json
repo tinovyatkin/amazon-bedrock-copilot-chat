@@ -172,7 +172,7 @@
     "prettier": "3.8.1",
     "prettier-plugin-organize-imports": "4.3.0",
     "type-fest": "5.4.4",
-    "typescript-eslint": "8.55.0"
+    "typescript-eslint": "8.55.1-alpha.4"
   },
   "trustedDependencies": [
     "esbuild",
