@@ -604,7 +604,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           modelId: model.id,
           originalError: error instanceof Error ? error.message : String(error),
         });
-        throw new Error(errorMessage);
+        throw new Error(errorMessage, { cause: error });
       }
 
       // Extract detailed error information from AWS SDK error
