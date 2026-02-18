@@ -24,7 +24,7 @@
         "@stylistic/eslint-plugin": "5.8.0",
         "@types/mocha": "10.0.10",
         "@types/node": "25.2.3",
-        "@types/vscode": "1.104.0",
+        "@types/vscode": "1.109.0",
         "@typescript/native-preview": "7.0.0-dev.20260215.1",
         "@vscode/dts": "0.4.1",
         "@vscode/test-cli": "0.0.12",
@@ -333,7 +333,7 @@
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
 
-    "@types/vscode": ["@types/vscode@1.104.0", "", {}, "sha512-0KwoU2rZ2ecsTGFxo4K1+f+AErRsYW0fsp6A0zufzGuhyczc2IoKqYqcwXidKXmy2u8YB2GsYsOtiI9Izx3Tig=="],
+    "@types/vscode": ["@types/vscode@1.109.0", "", {}, "sha512-0Pf95rnwEIwDbmXGC08r0B4TQhAbsHQ5UyTIgVgoieDe4cOnf92usuR5dEczb6bTKEp7ziZH4TV1TRGPPCExtw=="],
 
     "@typescript-eslint/eslint-plugin": ["@typescript-eslint/eslint-plugin@8.55.1-alpha.4", "", { "dependencies": { "@eslint-community/regexpp": "^4.12.2", "@typescript-eslint/scope-manager": "8.55.1-alpha.4", "@typescript-eslint/type-utils": "8.55.1-alpha.4", "@typescript-eslint/utils": "8.55.1-alpha.4", "@typescript-eslint/visitor-keys": "8.55.1-alpha.4", "ignore": "^7.0.5", "natural-compare": "^1.4.0", "ts-api-utils": "^2.4.0" }, "peerDependencies": { "@typescript-eslint/parser": "^8.55.1-alpha.4", "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.0.0" } }, "sha512-F9LrvJ8tvQ1VxnQCDXUgS4D3lHX84FlmYiCENKEkgH6VCrkNNSfhbKZ2mDv4uJmqKfni9vgLLDqSrZPL/RSvYw=="],
 
