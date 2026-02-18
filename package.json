@@ -10,7 +10,7 @@
   },
   "version": "0.7.0",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.109.4"
   },
   "categories": [
     "AI",
@@ -155,7 +155,7 @@
     "@stylistic/eslint-plugin": "5.8.0",
     "@types/mocha": "10.0.10",
     "@types/node": "25.2.3",
-    "@types/vscode": "1.104.0",
+    "@types/vscode": "1.109.0",
     "@typescript/native-preview": "7.0.0-dev.20260215.1",
     "@vscode/dts": "0.4.1",
     "@vscode/test-cli": "0.0.12",
