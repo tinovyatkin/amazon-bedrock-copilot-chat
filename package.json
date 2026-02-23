@@ -10,7 +10,7 @@
   },
   "version": "0.7.0",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.109.5"
   },
   "categories": [
     "AI",
@@ -136,10 +136,10 @@
     "vsce:package": "bunx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.989.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.989.0",
-    "@aws-sdk/client-ssm": "^3.989.0",
-    "@aws-sdk/credential-providers": "^3.989.0",
+    "@aws-sdk/client-bedrock": "^3.994.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.994.0",
+    "@aws-sdk/client-ssm": "^3.994.0",
+    "@aws-sdk/credential-providers": "^3.994.0",
     "@aws-sdk/protocol-http": "^3.374.0",
     "@smithy/shared-ini-file-loader": "^4.4.3",
     "@smithy/util-retry": "^4.2.8",
@@ -152,27 +152,27 @@
     "@eslint/mcp": "0.3.0",
     "@homer0/prettier-plugin-jsdoc": "11.0.2",
     "@smithy/types": "4.12.0",
-    "@stylistic/eslint-plugin": "5.8.0",
+    "@stylistic/eslint-plugin": "5.9.0",
     "@types/mocha": "10.0.10",
-    "@types/node": "25.2.3",
-    "@types/vscode": "1.104.0",
-    "@typescript/native-preview": "7.0.0-dev.20260212.1",
+    "@types/node": "25.3.0",
+    "@types/vscode": "1.109.0",
+    "@typescript/native-preview": "7.0.0-dev.20260220.1",
     "@vscode/dts": "0.4.1",
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
-    "commitlint": "20.4.1",
+    "commitlint": "20.4.2",
     "eslint": "10.0.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
-    "eslint-plugin-perfectionist": "5.5.0",
-    "eslint-plugin-sonarjs": "3.0.7",
+    "eslint-plugin-perfectionist": "5.6.0",
+    "eslint-plugin-sonarjs": "4.0.0",
     "eslint-plugin-unicorn": "63.0.0",
     "globals": "17.3.0",
     "lefthook": "2.1.1",
     "prettier": "3.8.1",
     "prettier-plugin-organize-imports": "4.3.0",
     "type-fest": "5.4.4",
-    "typescript-eslint": "8.55.1-alpha.4"
+    "typescript-eslint": "8.56.0"
   },
   "trustedDependencies": [
     "esbuild",
