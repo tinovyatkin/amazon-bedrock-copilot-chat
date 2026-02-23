@@ -22,11 +22,11 @@ export interface ModelProfile {
    */
   supportsPromptCaching: boolean;
   /**
-   * Whether the model supports extended thinking (Claude Opus 4.6, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
+   * Whether the model supports extended thinking (Claude Opus 4.6, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
    */
   supportsThinking: boolean;
   /**
-   * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5)
+   * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5, Sonnet 4.6)
    * Allows controlling token expenditure with "high", "medium", or "low" effort levels
    */
   supportsThinkingEffort: boolean;
@@ -124,9 +124,12 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6 and 4.5
+      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6, Opus 4.5, and Sonnet 4.6
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
-      const supportsThinkingEffort = modelId.includes("opus-4-6") || modelId.includes("opus-4-5");
+      const supportsThinkingEffort =
+        modelId.includes("opus-4-6") ||
+        modelId.includes("opus-4-5") ||
+        modelId.includes("sonnet-4-6");
 
       return {
         requiresInterleavedThinkingHeader,
@@ -214,6 +217,14 @@ function getClaudeTokenLimits(
     };
   }
 
+  // Claude Sonnet 4.6: 200K context (or 1M with setting enabled), 64K output
+  if (normalizedModelId.includes("sonnet-4-6")) {
+    return {
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
+      maxOutputTokens: 64_000,
+    };
+  }
+
   // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output
   if (normalizedModelId.includes("sonnet-4")) {
     return {
@@ -281,7 +292,7 @@ function normalizeModelId(modelId: string): string {
 
 /**
  * Check if a model supports 1M context window
- * Claude Opus 4.6 and Sonnet 4.x models support extended 1M context via anthropic_beta parameter
+ * Claude Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support extended 1M context via anthropic_beta parameter
  */
 function supports1MContext(modelId: string): boolean {
   return modelId.includes("opus-4-6") || modelId.includes("sonnet-4");

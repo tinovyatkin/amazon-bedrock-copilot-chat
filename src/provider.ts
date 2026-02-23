@@ -348,7 +348,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         logger.error("[Bedrock Model Provider] Failed to fetch models", error);
         if (error instanceof ListFoundationModelsDeniedError) {
           const manualModelId = await vscode.window.showInputBox({
-            placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            placeHolder: "global.anthropic.claude-sonnet-4-6",
             prompt:
               "Model listing is blocked by AWS permissions. Enter a Bedrock model ID or inference profile ID to use.",
           });
@@ -376,7 +376,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           );
         } else if (error instanceof NoAccessibleModelsError) {
           const manualModelId = await vscode.window.showInputBox({
-            placeHolder: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            placeHolder: "global.anthropic.claude-sonnet-4-6",
             prompt:
               "No accessible Bedrock models were detected. Enter a Bedrock model ID or inference profile ID to use.",
           });
@@ -556,7 +556,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         throw new Error("Cannot have more than 128 tools per request.");
       }
 
-      // Determine if thinking effort should be applied (only for Opus 4.5)
+      // Determine if thinking effort should be applied (only for Opus 4.5 and Sonnet 4.6)
       const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
 
       // Build beta headers
@@ -765,7 +765,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       anthropicBeta.push("context-1m-2025-08-07");
     }
 
-    // Add effort beta header for Claude Opus 4.5 when thinking effort is configured
+    // Add effort beta header for Claude Opus 4.5 and Sonnet 4.6 when thinking effort is configured
     if (thinkingEffortEnabled) {
       anthropicBeta.push("effort-2025-11-24");
     }
@@ -970,7 +970,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           type: "enabled",
         },
         ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
-        // Add thinking effort for Claude Opus 4.5 (controls token expenditure)
+        // Add thinking effort for Claude Opus 4.5 and Sonnet 4.6 (controls token expenditure)
         ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
       };
 
@@ -987,7 +987,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     if (thinkingEffort) {
-      // Claude Opus 4.5 effort parameter can be used even without extended thinking
+      // Claude Opus 4.5 and Sonnet 4.6 effort parameter can be used even without extended thinking
       // This affects all token spend including tool calls
       requestInput.additionalModelRequestFields = {
         ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
