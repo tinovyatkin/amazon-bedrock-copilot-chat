@@ -29,7 +29,7 @@ export interface BedrockSettings {
 }
 
 /**
- * Thinking effort level for Claude Opus 4.5.
+ * Thinking effort level for Claude Opus 4.5 and Sonnet 4.6.
  * Controls how eager Claude is about spending tokens when responding.
  * - "high": Maximum capability—Claude uses as many tokens as needed for the best possible outcome
  * - "medium": Balanced approach with moderate token savings
@@ -97,7 +97,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const thinkingBudgetTokens =
     copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
-  // Read thinking effort setting (only for Claude Opus 4.5)
+  // Read thinking effort setting (only for Claude Opus 4.5 and Sonnet 4.6)
   // Default to "high" for maximum capability
   const validEffortValues: ThinkingEffort[] = ["high", "low", "medium"];
   const rawEffort = config.get<string>("thinking.effort");

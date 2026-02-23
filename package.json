@@ -68,7 +68,7 @@
         "bedrock.thinking.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable extended thinking for supported Anthropic Claude models (Opus 4.1, Opus 4, Sonnet 4.5, Sonnet 4, Sonnet 3.7). Allows models to reason through complex tasks before responding.",
+          "description": "Enable extended thinking for supported Anthropic Claude models (Opus 4.1, Opus 4, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Sonnet 3.7). Allows models to reason through complex tasks before responding.",
           "scope": "resource"
         },
         "bedrock.thinking.budgetTokens": {
@@ -91,13 +91,13 @@
             "Balanced approach with moderate token savings. Good for tasks requiring a balance of speed, cost, and performance.",
             "Most efficient—significant token savings with some capability reduction. Best for simpler tasks that need speed and lowest costs."
           ],
-          "description": "Thinking effort level for Claude Opus 4.5. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
+          "description": "Thinking effort level for Claude Opus 4.5 and Sonnet 4.6. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
           "scope": "resource"
         },
         "bedrock.context1M.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable 1M context window for Claude Sonnet 4.x models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
+          "description": "Enable 1M context window for Claude Sonnet 4.x and Opus 4.6 models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
           "scope": "resource"
         },
         "bedrock.promptCaching.enabled": {
