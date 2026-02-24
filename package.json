@@ -136,10 +136,10 @@
     "vsce:package": "bunx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.994.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.994.0",
-    "@aws-sdk/client-ssm": "^3.994.0",
-    "@aws-sdk/credential-providers": "^3.994.0",
+    "@aws-sdk/client-bedrock": "^3.995.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.995.0",
+    "@aws-sdk/client-ssm": "^3.995.0",
+    "@aws-sdk/credential-providers": "^3.995.0",
     "@aws-sdk/protocol-http": "^3.374.0",
     "@smithy/shared-ini-file-loader": "^4.4.3",
     "@smithy/util-retry": "^4.2.8",
