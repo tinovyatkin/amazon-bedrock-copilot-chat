@@ -151,7 +151,7 @@
     "@eslint/markdown": "7.5.1",
     "@eslint/mcp": "0.3.0",
     "@homer0/prettier-plugin-jsdoc": "11.0.2",
-    "@smithy/types": "4.12.0",
+    "@smithy/types": "4.12.1",
     "@stylistic/eslint-plugin": "5.9.0",
     "@types/mocha": "10.0.10",
     "@types/node": "25.3.0",
