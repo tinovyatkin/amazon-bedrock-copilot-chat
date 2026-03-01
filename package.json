@@ -154,7 +154,7 @@
     "@smithy/types": "4.13.0",
     "@stylistic/eslint-plugin": "5.9.0",
     "@types/mocha": "10.0.10",
-    "@types/node": "25.3.0",
+    "@types/node": "25.3.1",
     "@types/vscode": "1.109.0",
     "@typescript/native-preview": "7.0.0-dev.20260225.1",
     "@vscode/dts": "0.4.1",
