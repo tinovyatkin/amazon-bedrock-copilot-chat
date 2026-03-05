@@ -12,7 +12,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
 
       - run: bun install --frozen-lockfile
       - run: bun run compile
@@ -34,7 +34,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
 
       - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
         with:
