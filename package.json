@@ -10,7 +10,7 @@
   },
   "version": "0.8.0",
   "engines": {
-    "vscode": "^1.109.5"
+    "vscode": "^1.110.1"
   },
   "categories": [
     "AI",
