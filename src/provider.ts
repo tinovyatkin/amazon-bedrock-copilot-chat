@@ -166,7 +166,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           // Extract region prefix for inference profile IDs (handles GovCloud, China, and commercial regions)
           const regionPrefix = getRegionPrefix(settings.region);
-          const candidates = this.buildModelCandidates(models, availableProfileIds, regionPrefix);
+          const candidates = this.buildModelCandidates(models, availableProfileIds, regionPrefix, settings.inferenceProfiles.preferRegional);
 
           progress?.report({
             message: `Checking availability of ${candidates.length} models...`,
@@ -828,6 +828,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     models: BedrockModelSummary[],
     availableProfileIds: Set<string>,
     regionPrefix: string,
+    preferRegional: boolean = false,
   ): {
     hasInferenceProfile: boolean;
     model: BedrockModelSummary;
@@ -845,21 +846,36 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       // Determine which model ID to use (with or without inference profile)
-      // Prefer global inference profiles for best availability, then regional, then base model
+      // By default, prefer global inference profiles for best availability, then regional, then base model
+      // When preferRegional is enabled, check regional profiles first (for Control Tower compliance)
       const globalProfileId = `global.${m.modelId}`;
       const regionalProfileId = `${regionPrefix}.${m.modelId}`;
 
       let modelIdToUse = m.modelId;
       let hasInferenceProfile = false;
 
-      if (availableProfileIds.has(globalProfileId)) {
-        modelIdToUse = globalProfileId;
-        hasInferenceProfile = true;
-        logger.trace(`[Bedrock Model Provider] Using global inference profile for ${m.modelId}`);
-      } else if (availableProfileIds.has(regionalProfileId)) {
-        modelIdToUse = regionalProfileId;
-        hasInferenceProfile = true;
-        logger.trace(`[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`);
+      if (preferRegional) {
+        // Prefer regional profiles first
+        if (availableProfileIds.has(regionalProfileId)) {
+          modelIdToUse = regionalProfileId;
+          hasInferenceProfile = true;
+          logger.trace(`[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`);
+        } else if (availableProfileIds.has(globalProfileId)) {
+          modelIdToUse = globalProfileId;
+          hasInferenceProfile = true;
+          logger.trace(`[Bedrock Model Provider] Using global inference profile for ${m.modelId} (regional not available)`);
+        }
+      } else {
+        // Default behavior: prefer global profiles first
+        if (availableProfileIds.has(globalProfileId)) {
+          modelIdToUse = globalProfileId;
+          hasInferenceProfile = true;
+          logger.trace(`[Bedrock Model Provider] Using global inference profile for ${m.modelId}`);
+        } else if (availableProfileIds.has(regionalProfileId)) {
+          modelIdToUse = regionalProfileId;
+          hasInferenceProfile = true;
+          logger.trace(`[Bedrock Model Provider] Using regional inference profile for ${m.modelId}`);
+        }
       }
 
       candidates.push({ hasInferenceProfile, model: m, modelIdToUse });

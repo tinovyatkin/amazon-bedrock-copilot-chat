@@ -15,6 +15,9 @@ export interface BedrockSettings {
   context1M: {
     enabled: boolean;
   };
+  inferenceProfiles: {
+    preferRegional: boolean;
+  };
   preferredModel: string | undefined;
   profile: string | undefined;
   promptCaching: {
@@ -87,6 +90,9 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   // Read prompt caching settings with defaults (enabled by default)
   const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
 
+  // Read inference profiles settings with defaults (prefer global by default for backward compatibility)
+  const preferRegionalInferenceProfiles = config.get<boolean>("inferenceProfiles.preferRegional") ?? false;
+
   // Read thinking settings with defaults
   // Check GitHub Copilot's anthropic thinking settings first, then fall back to bedrock settings
   const copilotConfig = vscode.workspace.getConfiguration("github.copilot.chat.anthropic");
@@ -109,6 +115,9 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   return {
     context1M: {
       enabled: context1MEnabled,
+    },
+    inferenceProfiles: {
+      preferRegional: preferRegionalInferenceProfiles,
     },
     preferredModel,
     profile,
