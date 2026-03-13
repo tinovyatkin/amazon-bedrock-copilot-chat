@@ -105,6 +105,12 @@
           "default": true,
           "description": "Enable prompt caching for supported models to reduce latency and costs. Caches system prompts, tool definitions, and recent tool results. Disable if you need fully fresh responses or want to avoid cache-related costs.",
           "scope": "resource"
+        },
+        "bedrock.inferenceProfiles.preferRegional": {
+          "type": "boolean",
+          "default": false,
+          "description": "Prefer regional inference profiles over global ones. Enable this if your policies restrict access to global inference profiles. When enabled, the extension will use regional inference profiles (e.g., eu.anthropic.claude-opus-4-6-v1) instead of global ones (e.g., global.anthropic.claude-opus-4-6-v1).",
+          "scope": "resource"
         }
       }
     }

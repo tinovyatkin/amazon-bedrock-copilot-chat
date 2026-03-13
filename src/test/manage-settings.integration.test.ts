@@ -37,7 +37,8 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
     // Standard regions: {geo}-{direction}-{number} (e.g., us-east-1, eu-west-2)
     // GovCloud regions: us-gov-{direction}-{number} (e.g., us-gov-east-1, us-gov-west-1)
     // China regions: cn-{direction}-{number} (e.g., cn-north-1, cn-northwest-1)
-    const regionPattern = /^[a-z]{2}(-[a-z]+)?-[a-z]+-\d+$/;
+    // EU Sovereign Cloud: eusc-{country}-{direction}-{number} (e.g., eusc-de-east-1)
+    const regionPattern = /^[a-z]{2,4}(-[a-z]+){1,3}-\d+$/;
     for (const region of regions) {
       assert.ok(regionPattern.test(region), `Region "${region}" should match AWS region pattern`);
     }

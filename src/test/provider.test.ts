@@ -1,9 +1,11 @@
+import { ModelModality } from "@aws-sdk/client-bedrock";
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
 import { BedrockChatModelProvider } from "../provider";
+import type { BedrockModelSummary } from "../types";
 
 // Mock implementations extracted to avoid function nesting depth issues
 const mockSecretStorage = {
@@ -22,6 +24,28 @@ const mockGlobalState: vscode.Memento = {
 
 // Helper to cast non-standard content blocks that may appear from models with extended thinking
 const nonStandardBlock = (b: unknown) => b as any;
+
+// Helper to create a test model for buildModelCandidates and findAlternativeProfile tests
+const createTestModel = (modelId: string): BedrockModelSummary => ({
+  inputModalities: [ModelModality.TEXT],
+  modelArn: `arn:aws:bedrock:us-west-2::foundation-model/${modelId}`,
+  modelId,
+  modelName: modelId,
+  outputModalities: [ModelModality.TEXT],
+  providerName: "Anthropic",
+  responseStreamingSupported: true,
+});
+
+// Helper to create a mock provider with controlled base model accessibility
+const createMockClientProvider = (baseModelAccessible: boolean) => {
+  const mockClient = {
+    isModelAccessible: async () => baseModelAccessible,
+  };
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+
+  (provider as any).client = mockClient;
+  return provider;
+};
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
@@ -465,6 +489,368 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(logs[0].args[0], "Object test");
       // Structured data is preserved as an object, not formatted
       assert.deepStrictEqual(logs[0].args[1], { nested: { key: "value" } });
+    });
+  });
+
+  suite("buildModelCandidates", () => {
+    test("preferRegional=false (default): prioritizes global profiles", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 1);
+
+      assert.equal(candidates[0].modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
+
+      assert.equal(candidates[0].hasInferenceProfile, true);
+    });
+
+    test("preferRegional=true: prioritizes regional profiles", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        true,
+      );
+
+      assert.equal(candidates.length, 1);
+
+      assert.equal(
+        candidates[0].modelIdToUse,
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      );
+
+      assert.equal(candidates[0].hasInferenceProfile, true);
+    });
+
+    test("preferRegional=true, regional unavailable: falls back to global", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
+      const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        true,
+      );
+
+      assert.equal(candidates.length, 1);
+
+      assert.equal(candidates[0].modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
+
+      assert.equal(candidates[0].hasInferenceProfile, true);
+    });
+
+    test("preferRegional=false, global unavailable: uses regional profile", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
+      const availableProfiles = new Set(["us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 1);
+
+      assert.equal(
+        candidates[0].modelIdToUse,
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      );
+
+      assert.equal(candidates[0].hasInferenceProfile, true);
+    });
+
+    test("no profiles available: uses base model", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
+      const availableProfiles = new Set<string>();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 1);
+
+      assert.equal(candidates[0].modelIdToUse, "anthropic.claude-3-5-sonnet-20241022-v2:0");
+
+      assert.equal(candidates[0].hasInferenceProfile, false);
+    });
+
+    test("filters models without streaming support", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [
+        {
+          ...createTestModel("no-streaming-model"),
+          responseStreamingSupported: false,
+        },
+      ];
+      const availableProfiles = new Set<string>();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 0);
+    });
+
+    test("filters models without TEXT output modality", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [
+        {
+          ...createTestModel("embedding-only-model"),
+          outputModalities: ["EMBEDDING"],
+        },
+      ];
+      const availableProfiles = new Set<string>();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 0);
+    });
+
+    test("returns correct candidate structure", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const models = [model];
+      const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "us-west-2",
+        false,
+      );
+
+      assert.equal(candidates.length, 1);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const candidate = candidates[0];
+      assert.ok(candidate);
+
+      assert.equal(candidate.modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
+
+      assert.equal(candidate.hasInferenceProfile, true);
+
+      assert.deepStrictEqual(candidate.model, model);
+    });
+  });
+
+  suite("findAlternativeProfile", () => {
+    test("preferRegional=false, global fails: falls back to regional profile", async () => {
+      const provider = createMockClientProvider(false);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        false,
+        abortController.signal,
+      );
+
+      assert.equal(result.isAccessible, true);
+
+      assert.equal(result.hasInferenceProfile, true);
+
+      assert.equal(result.modelIdToUse, "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("preferRegional=false, regional fails: falls back to global profile", async () => {
+      const provider = createMockClientProvider(false);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        false,
+        abortController.signal,
+      );
+
+      assert.equal(result.isAccessible, true);
+
+      assert.equal(result.hasInferenceProfile, true);
+
+      assert.equal(result.modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("preferRegional=true, regional fails: skips global fallback, tries base model", async () => {
+      const provider = createMockClientProvider(true);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        true,
+        abortController.signal,
+      );
+
+      // Should skip global profile and go directly to base model
+
+      assert.equal(result.isAccessible, true);
+
+      assert.equal(result.hasInferenceProfile, false);
+
+      assert.equal(result.modelIdToUse, "anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("preferRegional=true, global fails: still tries regional fallback", async () => {
+      const provider = createMockClientProvider(false);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set([
+        "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      ]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        true,
+        abortController.signal,
+      );
+
+      // Should try regional profile even when preferRegional=true
+
+      assert.equal(result.isAccessible, true);
+
+      assert.equal(result.hasInferenceProfile, true);
+
+      assert.equal(result.modelIdToUse, "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("no alternative profile available: falls back to base model", async () => {
+      const provider = createMockClientProvider(true);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        false,
+        abortController.signal,
+      );
+
+      assert.equal(result.isAccessible, true);
+
+      assert.equal(result.hasInferenceProfile, false);
+
+      assert.equal(result.modelIdToUse, "anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("no accessible alternative or base model: returns inaccessible", async () => {
+      const provider = createMockClientProvider(false);
+      const model = createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "global.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      };
+      const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "us-west-2",
+        availableProfiles,
+        false,
+        abortController.signal,
+      );
+
+      assert.equal(result.isAccessible, false);
+
+      assert.equal(result.hasInferenceProfile, true);
+
+      assert.equal(result.modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
     });
   });
 });
