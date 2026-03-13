@@ -91,7 +91,8 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
 
   // Read inference profiles settings with defaults (prefer global by default for backward compatibility)
-  const preferRegionalInferenceProfiles = config.get<boolean>("inferenceProfiles.preferRegional") ?? false;
+  const preferRegionalInferenceProfiles =
+    config.get<boolean>("inferenceProfiles.preferRegional") ?? false;
 
   // Read thinking settings with defaults
   // Check GitHub Copilot's anthropic thinking settings first, then fall back to bedrock settings
