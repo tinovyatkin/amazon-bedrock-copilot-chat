@@ -279,6 +279,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             infos.push(profileInfo);
           }
 
+          // Add custom models from settings
+          await this.addCustomModels(infos, settings, token, progress);
+
           // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
           progress?.report({ message: "Sorting models..." });
 
@@ -753,6 +756,32 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         logger.warn("[Bedrock Model Provider] Token count failed, using estimation", error);
       }
       return estimateTokens(text);
+    }
+  }
+
+  /**
+   * Add custom models from settings to the model info list, skipping duplicates
+   */
+  private async addCustomModels(
+    infos: LanguageModelChatInformation[],
+    settings: Awaited<ReturnType<typeof getBedrockSettings>>,
+    token: CancellationToken,
+    progress?: vscode.Progress<{ message?: string }>,
+  ): Promise<void> {
+    if (settings.customModels.length === 0) return;
+
+    progress?.report({
+      message: `Adding ${settings.customModels.length} custom model(s)...`,
+    });
+
+    const existingIds = new Set(infos.map((i) => i.id));
+    for (const customModelId of settings.customModels) {
+      if (existingIds.has(customModelId)) continue;
+      const customInfo = await this.buildManualModelInformation(customModelId, settings, token);
+      if (customInfo) {
+        infos.push(customInfo);
+        existingIds.add(customModelId);
+      }
     }
   }
 

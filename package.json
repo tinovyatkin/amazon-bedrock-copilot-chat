@@ -106,6 +106,15 @@
           "description": "Enable prompt caching for supported models to reduce latency and costs. Caches system prompts, tool definitions, and recent tool results. Disable if you need fully fresh responses or want to avoid cache-related costs.",
           "scope": "resource"
         },
+        "bedrock.customModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional Bedrock model IDs or inference profile IDs to include in the model list (e.g., 'eu.anthropic.claude-sonnet-4-6', 'arn:aws:bedrock:...'). These are added alongside auto-discovered models.",
+          "scope": "resource"
+        },
         "bedrock.inferenceProfiles.preferRegional": {
           "type": "boolean",
           "default": false,

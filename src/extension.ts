@@ -26,6 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("bedrock.region") ||
       e.affectsConfiguration("bedrock.profile") ||
       e.affectsConfiguration("bedrock.preferredModel") ||
+      e.affectsConfiguration("bedrock.customModels") ||
       e.affectsConfiguration("bedrock.inferenceProfiles.preferRegional") ||
       e.affectsConfiguration("bedrock.context1M.enabled") ||
       e.affectsConfiguration("bedrock.promptCaching.enabled") ||

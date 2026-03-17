@@ -15,6 +15,7 @@ export interface BedrockSettings {
   context1M: {
     enabled: boolean;
   };
+  customModels: string[];
   inferenceProfiles: {
     preferRegional: boolean;
   };
@@ -94,6 +95,11 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const preferRegionalInferenceProfiles =
     config.get<boolean>("inferenceProfiles.preferRegional") ?? false;
 
+  // Read custom models list
+  const customModels = (config.get<string[]>("customModels") ?? []).filter(
+    (id) => typeof id === "string" && id.trim().length > 0,
+  );
+
   // Read thinking settings with defaults
   // Check GitHub Copilot's anthropic thinking settings first, then fall back to bedrock settings
   const copilotConfig = vscode.workspace.getConfiguration("github.copilot.chat.anthropic");
@@ -117,6 +123,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     context1M: {
       enabled: context1MEnabled,
     },
+    customModels,
     inferenceProfiles: {
       preferRegional: preferRegionalInferenceProfiles,
     },
