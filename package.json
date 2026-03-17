@@ -1,12 +1,12 @@
 {
   "name": "amazon-bedrock-copilot-chat",
-  "publisher": "stoom",
+  "publisher": "stummej",
   "displayName": "Amazon Bedrock Provider for GitHub Copilot Chat",
   "description": "Amazon Bedrock integration using VSCode's official Language Model Chat Provider API. Connects AWS Bedrock models (Claude, OpenAI OSS, DeepSeek) to GitHub Copilot Chat via AWS SDK. Supports streaming, tool calling, and vision.",
   "icon": "assets/logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/stoom/amazon-bedrock-copilot-chat"
+    "url": "https://github.com/stummej/amazon-bedrock-copilot-chat"
   },
   "version": "0.9.0",
   "engines": {
@@ -21,7 +21,7 @@
     "theme": "dark"
   },
   "bugs": {
-    "url": "https://github.com/stoom/amazon-bedrock-copilot-chat/issues"
+    "url": "https://github.com/stummej/amazon-bedrock-copilot-chat/issues"
   },
   "license": "MIT",
   "contributes": {
