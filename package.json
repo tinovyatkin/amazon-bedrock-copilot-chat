@@ -1,12 +1,12 @@
 {
   "name": "amazon-bedrock-copilot-chat",
-  "publisher": "vtkn",
+  "publisher": "stoom",
   "displayName": "Amazon Bedrock Provider for GitHub Copilot Chat",
   "description": "Amazon Bedrock integration using VSCode's official Language Model Chat Provider API. Connects AWS Bedrock models (Claude, OpenAI OSS, DeepSeek) to GitHub Copilot Chat via AWS SDK. Supports streaming, tool calling, and vision.",
   "icon": "assets/logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
+    "url": "https://github.com/stoom/amazon-bedrock-copilot-chat"
   },
   "version": "0.9.0",
   "engines": {
@@ -21,7 +21,7 @@
     "theme": "dark"
   },
   "bugs": {
-    "url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat/issues"
+    "url": "https://github.com/stoom/amazon-bedrock-copilot-chat/issues"
   },
   "license": "MIT",
   "contributes": {
@@ -107,12 +107,12 @@
           "scope": "resource"
         },
         "bedrock.customModels": {
-          "type": "array",
-          "items": {
+          "type": "object",
+          "additionalProperties": {
             "type": "string"
           },
-          "default": [],
-          "description": "Additional Bedrock model IDs or inference profile IDs to include in the model list (e.g., 'eu.anthropic.claude-sonnet-4-6', 'arn:aws:bedrock:...'). These are added alongside auto-discovered models.",
+          "default": {},
+          "description": "A map of friendly display names to Bedrock model IDs or inference profile IDs to include in the model list. The key is the name shown in the model picker, and the value is the model ID (e.g., { \"Claude Opus 4.6\": \"eu.anthropic.claude-opus-4-6-v1\", \"Claude Sonnet 4.6\": \"eu.anthropic.claude-sonnet-4-6\" }). These are added alongside auto-discovered models.",
           "scope": "resource"
         },
         "bedrock.inferenceProfiles.preferRegional": {

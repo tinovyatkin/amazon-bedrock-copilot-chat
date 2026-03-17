@@ -768,16 +768,22 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     token: CancellationToken,
     progress?: vscode.Progress<{ message?: string }>,
   ): Promise<void> {
-    if (settings.customModels.length === 0) return;
+    const customEntries = Object.entries(settings.customModels);
+    if (customEntries.length === 0) return;
 
     progress?.report({
-      message: `Adding ${settings.customModels.length} custom model(s)...`,
+      message: `Adding ${customEntries.length} custom model(s)...`,
     });
 
     const existingIds = new Set(infos.map((i) => i.id));
-    for (const customModelId of settings.customModels) {
+    for (const [friendlyName, customModelId] of customEntries) {
       if (existingIds.has(customModelId)) continue;
-      const customInfo = await this.buildManualModelInformation(customModelId, settings, token);
+      const customInfo = await this.buildManualModelInformation(
+        customModelId,
+        settings,
+        token,
+        friendlyName,
+      );
       if (customInfo) {
         infos.push(customInfo);
         existingIds.add(customModelId);
@@ -826,6 +832,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     settings: Awaited<ReturnType<typeof getBedrockSettings>>,
     token: CancellationToken,
+    friendlyName?: string,
   ): Promise<LanguageModelChatInformation | undefined> {
     const abortController = new AbortController();
     const cancellationListener = token.onCancellationRequested(() => abortController.abort());
@@ -856,8 +863,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         id: modelId,
         maxInputTokens: limits.maxInputTokens,
         maxOutputTokens: limits.maxOutputTokens,
-        name: modelId,
-        tooltip: "Amazon Bedrock - manual model entry",
+        name: friendlyName ?? modelId,
+        tooltip: friendlyName
+          ? `Amazon Bedrock - ${modelId}`
+          : "Amazon Bedrock - manual model entry",
         version: "1.0.0",
       };
     } catch (error) {
