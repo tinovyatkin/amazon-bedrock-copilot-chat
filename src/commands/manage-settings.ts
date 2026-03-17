@@ -375,6 +375,59 @@ async function handleProfileSelection(
   );
 }
 
+const REGION_FRIENDLY_NAMES: Record<string, string> = {
+  "ap-northeast-1": "Tokyo",
+  "ap-northeast-2": "Seoul",
+  "ap-south-1": "Mumbai",
+  "ap-southeast-1": "Singapore",
+  "ap-southeast-2": "Sydney",
+  "ca-central-1": "Canada (Central)",
+  "eu-central-1": "Frankfurt",
+  "eu-north-1": "Stockholm",
+  "eu-west-1": "Ireland",
+  "eu-west-2": "London",
+  "eu-west-3": "Paris",
+  "sa-east-1": "São Paulo",
+  "us-east-1": "N. Virginia",
+  "us-east-2": "Ohio",
+  "us-west-2": "Oregon",
+};
+
+/**
+ * Well-known Bedrock regions used as a fallback when SSM region fetch fails
+ */
+const FALLBACK_BEDROCK_REGIONS = [
+  "us-east-1",
+  "us-west-2",
+  "eu-west-1",
+  "eu-west-2",
+  "eu-west-3",
+  "eu-central-1",
+  "eu-north-1",
+  "ap-northeast-1",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ap-south-1",
+  "ca-central-1",
+  "sa-east-1",
+];
+
+function buildRegionQuickPickItems(
+  regions: string[],
+  existingRegion?: string,
+): vscode.QuickPickItem[] {
+  return regions.map((region) => {
+    const friendlyName = REGION_FRIENDLY_NAMES[region];
+    const isCurrent = region === existingRegion;
+    return {
+      description: [friendlyName, isCurrent ? "Currently selected" : ""]
+        .filter(Boolean)
+        .join(" — "),
+      label: region,
+    };
+  });
+}
+
 async function handleRegionSelection(
   existingRegion: string | undefined,
   globalState: vscode.Memento,
@@ -387,23 +440,39 @@ async function handleRegionSelection(
   });
 
   try {
-    const regions = await getBedrockRegionsFromSSM(abortController.signal, logger, {
+    let regions = await getBedrockRegionsFromSSM(abortController.signal, logger, {
       globalState,
       secrets,
     });
 
-    const region: string | undefined =
-      regions.length === 0
+    if (regions.length === 0) {
+      regions = FALLBACK_BEDROCK_REGIONS;
+    }
+
+    const items = buildRegionQuickPickItems(regions, existingRegion);
+
+    // Add a manual entry option at the end
+    items.push({
+      description: "Type a region not listed above",
+      label: "$(edit) Enter region manually...",
+    });
+
+    const selected = await vscode.window.showQuickPick(
+      items,
+      {
+        ignoreFocusOut: true,
+        placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
+        title: "Amazon Bedrock Region",
+      },
+      cancellationToken.token,
+    );
+
+    if (!selected) return;
+
+    const region =
+      selected.label === "$(edit) Enter region manually..."
         ? await promptForManualRegion(cancellationToken.token)
-        : await vscode.window.showQuickPick(
-            regions,
-            {
-              ignoreFocusOut: true,
-              placeHolder: existingRegion ? `Current: ${existingRegion}` : "Current: Not set",
-              title: "Amazon Bedrock Region",
-            },
-            cancellationToken.token,
-          );
+        : selected.label;
 
     if (!region) return;
 
