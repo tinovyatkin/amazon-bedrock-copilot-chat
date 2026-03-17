@@ -80,6 +80,11 @@ export async function manageSettings(
         label: "Set Region",
         value: "region" as const,
       },
+      {
+        description: "Run aws-sso setup profiles to configure SSO",
+        label: "Setup AWS SSO Profiles",
+        value: "sso-setup" as const,
+      },
       { label: "Clear Settings", value: "clear" as const },
     ],
     {
@@ -105,6 +110,10 @@ export async function manageSettings(
     }
     case "region": {
       await handleRegionSelection(settings.region, globalState, secrets);
+      break;
+    }
+    case "sso-setup": {
+      handleSsoSetup();
       break;
     }
   }
@@ -410,6 +419,12 @@ async function handleRegionSelection(
   } finally {
     cancellationToken.dispose();
   }
+}
+
+function handleSsoSetup(): void {
+  const terminal = vscode.window.createTerminal("AWS SSO Setup");
+  terminal.show();
+  terminal.sendText("aws-sso setup profiles");
 }
 
 async function promptForManualRegion(

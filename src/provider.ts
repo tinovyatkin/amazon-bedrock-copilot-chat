@@ -408,6 +408,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           vscode.window.showErrorMessage(
             "Could not detect any accessible Bedrock models. Please update your AWS policy or provide a reachable model ID.",
           );
+        } else if (isExpiredCredentialsError(error)) {
+          const profile = settings.profile;
+          const profileSuffix = profile ? ` for profile "${profile}"` : "";
+          const action = await vscode.window.showErrorMessage(
+            `AWS credentials are expired${profileSuffix}. Would you like to login with aws-sso?`,
+            "Run aws-sso login",
+            "Cancel",
+          );
+          if (action === "Run aws-sso login") {
+            runAwsSsoLogin(profile);
+          }
         } else {
           vscode.window.showErrorMessage(
             `Failed to fetch Bedrock models. Please check your AWS profile and region settings. Error: ${error instanceof Error ? error.message : String(error)}`,
@@ -1586,6 +1597,45 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       tokenLimit,
     });
   }
+}
+
+/**
+ * Error names and messages that indicate expired or invalid AWS credentials
+ * (e.g., expired SSO tokens, expired session tokens, invalid credentials)
+ */
+const EXPIRED_CREDENTIALS_INDICATORS = [
+  "ExpiredToken",
+  "ExpiredTokenException",
+  "UnauthorizedException",
+  "InvalidIdentityToken",
+  "CredentialsProviderError",
+  "TokenProviderError",
+  "SSOTokenProviderError",
+  "The security token included in the request is expired",
+  "The SSO session associated with this profile has expired",
+  "Token has expired and refresh failed",
+];
+
+/**
+ * Check if an error indicates expired or invalid AWS credentials
+ */
+function isExpiredCredentialsError(error: unknown): boolean {
+  if (!error) return false;
+  const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return EXPIRED_CREDENTIALS_INDICATORS.some(
+    (indicator) => name.includes(indicator) || message.includes(indicator),
+  );
+}
+
+/**
+ * Run `aws-sso login` in an integrated terminal to refresh SSO credentials
+ */
+function runAwsSsoLogin(profile?: string): void {
+  const terminal = vscode.window.createTerminal("AWS SSO Login");
+  const command = profile ? `aws-sso login --profile ${profile}` : "aws-sso login";
+  terminal.show();
+  terminal.sendText(command);
 }
 
 /**
