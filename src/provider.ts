@@ -973,11 +973,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   ): { budgetTokens: number; extendedThinkingEnabled: boolean } {
     // Use a base budget of 16,000 tokens (aligned with GitHub Copilot's default),
     // capped at 25% of maxOutputTokens and constrained by maxTokensForRequest.
-    // This ensures sufficient thinking budget for complex reasoning while leaving
-    // room for actual response content.
+    // Reserve at least 25% of maxTokensForRequest (minimum 100 tokens) for visible
+    // response content so that small explicit max_tokens values still produce output.
     const baseBudget = 16_000;
     const maxBudgetFromOutput = Math.floor(modelLimits.maxOutputTokens * 0.25);
-    const budgetTokens = Math.min(baseBudget, maxBudgetFromOutput, maxTokensForRequest - 100);
+    const visibleReserve = Math.max(100, Math.floor(maxTokensForRequest * 0.25));
+    const budgetTokens = Math.min(
+      baseBudget,
+      maxBudgetFromOutput,
+      maxTokensForRequest - visibleReserve,
+    );
     const extendedThinkingEnabled =
       thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
