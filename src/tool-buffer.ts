@@ -1,4 +1,7 @@
 import type { JsonValue } from "type-fest" with { "resolution-mode": "import" };
+
+import { logger } from "./logger";
+
 interface ToolCall {
   id: string;
   input: unknown;
@@ -35,7 +38,12 @@ export class ToolBuffer {
     try {
       tool.input = JSON.parse(inputStr) as JsonValue;
     } catch {
-      tool.input = { raw: inputStr };
+      logger.warn(
+        `[ToolBuffer] Failed to parse tool input JSON for "${tool.name}" (id: ${tool.id}), skipping tool call. Raw input: ${inputStr.slice(0, 200)}`,
+      );
+      this.tools.delete(index);
+      this.inputBuffers.delete(index);
+      return undefined;
     }
 
     this.tools.delete(index);
