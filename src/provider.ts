@@ -978,10 +978,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const baseBudget = 16_000;
     const maxBudgetFromOutput = Math.floor(modelLimits.maxOutputTokens * 0.25);
     const visibleReserve = Math.max(100, Math.floor(maxTokensForRequest * 0.25));
-    const budgetTokens = Math.min(
-      baseBudget,
-      maxBudgetFromOutput,
-      maxTokensForRequest - visibleReserve,
+    const budgetTokens = Math.max(
+      0,
+      Math.min(baseBudget, maxBudgetFromOutput, maxTokensForRequest - visibleReserve),
     );
     const extendedThinkingEnabled =
       thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
