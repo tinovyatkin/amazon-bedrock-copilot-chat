@@ -39,7 +39,11 @@ export class ToolBuffer {
       tool.input = JSON.parse(inputStr) as JsonValue;
     } catch {
       logger.warn(
-        `[ToolBuffer] Failed to parse tool input JSON for "${tool.name}" (id: ${tool.id}), skipping tool call. Raw input: ${inputStr.slice(0, 200)}`,
+        `[ToolBuffer] Failed to parse tool input JSON for "${tool.name}" (id: ${tool.id}), skipping tool call. Input length: ${inputStr.length}`,
+      );
+      const sanitizedPreview = inputStr.slice(0, 200).replaceAll("\n", String.raw`\n`);
+      logger.trace(
+        `[ToolBuffer] Raw input preview for "${tool.name}" (id: ${tool.id}): ${sanitizedPreview}`,
       );
       this.tools.delete(index);
       this.inputBuffers.delete(index);
