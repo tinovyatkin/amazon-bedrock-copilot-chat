@@ -492,10 +492,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const modelLimits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
 
       // Calculate thinking configuration
+      // Use model's maxOutputTokens as default when VSCode doesn't provide max_tokens.
+      // This prevents thinking budget starvation that causes MAX_TOKENS errors
+      // (GitHub Copilot uses server-configured large values + 16K thinking budget by default)
       const maxTokensForRequest =
         typeof options.modelOptions?.max_tokens === "number"
           ? options.modelOptions.max_tokens
-          : 4096;
+          : modelLimits.maxOutputTokens;
       const { budgetTokens, extendedThinkingEnabled: initialThinkingEnabled } =
         this.calculateThinkingConfig(
           modelProfile,
@@ -914,7 +917,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         maxTokens: Math.min(
           typeof options.modelOptions?.max_tokens === "number"
             ? options.modelOptions.max_tokens
-            : 4096,
+            : model.maxOutputTokens,
           model.maxOutputTokens,
         ),
         temperature:
@@ -968,8 +971,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     maxTokensForRequest: number,
     thinkingEnabled: boolean,
   ): { budgetTokens: number; extendedThinkingEnabled: boolean } {
-    const dynamicBudget = Math.floor(modelLimits.maxOutputTokens * 0.2);
-    const budgetTokens = Math.min(dynamicBudget, maxTokensForRequest - 100);
+    // Use a base budget of 16,000 tokens (aligned with GitHub Copilot's default),
+    // capped at 25% of maxOutputTokens and constrained by maxTokensForRequest.
+    // This ensures sufficient thinking budget for complex reasoning while leaving
+    // room for actual response content.
+    const baseBudget = 16_000;
+    const maxBudgetFromOutput = Math.floor(modelLimits.maxOutputTokens * 0.25);
+    const budgetTokens = Math.min(baseBudget, maxBudgetFromOutput, maxTokensForRequest - 100);
     const extendedThinkingEnabled =
       thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
