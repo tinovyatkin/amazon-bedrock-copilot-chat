@@ -105,7 +105,7 @@ suite("ToolBuffer", () => {
       assert.deepStrictEqual(fresh.input, { ok: true });
     });
 
-    test("parse failure emits warn log with tool name, id, and input length — no raw content", () => {
+    test("parse failure emits structured warn log with tool metadata — no raw content", () => {
       const { channel, logs } = makeMockChannel();
       logger.initialize(channel, vscode.ExtensionMode.Production);
 
@@ -120,14 +120,17 @@ suite("ToolBuffer", () => {
       assert.equal(warnLogs.length, 1, "Expected exactly one warn log entry");
 
       const msg = warnLogs[0].args[0] as string;
-      assert.ok(msg.includes("my_tool"), "warn should include tool name");
-      assert.ok(msg.includes("call-1"), "warn should include tool id");
-      assert.ok(msg.includes("Input length:"), "warn should include input length");
-      // Must NOT contain the raw token value
+      assert.ok(msg.includes("[ToolBuffer]"), "warn message should have the ToolBuffer prefix");
+      // Metadata is in the structured object, not interpolated into the message
       assert.ok(!msg.includes("super-secret"), "warn must not expose raw input content");
+
+      const data = warnLogs[0].args[1] as Record<string, unknown>;
+      assert.equal(data.toolName, "my_tool", "structured data should include toolName");
+      assert.equal(data.toolId, "call-1", "structured data should include toolId");
+      assert.equal(data.inputLength, 10, "structured data should include inputLength");
     });
 
-    test("parse failure emits trace log with truncated, newline-sanitized preview", () => {
+    test("parse failure emits structured trace log with truncated, newline-sanitized preview", () => {
       const { channel, logs } = makeMockChannel();
       logger.initialize(channel, vscode.ExtensionMode.Development);
 
@@ -142,19 +145,17 @@ suite("ToolBuffer", () => {
       const traceLogs = logs.filter((l) => l.level === "trace");
       assert.equal(traceLogs.length, 1, "Expected exactly one trace log entry");
 
-      const traceMsg = traceLogs[0].args[0] as string;
+      const data = traceLogs[0].args[1] as Record<string, unknown>;
+      assert.equal(data.toolName, "my_tool", "structured data should include toolName");
+      assert.equal(data.toolId, "call-1", "structured data should include toolId");
+
+      const preview = data.rawInputPreview as string;
       // Newlines must be escaped in the preview
-      assert.ok(!traceMsg.includes("\n"), "trace preview must not contain raw newlines");
+      assert.ok(!preview.includes("\n"), "preview must not contain raw newlines");
       // The escaped newline sequence should appear instead
-      assert.ok(traceMsg.includes(String.raw`\n`), "trace preview should contain escaped newlines");
-      // The full message should reference the tool name and id
-      assert.ok(traceMsg.includes("my_tool"), "trace should include tool name");
-      assert.ok(traceMsg.includes("call-1"), "trace should include tool id");
-      // The preview portion is capped at 200 chars of the original input —
-      // the full message is longer (it contains the prefix), but the preview
-      // itself should not exceed 200 source chars (even after \\n expansion each
-      // \n becomes 2 chars, so allow some slack).
-      assert.ok(traceMsg.length < 300, "total trace message should be reasonably short");
+      assert.ok(preview.includes(String.raw`\n`), "preview should contain escaped newlines");
+      // Preview is capped at 200 chars of the original input
+      assert.ok(preview.length <= 210, "preview should be truncated to ~200 chars");
     });
   });
 
