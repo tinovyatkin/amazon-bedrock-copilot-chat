@@ -142,10 +142,10 @@
     "vsce:package": "bunx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.1013.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1013.0",
-    "@aws-sdk/client-ssm": "^3.1013.0",
-    "@aws-sdk/credential-providers": "^3.1013.0",
+    "@aws-sdk/client-bedrock": "^3.1014.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1014.0",
+    "@aws-sdk/client-ssm": "^3.1014.0",
+    "@aws-sdk/credential-providers": "^3.1014.0",
     "@aws-sdk/protocol-http": "^3.374.0",
     "@smithy/shared-ini-file-loader": "^4.4.7",
     "@smithy/util-retry": "^4.2.12",
@@ -167,7 +167,7 @@
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
     "commitlint": "20.5.0",
-    "eslint": "10.0.3",
+    "eslint": "10.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
     "eslint-plugin-perfectionist": "5.7.0",
