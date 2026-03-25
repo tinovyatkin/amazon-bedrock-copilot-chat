@@ -976,7 +976,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.extendedThinkingEnabled, false);
     });
 
-    test("maxOutputTokens used as default maxTokensForRequest produces correct budget", () => {
+    test("budget math when maxTokensForRequest falls back to maxOutputTokens (no explicit max_tokens)", () => {
       // Simulates the case where VSCode doesn't provide max_tokens
       // and maxTokensForRequest falls back to modelLimits.maxOutputTokens
       const maxOutput = 128_000; // Claude Opus 4.6
