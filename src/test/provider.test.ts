@@ -47,6 +47,22 @@ const createMockClientProvider = (baseModelAccessible: boolean) => {
   return provider;
 };
 
+// Helper to call the private calculateThinkingConfig method
+const callCalcThinkingConfig = (
+  modelProfile: { supportsThinking: boolean },
+  modelLimits: { maxOutputTokens: number },
+  maxTokensForRequest: number,
+  thinkingEnabled: boolean,
+) => {
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+  return (provider as any).calculateThinkingConfig(
+    modelProfile,
+    modelLimits,
+    maxTokensForRequest,
+    thinkingEnabled,
+  ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
+};
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
@@ -851,6 +867,130 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.hasInferenceProfile, true);
 
       assert.equal(result.modelIdToUse, "global.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+  });
+
+  suite("calculateThinkingConfig", () => {
+    const thinkingProfile = { supportsThinking: true };
+    const nonThinkingProfile = { supportsThinking: false };
+
+    test("large model defaults produce 16k budget (base budget is the binding constraint)", () => {
+      // Claude Sonnet 4: maxOutputTokens = 64000
+      // baseBudget = 16000, maxBudgetFromOutput = 16000, visibleReserve = max(100, 16000) = 16000
+      // maxTokensForRequest - visibleReserve = 64000 - 16000 = 48000
+      // budgetTokens = min(16000, 16000, 48000) = 16000
+      const result = callCalcThinkingConfig(
+        thinkingProfile,
+        { maxOutputTokens: 64_000 },
+        64_000,
+        true,
+      );
+      assert.equal(result.budgetTokens, 16_000);
+      assert.equal(result.extendedThinkingEnabled, true);
+    });
+
+    test("small explicit max_tokens disables thinking when budget < 1024", () => {
+      // max_tokens = 500 → visibleReserve = max(100, 125) = 125
+      // maxTokensForRequest - visibleReserve = 500 - 125 = 375
+      // budgetTokens = min(16000, 16000, 375) = 375 → < 1024 → thinking disabled
+      const result = callCalcThinkingConfig(
+        thinkingProfile,
+        { maxOutputTokens: 64_000 },
+        500,
+        true,
+      );
+      assert.ok(
+        result.budgetTokens < 1024,
+        `Expected budgetTokens < 1024, got ${result.budgetTokens}`,
+      );
+      assert.equal(result.extendedThinkingEnabled, false);
+    });
+
+    test("budgetTokens never goes negative when maxTokensForRequest < visibleReserve", () => {
+      // max_tokens = 50 → visibleReserve = max(100, 12) = 100
+      // maxTokensForRequest - visibleReserve = 50 - 100 = -50
+      // budgetTokens = max(0, min(16000, 16000, -50)) = 0
+      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 64_000 }, 50, true);
+      assert.equal(result.budgetTokens, 0);
+      assert.equal(result.extendedThinkingEnabled, false);
+    });
+
+    test("thinking disabled when model does not support it", () => {
+      const result = callCalcThinkingConfig(
+        nonThinkingProfile,
+        { maxOutputTokens: 64_000 },
+        64_000,
+        true,
+      );
+      assert.equal(result.extendedThinkingEnabled, false);
+      // budgetTokens is still computed but thinking is disabled
+      assert.equal(result.budgetTokens, 16_000);
+    });
+
+    test("thinking disabled when setting is off", () => {
+      const result = callCalcThinkingConfig(
+        thinkingProfile,
+        { maxOutputTokens: 64_000 },
+        64_000,
+        false,
+      );
+      assert.equal(result.extendedThinkingEnabled, false);
+    });
+
+    test("reserve leaves room for visible output with moderate max_tokens", () => {
+      // max_tokens = 2000 → visibleReserve = max(100, 500) = 500
+      // maxTokensForRequest - visibleReserve = 2000 - 500 = 1500
+      // budgetTokens = min(16000, 16000, 1500) = 1500
+      // Remaining for visible output = 2000 - 1500 = 500 ≥ visibleReserve
+      const result = callCalcThinkingConfig(
+        thinkingProfile,
+        { maxOutputTokens: 64_000 },
+        2000,
+        true,
+      );
+      assert.equal(result.budgetTokens, 1500);
+      assert.ok(
+        2000 - result.budgetTokens >= 500,
+        "Should leave at least visibleReserve tokens for visible output",
+      );
+      assert.equal(result.extendedThinkingEnabled, true);
+    });
+
+    test("maxBudgetFromOutput caps budget for small-output models", () => {
+      // Model with maxOutputTokens = 4096
+      // maxBudgetFromOutput = floor(4096 * 0.25) = 1024
+      // visibleReserve = max(100, floor(4096 * 0.25)) = 1024
+      // maxTokensForRequest - visibleReserve = 4096 - 1024 = 3072
+      // budgetTokens = min(16000, 1024, 3072) = 1024
+      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 4096 }, 4096, true);
+      assert.equal(result.budgetTokens, 1024);
+      assert.equal(result.extendedThinkingEnabled, true);
+    });
+
+    test("very small model output disables thinking (budget below 1024 threshold)", () => {
+      // Model with maxOutputTokens = 2000
+      // maxBudgetFromOutput = floor(2000 * 0.25) = 500
+      // budgetTokens = min(16000, 500, ...) = at most 500 → < 1024
+      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 2000 }, 2000, true);
+      assert.ok(result.budgetTokens < 1024);
+      assert.equal(result.extendedThinkingEnabled, false);
+    });
+
+    test("budget math when maxTokensForRequest falls back to maxOutputTokens (no explicit max_tokens)", () => {
+      // Simulates the case where VSCode doesn't provide max_tokens
+      // and maxTokensForRequest falls back to modelLimits.maxOutputTokens
+      const maxOutput = 128_000; // Claude Opus 4.6
+      const result = callCalcThinkingConfig(
+        thinkingProfile,
+        { maxOutputTokens: maxOutput },
+        maxOutput,
+        true,
+      );
+      // baseBudget = 16000, maxBudgetFromOutput = 32000, visibleReserve = 32000
+      // maxTokensForRequest - visibleReserve = 128000 - 32000 = 96000
+      // budgetTokens = min(16000, 32000, 96000) = 16000
+      assert.equal(result.budgetTokens, 16_000);
+      assert.equal(result.extendedThinkingEnabled, true);
     });
   });
 });
