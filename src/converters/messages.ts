@@ -192,6 +192,11 @@ function extractToolResultText(content: unknown): string {
         textContent += item.value;
       } else if (typeof item === "string") {
         textContent += item;
+      } else if (isMetadataPart(item)) {
+        // Skip metadata objects (e.g. cache_control) that are not actual content
+        logger.trace("[Message Converter] Skipping metadata part in tool result:", {
+          mimeType: (item as { mimeType?: unknown }).mimeType,
+        });
       } else {
         // For unknown types, try to stringify
         textContent += inspect(item, { depth: 4 });
@@ -199,10 +204,34 @@ function extractToolResultText(content: unknown): string {
     }
   } else if (typeof content === "string") {
     textContent = content;
+  } else if (isMetadataPart(content)) {
+    // Skip metadata objects that are not actual content
+    logger.trace("[Message Converter] Skipping metadata part in tool result");
   } else {
     textContent = inspect(content);
   }
   return textContent;
+}
+
+/**
+ * Check if an object is a metadata part (e.g. cache_control) that should be
+ * skipped rather than serialized into content text. These can appear in
+ * content arrays from VS Code when prompt caching is active.
+ */
+function isMetadataPart(item: unknown): boolean {
+  if (typeof item !== "object" || item == null) return false;
+  if (!("mimeType" in item)) return false;
+  const mimeType = (item as { mimeType: unknown }).mimeType;
+  if (typeof mimeType !== "string") return false;
+  // Not a real MIME type — it's provider metadata (e.g. "cache_control")
+  try {
+    const mime = new MIMEType(mimeType);
+    // Valid MIME types with a real type/subtype are content, not metadata
+    return !mime.type || !mime.subtype;
+  } catch {
+    // Unparseable as MIME → it's metadata like "cache_control"
+    return true;
+  }
 }
 
 /**
