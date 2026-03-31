@@ -80,7 +80,11 @@
         },
         "bedrock.context1M.mode": {
           "type": "string",
-          "enum": ["both", "standard", "extended"],
+          "enum": [
+            "both",
+            "standard",
+            "extended"
+          ],
           "default": "both",
           "enumDescriptions": [
             "Show both standard (200K) and extended (1M) context variants for supported models",

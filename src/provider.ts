@@ -236,7 +236,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             }
 
             infos.push(
-              ...buildFoundationModelVariants(m, modelIdToUse, hasInferenceProfile, settings.context1M.mode),
+              ...buildFoundationModelVariants(
+                m,
+                modelIdToUse,
+                hasInferenceProfile,
+                settings.context1M.mode,
+              ),
             );
           }
 
@@ -257,9 +262,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               continue;
             }
 
-            infos.push(
-              ...buildApplicationProfileVariants(profile, settings.context1M.mode),
-            );
+            infos.push(...buildApplicationProfileVariants(profile, settings.context1M.mode));
           }
 
           // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
@@ -450,9 +453,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       );
 
       // Create effective model reference with the real (suffix-free) ID for Bedrock API calls
-      const effectiveModel: LanguageModelChatInformation = realModelId === model.id
-        ? model
-        : { ...model, id: realModelId };
+      const effectiveModel: LanguageModelChatInformation =
+        realModelId === model.id ? model : { ...model, id: realModelId };
 
       // Resolve model ID for application inference profiles (ARNs) to base model ID
       // This is needed because internal logic (getModelProfile, getModelTokenLimits) expects base model IDs
@@ -571,9 +573,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       let resolvedEffort: ThinkingEffort | undefined;
       if (thinkingEffortEnabled) {
         const uiEffort: unknown = options.modelConfiguration?.reasoningEffort;
-        resolvedEffort = typeof uiEffort === "string" && validEffortValues.includes(uiEffort as ThinkingEffort)
-          ? (uiEffort as ThinkingEffort)
-          : "high";
+        resolvedEffort =
+          typeof uiEffort === "string" && validEffortValues.includes(uiEffort as ThinkingEffort)
+            ? (uiEffort as ThinkingEffort)
+            : "high";
       }
 
       // Build beta headers
@@ -822,7 +825,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         });
       }
 
-      const enable1MForManual = settings.context1M.mode === "extended" || settings.context1M.mode === "both";
+      const enable1MForManual =
+        settings.context1M.mode === "extended" || settings.context1M.mode === "both";
       const limits = getModelTokenLimits(baseModelId, enable1MForManual);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
@@ -1726,9 +1730,7 @@ function resolveContext1MFromModelId(
   mode: Context1MMode,
 ): [realModelId: string, enable1MContext: boolean] {
   const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
-  const realModelId = has1MSuffix
-    ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
-    : modelId;
+  const realModelId = has1MSuffix ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length) : modelId;
 
   if (mode === "extended") {
     return [realModelId, true];
