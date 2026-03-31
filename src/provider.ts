@@ -241,11 +241,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 : " (Regional Inference Profile)";
             }
 
-            // Add configurationSchema for models that support thinking effort
-            const modelProfileForSchema = getModelProfile(modelIdToUse);
-            const configSchema = modelProfileForSchema.supportsThinkingEffort
-              ? THINKING_EFFORT_CONFIGURATION_SCHEMA
-              : undefined;
+            const configSchema = this.getThinkingEffortConfigurationSchema(modelIdToUse);
 
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
@@ -288,11 +284,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
-            // Add configurationSchema for application profiles that support thinking effort
-            const appProfileModel = getModelProfile(modelIdForLimits);
-            const appConfigSchema = appProfileModel.supportsThinkingEffort
-              ? THINKING_EFFORT_CONFIGURATION_SCHEMA
-              : undefined;
+            const appConfigSchema = this.getThinkingEffortConfigurationSchema(modelIdForLimits);
 
             const profileInfo: LanguageModelChatInformation = {
               capabilities: {
@@ -825,6 +817,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   /**
    * Allow users with restricted permissions to manually supply a model or inference profile ID.
    */
+  private getThinkingEffortConfigurationSchema(
+    modelId: string,
+  ): LanguageModelConfigurationSchema | undefined {
+    return getModelProfile(modelId).supportsThinkingEffort
+      ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+      : undefined;
+  }
+
   private async buildManualModelInformation(
     modelId: string,
     settings: Awaited<ReturnType<typeof getBedrockSettings>>,
@@ -849,12 +849,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       const limits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
+      const manualConfigSchema = this.getThinkingEffortConfigurationSchema(baseModelId);
 
       return {
         capabilities: {
           imageInput: likelyVisionCapable,
           toolCalling: true,
         },
+        ...(manualConfigSchema ? { configurationSchema: manualConfigSchema } : {}),
         family: "bedrock",
         id: modelId,
         maxInputTokens: limits.maxInputTokens,
