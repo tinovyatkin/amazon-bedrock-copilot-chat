@@ -1021,7 +1021,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("valid effort 'low' is preserved in output_config.effort (with extended thinking)", () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
         16_000,
         [],
@@ -1036,7 +1036,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("valid effort 'medium' is preserved in output_config.effort (with extended thinking)", () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
         16_000,
         [],
@@ -1049,7 +1049,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("valid effort 'high' is preserved in output_config.effort (with extended thinking)", () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
         16_000,
         [],
@@ -1062,7 +1062,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("effort without extended thinking sets output_config.effort only", () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
         false,
         0,
         [],
@@ -1090,7 +1090,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("beta headers are included alongside effort", () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
         16_000,
         ["interleaved-thinking-2025-05-14"],
@@ -1101,6 +1101,23 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "interleaved-thinking-2025-05-14",
       ]);
       assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
+    });
+
+    test("invalid effort value is not passed through (upstream resolves to 'high')", () => {
+      // configureAdditionalModelFields receives already-resolved effort from the provider,
+      // so passing undefined simulates the case where an invalid value was filtered out upstream.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        true,
+        16_000,
+        [],
+      );
+      assert.ok(result.additionalModelRequestFields);
+      // Without a valid effort, output_config should not be set
+      assert.equal(result.additionalModelRequestFields.output_config, undefined);
+      // Extended thinking should still be configured
+      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
     });
   });
 
