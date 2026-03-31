@@ -206,7 +206,9 @@ function extractToolResultText(content: unknown): string {
     textContent = content;
   } else if (isMetadataPart(content)) {
     // Skip metadata objects that are not actual content
-    logger.trace("[Message Converter] Skipping metadata part in tool result");
+    logger.trace("[Message Converter] Skipping metadata part in tool result", {
+      mimeType: content.mimeType,
+    });
   } else {
     textContent = inspect(content);
   }
