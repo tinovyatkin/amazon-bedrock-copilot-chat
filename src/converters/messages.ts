@@ -445,6 +445,10 @@ function processAssistantMessageParts(msg: vscode.LanguageModelChatMessage): Con
       if (block) content.push(block);
     } else if (part instanceof vscode.LanguageModelToolCallPart) {
       content.push(processToolCallPart(part));
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in assistant message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
@@ -491,6 +495,10 @@ function processSystemMessageParts(msg: vscode.LanguageModelChatMessage): System
   for (const part of msg.content) {
     if (part instanceof vscode.LanguageModelTextPart && part.value.trim()) {
       systemBlocks.push({ text: part.value });
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in system message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
@@ -600,6 +608,10 @@ function processUserMessageParts(
     } else if (part instanceof vscode.LanguageModelToolResultPart) {
       hasToolResults = true;
       content.push(processToolResultPart(part, profile));
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in user message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
