@@ -20059,6 +20059,12 @@ declare module 'vscode' {
 		};
 
 		/**
+		 * An optional configuration schema that defines model-specific settings
+		 * shown in the VS Code model picker UI.
+		 */
+		readonly configurationSchema?: LanguageModelConfigurationSchema;
+
+		/**
 		 * An optional, human-readable string which will be rendered alongside the model.
 		 */
 		readonly detail?: string;

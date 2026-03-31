@@ -30,9 +30,11 @@ import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
 
 /**
- * Thinking effort level for models that support configurable reasoning (e.g. Opus 4.5, Sonnet 4.6).
+ * Single source of truth for thinking effort levels.
+ * The union type, configuration schema enum, and runtime guard are all derived from this tuple.
  */
-type ThinkingEffort = "high" | "low" | "medium";
+const THINKING_EFFORT_VALUES = ["low", "medium", "high"] as const;
+type ThinkingEffort = (typeof THINKING_EFFORT_VALUES)[number];
 
 /**
  * Configuration schema for the thinking effort toggle in the VS Code model picker.
@@ -43,7 +45,7 @@ const THINKING_EFFORT_CONFIGURATION_SCHEMA: LanguageModelConfigurationSchema = {
   properties: {
     reasoningEffort: {
       default: "high",
-      enum: ["low", "medium", "high"],
+      enum: THINKING_EFFORT_VALUES,
       enumItemLabels: ["Low", "Medium", "High"],
       group: "navigation",
       type: "string",
@@ -1649,7 +1651,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 }
 
 function isReasoningEffort(value: unknown): value is ThinkingEffort {
-  return typeof value === "string" && ["high", "low", "medium"].includes(value);
+  return typeof value === "string" && THINKING_EFFORT_VALUES.includes(value as ThinkingEffort);
 }
 
 /**

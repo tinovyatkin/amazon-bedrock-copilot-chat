@@ -63,6 +63,29 @@ const callCalcThinkingConfig = (
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
+// Helper to call the private configureAdditionalModelFields method
+const callConfigureFields = (
+  modelId: string,
+  extendedThinkingEnabled: boolean,
+  budgetTokens: number,
+  betaHeaders: string[],
+  thinkingEffort?: string,
+) => {
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+  const requestInput: any = {
+    inferenceConfig: { maxTokens: 4096 },
+  };
+  (provider as any).configureAdditionalModelFields(
+    requestInput,
+    modelId,
+    extendedThinkingEnabled,
+    budgetTokens,
+    betaHeaders,
+    thinkingEffort,
+  );
+  return requestInput;
+};
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
@@ -991,6 +1014,116 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // budgetTokens = min(16000, 32000, 96000) = 16000
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
+    });
+  });
+
+  suite("configureAdditionalModelFields (thinking effort)", () => {
+    test("valid effort 'low' is preserved in output_config.effort (with extended thinking)", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        true,
+        16_000,
+        [],
+        "low",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "low");
+      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+      assert.equal(result.additionalModelRequestFields.thinking?.budget_tokens, 16_000);
+    });
+
+    test("valid effort 'medium' is preserved in output_config.effort (with extended thinking)", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        true,
+        16_000,
+        [],
+        "medium",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "medium");
+    });
+
+    test("valid effort 'high' is preserved in output_config.effort (with extended thinking)", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        true,
+        16_000,
+        [],
+        "high",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
+    });
+
+    test("effort without extended thinking sets output_config.effort only", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        false,
+        0,
+        [],
+        "low",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "low");
+      // Should NOT have thinking configuration
+      assert.equal(result.additionalModelRequestFields.thinking, undefined);
+    });
+
+    test("undefined effort with extended thinking omits output_config", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        true,
+        16_000,
+        [],
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config, undefined);
+      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+    });
+
+    test("beta headers are included alongside effort", () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+        true,
+        16_000,
+        ["interleaved-thinking-2025-05-14"],
+        "high",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.deepStrictEqual(result.additionalModelRequestFields.anthropic_beta, [
+        "interleaved-thinking-2025-05-14",
+      ]);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
+    });
+  });
+
+  suite("getThinkingEffortConfigurationSchema", () => {
+    test("returns schema for models that support thinking effort", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Claude Opus 4.5 supports thinking effort (modelId must contain "opus-4-5")
+      const schema = (provider as any).getThinkingEffortConfigurationSchema(
+        "anthropic.claude-opus-4-5-20250514-v1:0",
+      );
+      assert.ok(schema);
+      assert.ok(schema.properties);
+      assert.ok(schema.properties.reasoningEffort);
+      assert.deepStrictEqual(schema.properties.reasoningEffort.enum, ["low", "medium", "high"]);
+    });
+
+    test("returns undefined for models that do not support thinking effort", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Claude 3.5 Sonnet does not support thinking effort
+      const schema = (provider as any).getThinkingEffortConfigurationSchema(
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      );
+      assert.equal(schema, undefined);
     });
   });
 });
