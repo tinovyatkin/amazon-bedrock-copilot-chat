@@ -214,26 +214,6 @@ function extractToolResultText(content: unknown): string {
 }
 
 /**
- * Check if an object is a metadata part (e.g. cache_control) that should be
- * skipped rather than serialized into content text. These can appear in
- * content arrays from VS Code when prompt caching is active.
- */
-function isMetadataPart(item: unknown): item is { mimeType: string } {
-  if (typeof item !== "object" || item == null) return false;
-  if (!("mimeType" in item)) return false;
-  if (typeof item.mimeType !== "string") return false;
-  // Not a real MIME type — it's provider metadata (e.g. "cache_control")
-  try {
-    const mime = new MIMEType(item.mimeType);
-    // Valid MIME types with a real type/subtype are content, not metadata
-    return !mime.type || !mime.subtype;
-  } catch {
-    // Unparseable as MIME → it's metadata like "cache_control"
-    return true;
-  }
-}
-
-/**
  * Common helper to filter content blocks from messages.
  * Reduces code duplication between stripThinkingContent and filterDeepseekReasoningContent.
  *
@@ -390,6 +370,26 @@ function isImageDataPart(part: unknown): part is ImageDataPart {
     }
   }
   return false;
+}
+
+/**
+ * Check if an object is a metadata part (e.g. cache_control) that should be
+ * skipped rather than serialized into content text. These can appear in
+ * content arrays from VS Code when prompt caching is active.
+ */
+function isMetadataPart(item: unknown): item is { mimeType: string } {
+  if (typeof item !== "object" || item == null) return false;
+  if (!("mimeType" in item)) return false;
+  if (typeof item.mimeType !== "string") return false;
+  // Not a real MIME type — it's provider metadata (e.g. "cache_control")
+  try {
+    const mime = new MIMEType(item.mimeType);
+    // Valid MIME types with a real type/subtype are content, not metadata
+    return !mime.type || !mime.subtype;
+  } catch {
+    // Unparseable as MIME → it's metadata like "cache_control"
+    return true;
+  }
 }
 
 /**
