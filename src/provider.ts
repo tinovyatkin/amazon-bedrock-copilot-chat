@@ -62,17 +62,19 @@ function resolveContext1MFromModelId(
   modelId: string,
   mode: Context1MMode,
 ): [realModelId: string, enable1MContext: boolean] {
+  const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
+  const realModelId = has1MSuffix
+    ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
+    : modelId;
+
   if (mode === "extended") {
-    return [modelId, true];
+    return [realModelId, true];
   }
   if (mode === "standard") {
-    return [modelId, false];
+    return [realModelId, false];
   }
   // mode === "both": check for suffix
-  if (modelId.endsWith(CONTEXT_1M_ID_SUFFIX)) {
-    return [modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length), true];
-  }
-  return [modelId, false];
+  return [realModelId, has1MSuffix];
 }
 
 class NoAccessibleModelsError extends Error {
