@@ -12,7 +12,8 @@ import type {
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatProvider,
-  LanguageModelResponsePart,
+  LanguageModelConfigurationSchema,
+  LanguageModelResponsePart2,
   Progress,
 } from "vscode";
 import * as vscode from "vscode";
@@ -27,6 +28,23 @@ import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
+
+/**
+ * Configuration schema for the thinking effort toggle in the VS Code model picker.
+ * When `group` is `"navigation"`, the property is shown as a primary action (toolbar toggle)
+ * in the model picker, similar to native models like GPT-5 mini.
+ */
+const THINKING_EFFORT_CONFIGURATION_SCHEMA: LanguageModelConfigurationSchema = {
+  properties: {
+    reasoningEffort: {
+      default: "high",
+      enum: ["low", "medium", "high"],
+      enumItemLabels: ["Low", "Medium", "High"],
+      group: "navigation",
+      type: "string",
+    },
+  },
+} as const;
 
 class NoAccessibleModelsError extends Error {
   constructor() {
@@ -223,11 +241,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 : " (Regional Inference Profile)";
             }
 
+            // Add configurationSchema for models that support thinking effort
+            const modelProfileForSchema = getModelProfile(modelIdToUse);
+            const configSchema = modelProfileForSchema.supportsThinkingEffort
+              ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+              : undefined;
+
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
                 toolCalling: true,
               },
+              ...(configSchema ? { configurationSchema: configSchema } : {}),
               family: "bedrock",
               id: modelIdToUse,
               maxInputTokens: maxInput,
@@ -263,11 +288,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
+            // Add configurationSchema for application profiles that support thinking effort
+            const appProfileModel = getModelProfile(modelIdForLimits);
+            const appConfigSchema = appProfileModel.supportsThinkingEffort
+              ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+              : undefined;
+
             const profileInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
                 toolCalling: true,
               },
+              ...(appConfigSchema ? { configurationSchema: appConfigSchema } : {}),
               family: "bedrock",
               id: profile.modelArn,
               maxInputTokens: maxInput,
@@ -430,10 +462,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     model: LanguageModelChatInformation,
     messages: readonly LanguageModelChatMessage[],
     options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     token: CancellationToken,
   ): Promise<void> {
-    const trackingProgress: Progress<LanguageModelResponsePart> = {
+    const trackingProgress: Progress<LanguageModelResponsePart2> = {
       report: (part) => {
         try {
           progress.report(part);
@@ -568,6 +600,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Determine if thinking effort should be applied (only for Opus 4.5 and Sonnet 4.6)
       const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
 
+      // Read thinking effort from VS Code model picker UI (configurationSchema) first,
+      // falling back to "high" as default for older VS Code versions without configurationSchema support
+      const validEffortValues = ["high", "low", "medium"] as const;
+      const uiEffort = options.modelConfiguration?.reasoningEffort;
+      const resolvedEffort: "high" | "low" | "medium" | undefined = thinkingEffortEnabled
+        ? (validEffortValues.includes(uiEffort) ? uiEffort : "high")
+        : undefined;
+
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
@@ -585,7 +625,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         extendedThinkingEnabled,
         budgetTokens,
         betaHeaders,
-        thinkingEffortEnabled ? settings.thinking.effort : undefined,
+        resolvedEffort,
       );
 
       // Log request details
@@ -1520,7 +1560,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   private async processResponseStream(
     requestInput: ConverseStreamCommandInput,
-    trackingProgress: Progress<LanguageModelResponsePart>,
+    trackingProgress: Progress<LanguageModelResponsePart2>,
     extendedThinkingEnabled: boolean,
     token: CancellationToken,
   ): Promise<void> {
