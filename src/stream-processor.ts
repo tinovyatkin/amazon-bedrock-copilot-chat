@@ -241,11 +241,14 @@ export class StreamProcessor {
     progress: Progress<LanguageModelResponsePart>,
     state: ProcessingState,
   ): void {
-    if (text) {
+    if (typeof text === "string" && text) {
       state.textChunkCount++;
       logger.trace("[Stream Processor] Text delta received, length:", text.length);
       progress.report(new vscode.LanguageModelTextPart(text));
       state.hasEmittedContent = true;
+    } else if (text !== undefined && typeof text !== "string") {
+      // Guard against non-string values (e.g. metadata objects) leaking through
+      logger.warn("[Stream Processor] Received non-string text delta, skipping:", typeof text);
     } else {
       logger.trace("[Stream Processor] Text delta with empty content (initialization)");
     }
