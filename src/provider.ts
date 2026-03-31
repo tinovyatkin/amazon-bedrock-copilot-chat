@@ -30,6 +30,11 @@ import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
 
 /**
+ * Thinking effort level for models that support configurable reasoning (e.g. Opus 4.5, Sonnet 4.6).
+ */
+type ThinkingEffort = "high" | "low" | "medium";
+
+/**
  * Configuration schema for the thinking effort toggle in the VS Code model picker.
  * When `group` is `"navigation"`, the property is shown as a primary action (toolbar toggle)
  * in the model picker, similar to native models like GPT-5 mini.
@@ -162,6 +167,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       try {
         const fetchModels = async (
           progress?: vscode.Progress<{ message?: string }>,
+          // eslint-disable-next-line sonarjs/cognitive-complexity -- Model discovery involves many sequential guarded steps that cannot be meaningfully decomposed
         ): Promise<LanguageModelChatInformation[]> => {
           progress?.report({ message: "Fetching model list..." });
 
@@ -595,7 +601,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Read thinking effort from VS Code model picker UI (configurationSchema) first,
       // falling back to "high" as default for older VS Code versions without configurationSchema support
       const uiEffort: unknown = options.modelConfiguration?.reasoningEffort;
-      let resolvedEffort: "high" | "low" | "medium" | undefined;
+      let resolvedEffort: ThinkingEffort | undefined;
       if (thinkingEffortEnabled) {
         resolvedEffort = isReasoningEffort(uiEffort) ? uiEffort : "high";
       }
@@ -814,17 +820,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     return anthropicBeta;
   }
 
-  /**
-   * Allow users with restricted permissions to manually supply a model or inference profile ID.
-   */
-  private getThinkingEffortConfigurationSchema(
-    modelId: string,
-  ): LanguageModelConfigurationSchema | undefined {
-    return getModelProfile(modelId).supportsThinkingEffort
-      ? THINKING_EFFORT_CONFIGURATION_SCHEMA
-      : undefined;
-  }
-
   private async buildManualModelInformation(
     modelId: string,
     settings: Awaited<ReturnType<typeof getBedrockSettings>>,
@@ -952,7 +947,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
   ): ConverseStreamCommandInput {
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
@@ -1039,7 +1034,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
   ): void {
     if (extendedThinkingEnabled) {
       // Extended thinking requires temperature 1.0
@@ -1408,6 +1403,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Allow users with restricted permissions to manually supply a model or inference profile ID.
+   */
+  private getThinkingEffortConfigurationSchema(
+    modelId: string,
+  ): LanguageModelConfigurationSchema | undefined {
+    return getModelProfile(modelId).supportsThinkingEffort
+      ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+      : undefined;
+  }
+
+  /**
    * Log converted Bedrock messages for debugging
    */
   private logConvertedMessages(messages: Message[]): void {
@@ -1642,7 +1648,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 }
 
-function isReasoningEffort(value: unknown): value is "high" | "low" | "medium" {
+function isReasoningEffort(value: unknown): value is ThinkingEffort {
   return typeof value === "string" && ["high", "low", "medium"].includes(value);
 }
 
