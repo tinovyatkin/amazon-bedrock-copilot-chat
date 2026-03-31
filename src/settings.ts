@@ -30,7 +30,6 @@ export interface BedrockSettings {
   };
 }
 
-
 /**
  * Get Bedrock settings with priority order
  */
