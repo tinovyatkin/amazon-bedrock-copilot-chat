@@ -11,8 +11,6 @@ import { getProfileRegion } from "./aws-profiles";
  * 6. Default value
  */
 
-export type Context1MMode = "both" | "extended" | "standard";
-
 export interface BedrockSettings {
   context1M: {
     mode: Context1MMode;
@@ -31,6 +29,8 @@ export interface BedrockSettings {
     enabled: boolean;
   };
 }
+
+export type Context1MMode = "both" | "extended" | "standard";
 
 
 /**

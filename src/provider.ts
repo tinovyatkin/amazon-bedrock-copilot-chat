@@ -25,7 +25,7 @@ import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
-import { getBedrockSettings, type Context1MMode } from "./settings";
+import { type Context1MMode, getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
@@ -52,30 +52,6 @@ const THINKING_EFFORT_CONFIGURATION_SCHEMA: LanguageModelConfigurationSchema = {
  * This suffix is stripped before making Bedrock API calls.
  */
 const CONTEXT_1M_ID_SUFFIX = "#1m";
-
-/**
- * Determine whether 1M context should be enabled for a given model ID based on the context1M mode.
- * When mode is "both", the model ID suffix determines whether 1M is active.
- * @returns [realModelId, enable1MContext] - the cleaned model ID and whether to enable 1M context
- */
-function resolveContext1MFromModelId(
-  modelId: string,
-  mode: Context1MMode,
-): [realModelId: string, enable1MContext: boolean] {
-  const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
-  const realModelId = has1MSuffix
-    ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
-    : modelId;
-
-  if (mode === "extended") {
-    return [realModelId, true];
-  }
-  if (mode === "standard") {
-    return [realModelId, false];
-  }
-  // mode === "both": check for suffix
-  return [realModelId, has1MSuffix];
-}
 
 class NoAccessibleModelsError extends Error {
   constructor() {
@@ -193,6 +169,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       try {
         const fetchModels = async (
           progress?: vscode.Progress<{ message?: string }>,
+          // eslint-disable-next-line sonarjs/cognitive-complexity -- Model discovery involves many sequential guarded steps that cannot be meaningfully decomposed
         ): Promise<LanguageModelChatInformation[]> => {
           progress?.report({ message: "Fetching model list..." });
 
@@ -279,11 +256,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const canDo1M = modelProfileForSchema.supports1MContext;
 
             // Determine which variants to register based on context1M mode
-            const variants: Array<{ enable1M: boolean; idSuffix: string; nameSuffix: string }> = [];
+            const variants: { enable1M: boolean; idSuffix: string; nameSuffix: string }[] = [];
             if (canDo1M && context1MMode === "both") {
               // Register both standard and 1M variants
-              variants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
-              variants.push({ enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
+              variants.push({ enable1M: false, idSuffix: "", nameSuffix: "" }, { enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
             } else if (canDo1M && context1MMode === "extended") {
               // Register only the 1M variant
               variants.push({ enable1M: true, idSuffix: "", nameSuffix: " 1M" });
@@ -343,10 +319,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const appCanDo1M = appProfileModel.supports1MContext;
 
             // Determine which variants to register based on context1M mode
-            const appVariants: Array<{ enable1M: boolean; idSuffix: string; nameSuffix: string }> = [];
+            const appVariants: { enable1M: boolean; idSuffix: string; nameSuffix: string }[] = [];
             if (appCanDo1M && appContext1MMode === "both") {
-              appVariants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
-              appVariants.push({ enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
+              appVariants.push({ enable1M: false, idSuffix: "", nameSuffix: "" }, { enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
             } else if (appCanDo1M && appContext1MMode === "extended") {
               appVariants.push({ enable1M: true, idSuffix: "", nameSuffix: " 1M" });
             } else {
@@ -561,9 +536,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       );
 
       // Create effective model reference with the real (suffix-free) ID for Bedrock API calls
-      const effectiveModel: LanguageModelChatInformation = realModelId !== model.id
-        ? { ...model, id: realModelId }
-        : model;
+      const effectiveModel: LanguageModelChatInformation = realModelId === model.id
+        ? model
+        : { ...model, id: realModelId };
 
       // Resolve model ID for application inference profiles (ARNs) to base model ID
       // This is needed because internal logic (getModelProfile, getModelTokenLimits) expects base model IDs
@@ -678,10 +653,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Read thinking effort from VS Code model picker UI (configurationSchema) first,
       // falling back to "high" as default for older VS Code versions without configurationSchema support
       const validEffortValues = ["high", "low", "medium"] as const;
-      const uiEffort = options.modelConfiguration?.reasoningEffort;
-      const resolvedEffort: "high" | "low" | "medium" | undefined = thinkingEffortEnabled
-        ? (validEffortValues.includes(uiEffort) ? uiEffort : "high")
-        : undefined;
+      type ThinkingEffort = (typeof validEffortValues)[number];
+      let resolvedEffort: ThinkingEffort | undefined;
+      if (thinkingEffortEnabled) {
+        const uiEffort: unknown = options.modelConfiguration?.reasoningEffort;
+        resolvedEffort = typeof uiEffort === "string" && validEffortValues.includes(uiEffort as ThinkingEffort)
+          ? (uiEffort as ThinkingEffort)
+          : "high";
+      }
 
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
@@ -1721,6 +1700,30 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       tokenLimit,
     });
   }
+}
+
+/**
+ * Determine whether 1M context should be enabled for a given model ID based on the context1M mode.
+ * When mode is "both", the model ID suffix determines whether 1M is active.
+ * @returns [realModelId, enable1MContext] - the cleaned model ID and whether to enable 1M context
+ */
+function resolveContext1MFromModelId(
+  modelId: string,
+  mode: Context1MMode,
+): [realModelId: string, enable1MContext: boolean] {
+  const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
+  const realModelId = has1MSuffix
+    ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
+    : modelId;
+
+  if (mode === "extended") {
+    return [realModelId, true];
+  }
+  if (mode === "standard") {
+    return [realModelId, false];
+  }
+  // mode === "both": check for suffix
+  return [realModelId, has1MSuffix];
 }
 
 /**
