@@ -97,7 +97,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   public notifyModelInformationChanged(reason?: string): void {
     const suffix = reason ? `: ${reason}` : "";
-    logger.debug(`[Bedrock Model Provider] Signaling model info refresh${suffix}`);
+    logger.info(`[Bedrock Model Provider] Notifying model information changed${suffix}`);
     this._onDidChangeLanguageModelInformation.fire();
   }
 
@@ -393,9 +393,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   async provideLanguageModelChatInformation(
-    options: { silent: boolean },
+    options: { configuration?: Record<string, unknown>; silent: boolean },
     token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
+    // VS Code calls this method twice per resolve cycle:
+    // 1. Default call (no configuration) — returns all models
+    // 2. Group call (configuration={}) — for model groups we don't use
+    // Return [] for group calls to avoid model duplication in the UI.
+    if (options.configuration !== undefined) {
+      logger.debug("[Bedrock Model Provider] Skipping group configuration call (not supported)");
+      return [];
+    }
+
     return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
