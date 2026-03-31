@@ -195,7 +195,7 @@ function extractToolResultText(content: unknown): string {
       } else if (isMetadataPart(item)) {
         // Skip metadata objects (e.g. cache_control) that are not actual content
         logger.trace("[Message Converter] Skipping metadata part in tool result:", {
-          mimeType: (item as { mimeType?: unknown }).mimeType,
+          mimeType: item.mimeType,
         });
       } else {
         // For unknown types, try to stringify
@@ -218,14 +218,13 @@ function extractToolResultText(content: unknown): string {
  * skipped rather than serialized into content text. These can appear in
  * content arrays from VS Code when prompt caching is active.
  */
-function isMetadataPart(item: unknown): boolean {
+function isMetadataPart(item: unknown): item is { mimeType: string } {
   if (typeof item !== "object" || item == null) return false;
   if (!("mimeType" in item)) return false;
-  const mimeType = (item as { mimeType: unknown }).mimeType;
-  if (typeof mimeType !== "string") return false;
+  if (typeof item.mimeType !== "string") return false;
   // Not a real MIME type — it's provider metadata (e.g. "cache_control")
   try {
-    const mime = new MIMEType(mimeType);
+    const mime = new MIMEType(item.mimeType);
     // Valid MIME types with a real type/subtype are content, not metadata
     return !mime.type || !mime.subtype;
   } catch {
