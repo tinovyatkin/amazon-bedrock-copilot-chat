@@ -4,7 +4,8 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
-import { BedrockChatModelProvider } from "../provider";
+import { BedrockChatModelProvider, resolveContext1MFromModelId } from "../provider";
+import type { Context1MMode } from "../settings";
 import type { BedrockModelSummary } from "../types";
 
 // Mock implementations extracted to avoid function nesting depth issues
@@ -992,5 +993,70 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
     });
+  });
+
+  suite("resolveContext1MFromModelId", () => {
+    const baseId = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+    const suffixedId = `${baseId}#1m`;
+
+    // Table-driven: 3 modes × 2 ID forms = 6 cases
+    const cases: {
+      enable1M: boolean;
+      expectedRealId: string;
+      mode: Context1MMode;
+      modelId: string;
+      name: string;
+    }[] = [
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "extended",
+        modelId: baseId,
+        name: "extended + plain ID → 1M enabled",
+      },
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "extended",
+        modelId: suffixedId,
+        name: "extended + #1m suffix → 1M enabled, suffix stripped",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "standard",
+        modelId: baseId,
+        name: "standard + plain ID → 1M disabled",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "standard",
+        modelId: suffixedId,
+        name: "standard + #1m suffix → 1M disabled, suffix stripped",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "both",
+        modelId: baseId,
+        name: "both + plain ID → 1M disabled (no suffix)",
+      },
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "both",
+        modelId: suffixedId,
+        name: "both + #1m suffix → 1M enabled",
+      },
+    ];
+
+    for (const { enable1M, expectedRealId, mode, modelId, name } of cases) {
+      test(name, () => {
+        const [realModelId, enable1MContext] = resolveContext1MFromModelId(modelId, mode);
+        assert.equal(realModelId, expectedRealId);
+        assert.equal(enable1MContext, enable1M);
+      });
+    }
   });
 });

@@ -825,8 +825,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         });
       }
 
-      const enable1MForManual =
-        settings.context1M.mode === "extended" || settings.context1M.mode === "both";
+      // In "both" mode, manual models have no #1m suffix variant, so resolveContext1MFromModelId
+      // would treat the unsuffixed ID as standard. Only enable 1M for "extended" mode.
+      const enable1MForManual = settings.context1M.mode === "extended";
       const limits = getModelTokenLimits(baseModelId, enable1MForManual);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
@@ -1621,6 +1622,28 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 }
 
 /**
+ * Determine whether 1M context should be enabled for a given model ID based on the context1M mode.
+ * When mode is "both", the model ID suffix determines whether 1M is active.
+ * @returns [realModelId, enable1MContext] - the cleaned model ID and whether to enable 1M context
+ */
+export function resolveContext1MFromModelId(
+  modelId: string,
+  mode: Context1MMode,
+): [realModelId: string, enable1MContext: boolean] {
+  const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
+  const realModelId = has1MSuffix ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length) : modelId;
+
+  if (mode === "extended") {
+    return [realModelId, true];
+  }
+  if (mode === "standard") {
+    return [realModelId, false];
+  }
+  // mode === "both": check for suffix
+  return [realModelId, has1MSuffix];
+}
+
+/**
  * Build LanguageModelChatInformation entries for an application inference profile, including context1M variants.
  */
 function buildApplicationProfileVariants(
@@ -1718,28 +1741,6 @@ function buildFoundationModelVariants(
       version: "1.0.0",
     } satisfies LanguageModelChatInformation;
   });
-}
-
-/**
- * Determine whether 1M context should be enabled for a given model ID based on the context1M mode.
- * When mode is "both", the model ID suffix determines whether 1M is active.
- * @returns [realModelId, enable1MContext] - the cleaned model ID and whether to enable 1M context
- */
-function resolveContext1MFromModelId(
-  modelId: string,
-  mode: Context1MMode,
-): [realModelId: string, enable1MContext: boolean] {
-  const has1MSuffix = modelId.endsWith(CONTEXT_1M_ID_SUFFIX);
-  const realModelId = has1MSuffix ? modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length) : modelId;
-
-  if (mode === "extended") {
-    return [realModelId, true];
-  }
-  if (mode === "standard") {
-    return [realModelId, false];
-  }
-  // mode === "both": check for suffix
-  return [realModelId, has1MSuffix];
 }
 
 /**

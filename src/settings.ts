@@ -79,10 +79,12 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   // Read 1M context mode with backward compatibility
   // New setting: "both" (default), "standard" (200K only), "extended" (1M only)
   // Backward compat: if old boolean "context1M.enabled" is still set, map true→"both", false→"standard"
+  // Use config.inspect() so the package.json default ("both") doesn't mask a legacy boolean setting
   const validModes: Context1MMode[] = ["both", "standard", "extended"];
-  const rawMode =
-    config.get<boolean | string>("context1M.mode") ??
-    config.get<boolean | string>("context1M.enabled");
+  const modeInspect = config.inspect<string>("context1M.mode");
+  const explicitMode =
+    modeInspect?.workspaceFolderValue ?? modeInspect?.workspaceValue ?? modeInspect?.globalValue;
+  const rawMode = explicitMode ?? config.get<boolean | string>("context1M.enabled");
   let context1MMode: Context1MMode;
   if (typeof rawMode === "boolean") {
     // Backward compatibility with old boolean setting
