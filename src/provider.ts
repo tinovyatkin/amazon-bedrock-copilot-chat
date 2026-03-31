@@ -67,17 +67,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
-  /** Tracks whether the initial model fetch has completed (for avoiding startup feedback loops) */
-  private initialFetchComplete = false;
 
   private lastThinkingBlock?: ThinkingBlock;
-  /**
-   * Coalesces concurrent calls to provideLanguageModelChatInformation.
-   * VS Code may call the provider multiple times in rapid succession (e.g. on registration
-   * and then again when onDidChange fires). By caching the in-flight promise, the second
-   * call returns the same result instead of triggering a redundant API fetch.
-   */
-  private pendingModelFetch: null | Promise<LanguageModelChatInformation[]> = null;
   private readonly streamProcessor: StreamProcessor;
 
   constructor(
@@ -98,14 +89,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     } catch {
       // ignore
     }
-  }
-
-  /**
-   * Returns true if the initial model fetch has completed.
-   * Used to avoid feedback loops when responding to onDidChangeChatModels during startup.
-   */
-  public isInitialFetchComplete(): boolean {
-    return this.initialFetchComplete;
   }
 
   /**
@@ -315,8 +298,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
           }));
 
-          // Mark initial fetch as complete to allow onDidChangeChatModels handling
-          this.initialFetchComplete = true;
           return infos;
         };
 
@@ -415,24 +396,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     options: { silent: boolean },
     token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
-    // Coalesce concurrent calls: if a fetch is already in-flight, return the same promise.
-    // This prevents redundant API calls when VS Code resolves models multiple times
-    // in quick succession (e.g. on registration + onDidChange feedback loop).
-    if (this.pendingModelFetch) {
-      logger.debug("[Bedrock Model Provider] Coalescing concurrent model fetch request");
-      return this.pendingModelFetch;
-    }
-
-    this.pendingModelFetch = this.prepareLanguageModelChatInformation(
-      { silent: options.silent ?? false },
-      token,
-    );
-
-    try {
-      return await this.pendingModelFetch;
-    } finally {
-      this.pendingModelFetch = null;
-    }
+    return this.prepareLanguageModelChatInformation({ silent: options.silent ?? false }, token);
   }
 
   // eslint-disable-next-line sonarjs/cognitive-complexity -- Chat response handling requires validation of thinking config and error handling
