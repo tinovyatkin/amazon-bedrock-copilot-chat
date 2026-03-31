@@ -23,6 +23,7 @@ export interface ThinkingBlock {
 interface ProcessingState {
   capturedThinkingBlock: ThinkingBlock | undefined;
   hasEmittedContent: boolean;
+  hasEmittedThinking: boolean;
   hasToolUse: boolean;
   stopReason: string | undefined;
   textChunkCount: number;
@@ -39,6 +40,7 @@ export class StreamProcessor {
     const state: ProcessingState = {
       capturedThinkingBlock: undefined,
       hasEmittedContent: false,
+      hasEmittedThinking: false,
       hasToolUse: false,
       stopReason: undefined,
       textChunkCount: 0,
@@ -67,9 +69,10 @@ export class StreamProcessor {
       // when the model has nothing to say or encounters an internal issue.
       if (
         !state.hasEmittedContent &&
+        !state.hasEmittedThinking &&
         !state.capturedThinkingBlock?.text &&
         !token.isCancellationRequested &&
-        (state.stopReason === StopReason.END_TURN || !state.stopReason)
+        state.stopReason === StopReason.END_TURN
       ) {
         logger.warn(
           "[Stream Processor] Model returned empty response with stop reason:",
@@ -247,7 +250,7 @@ export class StreamProcessor {
       // Mark content as emitted BEFORE the report call so that even if
       // LanguageModelThinkingPart is unavailable at runtime (proposed API),
       // we still record that reasoning content was received.
-      state.hasEmittedContent = true;
+      state.hasEmittedThinking = true;
 
       // Emit thinking part to VS Code so it shows in the collapsible thinking UI.
       // Wrapped in try-catch because LanguageModelThinkingPart is a proposed API
@@ -348,6 +351,7 @@ export class StreamProcessor {
     logger.info("[Stream Processor] Stream processing completed", {
       capturedThinkingBlock: !!state.capturedThinkingBlock,
       hasEmittedContent: state.hasEmittedContent,
+      hasEmittedThinking: state.hasEmittedThinking,
       hasSignature: !!state.capturedThinkingBlock?.signature,
       signatureLength: state.capturedThinkingBlock?.signature?.length,
       stopReason: state.stopReason,
@@ -389,16 +393,18 @@ export class StreamProcessor {
       return;
     }
 
-    // Thinking-only responses (no visible text/tool output) are valid — the model
-    // used its entire budget on internal reasoning. Don't treat this as an error.
-    if (state.capturedThinkingBlock?.text) {
-      return;
-    }
-
+    // Check MAX_TOKENS before thinking-only: if the model exhausted its token
+    // budget on reasoning, the user needs to know even though thinking was received.
     if (state.stopReason === StopReason.MAX_TOKENS) {
       throw new Error(
         "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
       );
+    }
+
+    // Thinking-only responses (no visible text/tool output) are valid — the model
+    // used its entire budget on internal reasoning. Don't treat this as an error.
+    if (state.capturedThinkingBlock?.text) {
+      return;
     }
 
     if (!token.isCancellationRequested) {
