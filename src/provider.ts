@@ -273,8 +273,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           }
 
           infos.sort((a, b) => {
-            const aDate = modelDateMap.get(a.id);
-            const bDate = modelDateMap.get(b.id);
+            // Strip context-1M suffix so variant IDs resolve to their base model's date
+            const aId = a.id.endsWith(CONTEXT_1M_ID_SUFFIX)
+              ? a.id.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
+              : a.id;
+            const bId = b.id.endsWith(CONTEXT_1M_ID_SUFFIX)
+              ? b.id.slice(0, -CONTEXT_1M_ID_SUFFIX.length)
+              : b.id;
+            const aDate = modelDateMap.get(aId);
+            const bDate = modelDateMap.get(bId);
 
             // If both have dates, sort by date (newest first)
             if (aDate && bDate) {
@@ -334,20 +341,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           });
 
           if (manualModelId) {
-            const manualInfo = await this.buildManualModelInformation(
+            const manualInfos = await this.buildManualModelInformation(
               manualModelId,
               settings,
               token,
             );
 
-            if (manualInfo) {
-              this.chatEndpoints = [
-                {
-                  model: manualInfo.id,
-                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
-                },
-              ];
-              return [manualInfo];
+            if (manualInfos && manualInfos.length > 0) {
+              this.chatEndpoints = manualInfos.map((info) => ({
+                model: info.id,
+                modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
+              }));
+              return manualInfos;
             }
           }
 
@@ -362,20 +367,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           });
 
           if (manualModelId) {
-            const manualInfo = await this.buildManualModelInformation(
+            const manualInfos = await this.buildManualModelInformation(
               manualModelId,
               settings,
               token,
             );
 
-            if (manualInfo) {
-              this.chatEndpoints = [
-                {
-                  model: manualInfo.id,
-                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
-                },
-              ];
-              return [manualInfo];
+            if (manualInfos && manualInfos.length > 0) {
+              this.chatEndpoints = manualInfos.map((info) => ({
+                model: info.id,
+                modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
+              }));
+              return manualInfos;
             }
           }
 
@@ -804,7 +807,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     settings: Awaited<ReturnType<typeof getBedrockSettings>>,
     token: CancellationToken,
-  ): Promise<LanguageModelChatInformation | undefined> {
+  ): Promise<LanguageModelChatInformation[] | undefined> {
     const abortController = new AbortController();
     const cancellationListener = token.onCancellationRequested(() => abortController.abort());
 
@@ -822,25 +825,33 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         });
       }
 
-      // In "both" mode, manual models have no #1m suffix variant, so resolveContext1MFromModelId
-      // would treat the unsuffixed ID as standard. Only enable 1M for "extended" mode.
-      const enable1MForManual = settings.context1M.mode === "extended";
-      const limits = getModelTokenLimits(baseModelId, enable1MForManual);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
+      const modelProfile = getModelProfile(baseModelId);
+      const configSchema = modelProfile.supportsThinkingEffort
+        ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+        : undefined;
+      const variants = buildContext1MVariants(
+        modelProfile.supports1MContext,
+        settings.context1M.mode,
+      );
 
-      return {
-        capabilities: {
-          imageInput: likelyVisionCapable,
-          toolCalling: true,
-        },
-        family: "bedrock",
-        id: modelId,
-        maxInputTokens: limits.maxInputTokens,
-        maxOutputTokens: limits.maxOutputTokens,
-        name: `${modelId} (Bedrock)`,
-        tooltip: "Amazon Bedrock - manual model entry",
-        version: "1.0.0",
-      };
+      return variants.map((variant) => {
+        const limits = getModelTokenLimits(baseModelId, variant.enable1M);
+        return {
+          capabilities: {
+            imageInput: likelyVisionCapable,
+            toolCalling: true,
+          },
+          ...(configSchema ? { configurationSchema: configSchema } : {}),
+          family: "bedrock",
+          id: `${modelId}${variant.idSuffix}`,
+          maxInputTokens: limits.maxInputTokens,
+          maxOutputTokens: limits.maxOutputTokens,
+          name: `${modelId}${variant.nameSuffix} (Bedrock)`,
+          tooltip: "Amazon Bedrock - manual model entry",
+          version: "1.0.0",
+        } satisfies LanguageModelChatInformation;
+      });
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
         logger.error("[Bedrock Model Provider] Manual model setup failed", error);
