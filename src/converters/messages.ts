@@ -192,6 +192,11 @@ function extractToolResultText(content: unknown): string {
         textContent += item.value;
       } else if (typeof item === "string") {
         textContent += item;
+      } else if (isMetadataPart(item)) {
+        // Skip metadata objects (e.g. cache_control) that are not actual content
+        logger.trace("[Message Converter] Skipping metadata part in tool result:", {
+          mimeType: item.mimeType,
+        });
       } else {
         // For unknown types, try to stringify
         textContent += inspect(item, { depth: 4 });
@@ -199,6 +204,11 @@ function extractToolResultText(content: unknown): string {
     }
   } else if (typeof content === "string") {
     textContent = content;
+  } else if (isMetadataPart(content)) {
+    // Skip metadata objects that are not actual content
+    logger.trace("[Message Converter] Skipping metadata part in tool result", {
+      mimeType: content.mimeType,
+    });
   } else {
     textContent = inspect(content);
   }
@@ -365,6 +375,26 @@ function isImageDataPart(part: unknown): part is ImageDataPart {
 }
 
 /**
+ * Check if an object is a metadata part (e.g. cache_control) that should be
+ * skipped rather than serialized into content text. These can appear in
+ * content arrays from VS Code when prompt caching is active.
+ */
+function isMetadataPart(item: unknown): item is { mimeType: string } {
+  if (typeof item !== "object" || item == null) return false;
+  if (!("mimeType" in item)) return false;
+  if (typeof item.mimeType !== "string") return false;
+  // Not a real MIME type — it's provider metadata (e.g. "cache_control")
+  try {
+    const mime = new MIMEType(item.mimeType);
+    // Valid MIME types with a real type/subtype are content, not metadata
+    return !mime.type || !mime.subtype;
+  } catch {
+    // Unparseable as MIME → it's metadata like "cache_control"
+    return true;
+  }
+}
+
+/**
  * Merge content into last message or append new message
  */
 function mergeOrAppendMessage(
@@ -415,6 +445,10 @@ function processAssistantMessageParts(msg: vscode.LanguageModelChatMessage): Con
       if (block) content.push(block);
     } else if (part instanceof vscode.LanguageModelToolCallPart) {
       content.push(processToolCallPart(part));
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in assistant message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
@@ -461,6 +495,10 @@ function processSystemMessageParts(msg: vscode.LanguageModelChatMessage): System
   for (const part of msg.content) {
     if (part instanceof vscode.LanguageModelTextPart && part.value.trim()) {
       systemBlocks.push({ text: part.value });
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in system message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
@@ -570,6 +608,10 @@ function processUserMessageParts(
     } else if (part instanceof vscode.LanguageModelToolResultPart) {
       hasToolResults = true;
       content.push(processToolResultPart(part, profile));
+    } else if (isMetadataPart(part)) {
+      logger.trace("[Message Converter] Skipping metadata part in user message:", {
+        mimeType: part.mimeType,
+      });
     }
   }
 
