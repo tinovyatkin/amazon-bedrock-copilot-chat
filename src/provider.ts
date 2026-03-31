@@ -602,11 +602,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       // Read thinking effort from VS Code model picker UI (configurationSchema) first,
       // falling back to "high" as default for older VS Code versions without configurationSchema support
-      const validEffortValues = ["high", "low", "medium"] as const;
-      const uiEffort = options.modelConfiguration?.reasoningEffort;
-      const resolvedEffort: "high" | "low" | "medium" | undefined = thinkingEffortEnabled
-        ? (validEffortValues.includes(uiEffort) ? uiEffort : "high")
-        : undefined;
+      const uiEffort: unknown = options.modelConfiguration?.reasoningEffort;
+      let resolvedEffort: "high" | "low" | "medium" | undefined;
+      if (thinkingEffortEnabled) {
+        resolvedEffort = isReasoningEffort(uiEffort) ? uiEffort : "high";
+      }
 
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
@@ -1638,6 +1638,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       tokenLimit,
     });
   }
+}
+
+function isReasoningEffort(value: unknown): value is "high" | "low" | "medium" {
+  return typeof value === "string" && ["high", "low", "medium"].includes(value);
 }
 
 /**
