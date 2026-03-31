@@ -247,17 +247,13 @@ export class StreamProcessor {
       state.capturedThinkingBlock ??= { text: "" };
       state.capturedThinkingBlock.text += reasoningText;
 
-      // Mark content as emitted BEFORE the report call so that even if
-      // LanguageModelThinkingPart is unavailable at runtime (proposed API),
-      // we still record that reasoning content was received.
-      state.hasEmittedThinking = true;
-
       // Emit thinking part to VS Code so it shows in the collapsible thinking UI.
       // Wrapped in try-catch because LanguageModelThinkingPart is a proposed API
       // class that may not exist at runtime in all VS Code builds.
       try {
         if (typeof vscode.LanguageModelThinkingPart === "function") {
           progress.report(new vscode.LanguageModelThinkingPart(reasoningText));
+          state.hasEmittedThinking = true;
         }
       } catch {
         // Silently ignore — the thinking content is still captured in state
