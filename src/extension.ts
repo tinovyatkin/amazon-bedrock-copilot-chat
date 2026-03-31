@@ -77,14 +77,6 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    // Suppress feedback loop: when provideLanguageModelChatInformation returns, VS Code
-    // registers the models and immediately fires onDidChangeChatModels. Without this guard
-    // we'd re-fetch and VS Code would accumulate duplicate model entries.
-    if (provider.isWithinFetchCooldown()) {
-      logger.debug("[Extension] Ignoring onDidChangeChatModels within fetch cooldown window");
-      return;
-    }
-
     // Debounce to coalesce rapid changes
     if (lmRefreshHandle) {
       clearTimeout(lmRefreshHandle);

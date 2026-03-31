@@ -69,8 +69,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private readonly client: BedrockAPIClient;
   /** Tracks whether the initial model fetch has completed (for avoiding startup feedback loops) */
   private initialFetchComplete = false;
-  /** Timestamp of the last successful model fetch, used to suppress onDidChangeChatModels feedback */
-  private lastFetchCompletedAt = 0;
+
   private lastThinkingBlock?: ThinkingBlock;
   private readonly streamProcessor: StreamProcessor;
 
@@ -100,16 +99,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   public isInitialFetchComplete(): boolean {
     return this.initialFetchComplete;
-  }
-
-  /**
-   * Returns true if a model fetch completed recently (within the given window).
-   * Used to suppress the onDidChangeChatModels → notifyModelInformationChanged feedback
-   * loop that otherwise causes VS Code to call provideLanguageModelChatInformation twice,
-   * resulting in duplicate model entries.
-   */
-  public isWithinFetchCooldown(windowMs = 2000): boolean {
-    return Date.now() - this.lastFetchCompletedAt < windowMs;
   }
 
   /**
@@ -321,8 +310,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           // Mark initial fetch as complete to allow onDidChangeChatModels handling
           this.initialFetchComplete = true;
-          this.lastFetchCompletedAt = Date.now();
-
           return infos;
         };
 
