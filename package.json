@@ -78,10 +78,16 @@
           "description": "Number of tokens allocated for thinking. Minimum 1024. Note: For Anthropic Claude models, this is automatically calculated as 20% of the model's maximum output tokens and this setting is ignored.",
           "scope": "resource"
         },
-        "bedrock.context1M.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable 1M context window for Claude Sonnet 4.x and Opus 4.6 models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
+        "bedrock.context1M.mode": {
+          "type": "string",
+          "enum": ["both", "standard", "extended"],
+          "default": "both",
+          "enumDescriptions": [
+            "Show both standard (200K) and extended (1M) context variants for supported models",
+            "Show only standard 200K context models",
+            "Show only extended 1M context models for supported models"
+          ],
+          "description": "Control how 1M context window models appear for Claude Sonnet 4.x and Opus 4.6. 'both' shows separate standard and 1M entries, 'standard' shows only 200K context, 'extended' shows only 1M context. Note: Using 1M context increases API costs.",
           "scope": "resource"
         },
         "bedrock.promptCaching.enabled": {

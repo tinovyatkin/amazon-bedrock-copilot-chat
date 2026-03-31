@@ -143,7 +143,7 @@ async function clearAllSettings(
     "region",
     "preferredModel",
     "promptCaching.enabled",
-    "context1M.enabled",
+    "context1M.mode",
     "thinking.enabled",
     "thinking.budgetTokens",
   ];

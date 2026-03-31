@@ -11,9 +11,11 @@ import { getProfileRegion } from "./aws-profiles";
  * 6. Default value
  */
 
+export type Context1MMode = "both" | "extended" | "standard";
+
 export interface BedrockSettings {
   context1M: {
-    enabled: boolean;
+    mode: Context1MMode;
   };
   inferenceProfiles: {
     preferRegional: boolean;
@@ -75,8 +77,20 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     preferredModel = preferredModelInspect.globalValue ?? undefined;
   }
 
-  // Read 1M context settings with defaults (enabled by default)
-  const context1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
+  // Read 1M context mode with backward compatibility
+  // New setting: "both" (default), "standard" (200K only), "extended" (1M only)
+  // Backward compat: if old boolean "context1M.enabled" is still set, map true→"both", false→"standard"
+  const validModes: Context1MMode[] = ["both", "standard", "extended"];
+  const rawMode = config.get<boolean | string>("context1M.mode") ?? config.get<boolean | string>("context1M.enabled");
+  let context1MMode: Context1MMode;
+  if (typeof rawMode === "boolean") {
+    // Backward compatibility with old boolean setting
+    context1MMode = rawMode ? "both" : "standard";
+  } else if (typeof rawMode === "string" && validModes.includes(rawMode as Context1MMode)) {
+    context1MMode = rawMode as Context1MMode;
+  } else {
+    context1MMode = "both";
+  }
 
   // Read prompt caching settings with defaults (enabled by default)
   const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
@@ -97,7 +111,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
 
   return {
     context1M: {
-      enabled: context1MEnabled,
+      mode: context1MMode,
     },
     inferenceProfiles: {
       preferRegional: preferRegionalInferenceProfiles,

@@ -25,7 +25,7 @@ import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
-import { getBedrockSettings } from "./settings";
+import { getBedrockSettings, type Context1MMode } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
@@ -46,6 +46,34 @@ const THINKING_EFFORT_CONFIGURATION_SCHEMA: LanguageModelConfigurationSchema = {
     },
   },
 } as const;
+
+/**
+ * Suffix appended to model IDs for 1M context variants when context1M mode is "both".
+ * This suffix is stripped before making Bedrock API calls.
+ */
+const CONTEXT_1M_ID_SUFFIX = "#1m";
+
+/**
+ * Determine whether 1M context should be enabled for a given model ID based on the context1M mode.
+ * When mode is "both", the model ID suffix determines whether 1M is active.
+ * @returns [realModelId, enable1MContext] - the cleaned model ID and whether to enable 1M context
+ */
+function resolveContext1MFromModelId(
+  modelId: string,
+  mode: Context1MMode,
+): [realModelId: string, enable1MContext: boolean] {
+  if (mode === "extended") {
+    return [modelId, true];
+  }
+  if (mode === "standard") {
+    return [modelId, false];
+  }
+  // mode === "both": check for suffix
+  if (modelId.endsWith(CONTEXT_1M_ID_SUFFIX)) {
+    return [modelId.slice(0, -CONTEXT_1M_ID_SUFFIX.length), true];
+  }
+  return [modelId, false];
+}
 
 class NoAccessibleModelsError extends Error {
   constructor() {
@@ -229,9 +257,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               continue;
             }
 
-            const limits = getModelTokenLimits(modelIdToUse, settings.context1M.enabled);
-            const maxInput = limits.maxInputTokens;
-            const maxOutput = limits.maxOutputTokens;
             const vision = m.inputModalities.includes(ModelModality.IMAGE);
 
             // Determine tooltip suffix based on inference profile type
@@ -248,21 +273,41 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               ? THINKING_EFFORT_CONFIGURATION_SCHEMA
               : undefined;
 
-            const modelInfo: LanguageModelChatInformation = {
-              capabilities: {
-                imageInput: vision,
-                toolCalling: true,
-              },
-              ...(configSchema ? { configurationSchema: configSchema } : {}),
-              family: "bedrock",
-              id: modelIdToUse,
-              maxInputTokens: maxInput,
-              maxOutputTokens: maxOutput,
-              name: m.modelName,
-              tooltip: `Amazon Bedrock - ${m.providerName}${tooltipSuffix}`,
-              version: "1.0.0",
-            };
-            infos.push(modelInfo);
+            const context1MMode = settings.context1M.mode;
+            const canDo1M = modelProfileForSchema.supports1MContext;
+
+            // Determine which variants to register based on context1M mode
+            const variants: Array<{ enable1M: boolean; idSuffix: string; nameSuffix: string }> = [];
+            if (canDo1M && context1MMode === "both") {
+              // Register both standard and 1M variants
+              variants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
+              variants.push({ enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
+            } else if (canDo1M && context1MMode === "extended") {
+              // Register only the 1M variant
+              variants.push({ enable1M: true, idSuffix: "", nameSuffix: " 1M" });
+            } else {
+              // "standard" mode, or model doesn't support 1M
+              variants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
+            }
+
+            for (const variant of variants) {
+              const limits = getModelTokenLimits(modelIdToUse, variant.enable1M);
+              const modelInfo: LanguageModelChatInformation = {
+                capabilities: {
+                  imageInput: vision,
+                  toolCalling: true,
+                },
+                ...(configSchema ? { configurationSchema: configSchema } : {}),
+                family: "bedrock",
+                id: `${modelIdToUse}${variant.idSuffix}`,
+                maxInputTokens: limits.maxInputTokens,
+                maxOutputTokens: limits.maxOutputTokens,
+                name: `${m.modelName}${variant.nameSuffix} (Bedrock)`,
+                tooltip: `Amazon Bedrock - ${m.providerName}${tooltipSuffix}`,
+                version: "1.0.0",
+              };
+              infos.push(modelInfo);
+            }
           }
 
           // Add application inference profiles
@@ -284,9 +329,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
             // Use base model ID for token limits (falls back to profile ID if not available)
             const modelIdForLimits = profile.baseModelId ?? profile.modelId;
-            const limits = getModelTokenLimits(modelIdForLimits, settings.context1M.enabled);
-            const maxInput = limits.maxInputTokens;
-            const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
             // Add configurationSchema for application profiles that support thinking effort
@@ -295,21 +337,38 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               ? THINKING_EFFORT_CONFIGURATION_SCHEMA
               : undefined;
 
-            const profileInfo: LanguageModelChatInformation = {
-              capabilities: {
-                imageInput: vision,
-                toolCalling: true,
-              },
-              ...(appConfigSchema ? { configurationSchema: appConfigSchema } : {}),
-              family: "bedrock",
-              id: profile.modelArn,
-              maxInputTokens: maxInput,
-              maxOutputTokens: maxOutput,
-              name: profile.modelName,
-              tooltip: `Amazon Bedrock - ${profile.providerName} (Application Inference Profile)`,
-              version: "1.0.0",
-            };
-            infos.push(profileInfo);
+            const appContext1MMode = settings.context1M.mode;
+            const appCanDo1M = appProfileModel.supports1MContext;
+
+            // Determine which variants to register based on context1M mode
+            const appVariants: Array<{ enable1M: boolean; idSuffix: string; nameSuffix: string }> = [];
+            if (appCanDo1M && appContext1MMode === "both") {
+              appVariants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
+              appVariants.push({ enable1M: true, idSuffix: CONTEXT_1M_ID_SUFFIX, nameSuffix: " 1M" });
+            } else if (appCanDo1M && appContext1MMode === "extended") {
+              appVariants.push({ enable1M: true, idSuffix: "", nameSuffix: " 1M" });
+            } else {
+              appVariants.push({ enable1M: false, idSuffix: "", nameSuffix: "" });
+            }
+
+            for (const variant of appVariants) {
+              const limits = getModelTokenLimits(modelIdForLimits, variant.enable1M);
+              const profileInfo: LanguageModelChatInformation = {
+                capabilities: {
+                  imageInput: vision,
+                  toolCalling: true,
+                },
+                ...(appConfigSchema ? { configurationSchema: appConfigSchema } : {}),
+                family: "bedrock",
+                id: `${profile.modelArn}${variant.idSuffix}`,
+                maxInputTokens: limits.maxInputTokens,
+                maxOutputTokens: limits.maxOutputTokens,
+                name: `${profile.modelName}${variant.nameSuffix} (Bedrock)`,
+                tooltip: `Amazon Bedrock - ${profile.providerName} (Application Inference Profile)`,
+                version: "1.0.0",
+              };
+              infos.push(profileInfo);
+            }
           }
 
           // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
@@ -490,6 +549,20 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Configure client with authentication
       this.client.setAuthConfig(authConfig);
 
+      // Get settings early to determine context1M mode
+      const settings = await getBedrockSettings(this.globalState);
+
+      // Resolve context1M suffix from model ID (strips #1m suffix when mode is "both")
+      const [realModelId, enable1MContext] = resolveContext1MFromModelId(
+        model.id,
+        settings.context1M.mode,
+      );
+
+      // Create effective model reference with the real (suffix-free) ID for Bedrock API calls
+      const effectiveModel: LanguageModelChatInformation = realModelId !== model.id
+        ? { ...model, id: realModelId }
+        : model;
+
       // Resolve model ID for application inference profiles (ARNs) to base model ID
       // This is needed because internal logic (getModelProfile, getModelTokenLimits) expects base model IDs
       // Note: For the actual API call, we still use the original model.id (ARN for app profiles)
@@ -500,17 +573,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       let baseModelId: string;
       try {
-        baseModelId = await this.client.resolveModelId(model.id, abortController.signal);
+        baseModelId = await this.client.resolveModelId(effectiveModel.id, abortController.signal);
         logger.info("[Bedrock Model Provider] Resolved model ID", {
-          originalModelId: model.id,
+          originalModelId: effectiveModel.id,
           resolvedBaseModelId: baseModelId,
         });
       } catch (error) {
         // If resolution fails, use the original model ID
-        baseModelId = model.id;
+        baseModelId = effectiveModel.id;
         logger.warn("[Bedrock Model Provider] Failed to resolve model ID, using original", {
           error: error instanceof Error ? error.message : String(error),
-          modelId: model.id,
+          modelId: effectiveModel.id,
         });
       } finally {
         cancellationListener.dispose();
@@ -519,10 +592,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Log incoming messages
       this.logIncomingMessages(messages);
 
-      // Get settings and model configuration
-      const settings = await getBedrockSettings(this.globalState);
+      // Get model configuration using the resolved context1M setting
       const modelProfile = getModelProfile(baseModelId);
-      const modelLimits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
+      const modelLimits = getModelTokenLimits(baseModelId, enable1MContext);
 
       // Calculate thinking configuration
       // Use model's maxOutputTokens as default when VSCode doesn't provide max_tokens.
@@ -613,13 +685,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
         extendedThinkingEnabled,
-        settings.context1M.enabled,
+        enable1MContext,
         thinkingEffortEnabled,
       );
 
       // Build request input
       const requestInput = this.buildRequestInput(
-        model,
+        effectiveModel,
         converted,
         options,
         toolConfig,
@@ -633,7 +705,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       this.logRequestDetails(requestInput);
 
       // Validate token count
-      await this.validateTokenCount(model, requestInput, token);
+      await this.validateTokenCount(effectiveModel, requestInput, token);
 
       // Process the stream
       await this.processResponseStream(
@@ -722,21 +794,28 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         abortController.abort();
       });
 
+      // Resolve context1M suffix from model ID (strips #1m suffix when mode is "both")
+      const tokenCountSettings = await getBedrockSettings(this.globalState);
+      const [realTokenModelId] = resolveContext1MFromModelId(
+        model.id,
+        tokenCountSettings.context1M.mode,
+      );
+
       // Resolve model ID for application inference profiles (ARNs) to base model ID
       // This is needed because convertMessages calls getModelProfile which expects base model IDs
       let baseModelId: string;
       try {
-        baseModelId = await this.client.resolveModelId(model.id, abortController.signal);
+        baseModelId = await this.client.resolveModelId(realTokenModelId, abortController.signal);
         logger.debug("[Bedrock Model Provider] Resolved model ID", {
-          originalModelId: model.id,
+          originalModelId: realTokenModelId,
           resolvedBaseModelId: baseModelId,
         });
       } catch (error) {
         // If resolution fails, use the original model ID
-        baseModelId = model.id;
+        baseModelId = realTokenModelId;
         logger.warn("[Bedrock Model Provider] Failed to resolve model ID, using original", {
           error: error instanceof Error ? error.message : String(error),
-          modelId: model.id,
+          modelId: realTokenModelId,
         });
       }
 
@@ -848,7 +927,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         });
       }
 
-      const limits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
+      const enable1MForManual = settings.context1M.mode === "extended" || settings.context1M.mode === "both";
+      const limits = getModelTokenLimits(baseModelId, enable1MForManual);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
       return {
@@ -860,7 +940,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         id: modelId,
         maxInputTokens: limits.maxInputTokens,
         maxOutputTokens: limits.maxOutputTokens,
-        name: modelId,
+        name: `${modelId} (Bedrock)`,
         tooltip: "Amazon Bedrock - manual model entry",
         version: "1.0.0",
       };
