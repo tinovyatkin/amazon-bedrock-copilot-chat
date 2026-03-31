@@ -20679,7 +20679,7 @@ declare module 'vscode' {
 	/**
 	 * Extended response part type that includes thinking parts.
 	 */
-	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelDataPart | LanguageModelThinkingPart;
+	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart;
 
 	/**
 	 * A [JSON Schema](https://json-schema.org) describing configuration options for a language model.

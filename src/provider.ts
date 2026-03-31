@@ -835,7 +835,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
         // Use the CountTokens API
         const tokenCount = await this.client.countTokens(
-          model.id,
+          baseModelId,
           {
             converse: {
               messages: converted.messages,
