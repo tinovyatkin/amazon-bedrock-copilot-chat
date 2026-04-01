@@ -270,11 +270,14 @@ export class StreamProcessor {
       state.capturedThinkingBlock.text += reasoningText;
 
       // Emit thinking part to VS Code so it shows in the collapsible thinking UI.
-      // Wrapped in try-catch because LanguageModelThinkingPart is a proposed API
-      // class that may not exist at runtime in all VS Code builds.
+      // Wrapped in try-catch because:
+      // 1. LanguageModelThinkingPart is a proposed API that may not exist at runtime
+      // 2. The trackingProgress wrapper re-throws on failure, so catching here
+      //    ensures hasEmittedThinking is only set when emission actually succeeded
       try {
         if (typeof vscode.LanguageModelThinkingPart === "function") {
           progress.report(new vscode.LanguageModelThinkingPart(reasoningText));
+          // Only reached when progress.report didn't throw — the UI accepted the part.
           state.hasEmittedThinking = true;
         }
       } catch (error: unknown) {

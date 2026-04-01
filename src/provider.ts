@@ -444,6 +444,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               error instanceof Error ? { message: error.message, name: error.name } : String(error),
             modelId: model.id,
           });
+          // Re-throw so callers can detect emission failures (e.g. stream-processor
+          // uses try-catch around ThinkingPart emission to track hasEmittedThinking).
+          throw error;
         }
       },
     };
