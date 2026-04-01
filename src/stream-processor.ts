@@ -290,7 +290,7 @@ export class StreamProcessor {
           logger.warn("[Stream Processor] Unexpected error emitting thinking part:", error);
         }
       }
-    } else if (rawReasoningText !== undefined) {
+    } else if (rawReasoningText !== undefined && typeof rawReasoningText !== "string") {
       // Guard against non-string values (e.g. metadata objects) leaking through
       logger.warn(
         "[Stream Processor] Received non-string reasoning delta, skipping:",
@@ -306,7 +306,7 @@ export class StreamProcessor {
         "[Stream Processor] Reasoning signature delta received, total length:",
         state.capturedThinkingBlock.signature.length,
       );
-    } else if (!reasoningText && rawReasoningText === undefined) {
+    } else if (rawReasoningText === undefined || rawReasoningText === "") {
       logger.trace(
         "[Stream Processor] Reasoning content delta with empty content (initialization)",
       );
@@ -378,6 +378,10 @@ export class StreamProcessor {
     state.toolBuffer.appendInput(delta.contentBlockIndex, toolUse.input);
 
     this.tryEarlyToolEmission(delta.contentBlockIndex, progress, state);
+  }
+
+  private hasVisibleOutput(state: ProcessingState): boolean {
+    return state.hasEmittedContent || state.hasEmittedThinking;
   }
 
   private logCompletion(state: ProcessingState): void {
@@ -454,7 +458,7 @@ export class StreamProcessor {
       return;
     }
 
-    const message = state.hasEmittedContent
+    const message = this.hasVisibleOutput(state)
       ? "The response was filtered mid-generation by content safety policies. Some content may have been displayed before filtering. This may be due to Anthropic Claude's built-in safety filtering (common with Claude 4.5) or AWS Bedrock Guardrails. Please rephrase your request."
       : "The response was filtered by content safety policies before any content was generated. This may be due to Anthropic Claude's built-in safety filtering or AWS Bedrock Guardrails. Please rephrase your request.";
     throw new Error(message);
@@ -475,7 +479,7 @@ export class StreamProcessor {
       return;
     }
 
-    const message = state.hasEmittedContent
+    const message = this.hasVisibleOutput(state)
       ? "AWS Bedrock Guardrails blocked the response mid-generation. Some content may have been displayed before intervention. Please check your guardrail configuration or rephrase your request."
       : "AWS Bedrock Guardrails blocked the response before any content was generated. Please check your guardrail configuration or rephrase your request.";
     throw new Error(message);
