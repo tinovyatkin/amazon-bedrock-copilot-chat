@@ -70,16 +70,9 @@ export class StreamProcessor {
         !state.hasEmittedContent &&
         !state.hasEmittedThinking &&
         state.capturedThinkingBlock?.text &&
-        !token.isCancellationRequested
+        !token.isCancellationRequested &&
+        state.stopReason === StopReason.END_TURN
       ) {
-        // If the model hit MAX_TOKENS while reasoning, surface that error
-        // instead of the generic fallback so the user knows to adjust parameters.
-        if (state.stopReason === StopReason.MAX_TOKENS) {
-          throw new Error(
-            "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
-          );
-        }
-
         logger.warn(
           "[Stream Processor] Thinking captured but not emitted to UI (LanguageModelThinkingPart unavailable)",
         );
@@ -435,10 +428,9 @@ export class StreamProcessor {
     }
 
     // Thinking-only responses are valid only when the thinking UI actually
-    // rendered the reasoning to the user. If LanguageModelThinkingPart was
-    // unavailable at runtime, hasEmittedThinking stays false and the caller
-    // must have emitted fallback text instead (handled in processStream).
-    if (state.hasEmittedThinking) {
+    // rendered the reasoning to the user and the stream completed normally.
+    // Require END_TURN so truncated/malformed streams aren't treated as successful.
+    if (state.hasEmittedThinking && state.stopReason === StopReason.END_TURN) {
       return;
     }
 
