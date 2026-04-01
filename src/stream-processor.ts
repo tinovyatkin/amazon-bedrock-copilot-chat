@@ -63,6 +63,26 @@ export class StreamProcessor {
 
       this.logCompletion(state);
 
+      // Thinking was captured but could not be emitted to the UI because
+      // LanguageModelThinkingPart is not available in this VS Code build.
+      // Emit a visible fallback so the user doesn't see a silent empty turn.
+      if (
+        !state.hasEmittedContent &&
+        !state.hasEmittedThinking &&
+        state.capturedThinkingBlock?.text &&
+        !token.isCancellationRequested
+      ) {
+        logger.warn(
+          "[Stream Processor] Thinking captured but not emitted to UI (LanguageModelThinkingPart unavailable)",
+        );
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            "*(The model produced only internal reasoning, but the thinking display is not supported in this environment. Please try again or rephrase your request.)*",
+          ),
+        );
+        state.hasEmittedContent = true;
+      }
+
       // For genuinely empty responses (no thinking, no text, no tools) with a
       // normal end_turn stop reason, emit a friendly fallback message instead of
       // throwing a hard error.  This is a known LLM edge case that can happen
@@ -397,9 +417,11 @@ export class StreamProcessor {
       );
     }
 
-    // Thinking-only responses (no visible text/tool output) are valid — the model
-    // used its entire budget on internal reasoning. Don't treat this as an error.
-    if (state.capturedThinkingBlock?.text) {
+    // Thinking-only responses are valid only when the thinking UI actually
+    // rendered the reasoning to the user. If LanguageModelThinkingPart was
+    // unavailable at runtime, hasEmittedThinking stays false and the caller
+    // must have emitted fallback text instead (handled in processStream).
+    if (state.hasEmittedThinking) {
       return;
     }
 
