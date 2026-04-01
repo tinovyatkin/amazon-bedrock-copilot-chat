@@ -1030,7 +1030,23 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   });
 
   suite("configureAdditionalModelFields (thinking effort)", () => {
-    test("valid effort 'low' is preserved in output_config.effort (with extended thinking)", () => {
+    // Table-driven: each valid effort value is preserved in output_config.effort
+    for (const effort of ["low", "medium", "high"] as const) {
+      test(`valid effort '${effort}' is preserved in output_config.effort (with extended thinking)`, () => {
+        const result = callConfigureFields(
+          "anthropic.claude-sonnet-4-6-20260514-v1:0",
+          true,
+          16_000,
+          [],
+          effort,
+        );
+        assert.ok(result.additionalModelRequestFields);
+        assert.equal(result.additionalModelRequestFields.output_config?.effort, effort);
+        assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+      });
+    }
+
+    test("first effort value also verifies budget_tokens propagation", () => {
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
@@ -1039,33 +1055,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "low",
       );
       assert.ok(result.additionalModelRequestFields);
-      assert.equal(result.additionalModelRequestFields.output_config?.effort, "low");
-      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
       assert.equal(result.additionalModelRequestFields.thinking?.budget_tokens, 16_000);
-    });
-
-    test("valid effort 'medium' is preserved in output_config.effort (with extended thinking)", () => {
-      const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-6-20260514-v1:0",
-        true,
-        16_000,
-        [],
-        "medium",
-      );
-      assert.ok(result.additionalModelRequestFields);
-      assert.equal(result.additionalModelRequestFields.output_config?.effort, "medium");
-    });
-
-    test("valid effort 'high' is preserved in output_config.effort (with extended thinking)", () => {
-      const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-6-20260514-v1:0",
-        true,
-        16_000,
-        [],
-        "high",
-      );
-      assert.ok(result.additionalModelRequestFields);
-      assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
     });
 
     test("effort without extended thinking sets output_config.effort only", () => {
@@ -1082,17 +1072,30 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.additionalModelRequestFields.thinking, undefined);
     });
 
-    test("undefined effort with extended thinking omits output_config", () => {
-      const result = callConfigureFields(
-        "anthropic.claude-3-5-sonnet-20241022-v2:0",
-        true,
-        16_000,
-        [],
-      );
-      assert.ok(result.additionalModelRequestFields);
-      assert.equal(result.additionalModelRequestFields.output_config, undefined);
-      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
-    });
+    // Table-driven: undefined effort omits output_config regardless of model
+    for (const { budget, label, model, thinking } of [
+      {
+        budget: 16_000,
+        label: "effort-capable model with extended thinking",
+        model: "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        thinking: true,
+      },
+      {
+        budget: 16_000,
+        label: "non-effort model with extended thinking",
+        model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        thinking: true,
+      },
+    ]) {
+      test(`undefined effort omits output_config (${label})`, () => {
+        const result = callConfigureFields(model, thinking, budget, []);
+        assert.ok(result.additionalModelRequestFields);
+        assert.equal(result.additionalModelRequestFields.output_config, undefined);
+        if (thinking) {
+          assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+        }
+      });
+    }
 
     test("beta headers are included alongside effort", () => {
       const result = callConfigureFields(
@@ -1119,22 +1122,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       assert.equal(result.additionalModelRequestFields.thinking, undefined);
       assert.equal(result.additionalModelRequestFields.output_config, undefined);
-    });
-
-    test("undefined effort omits output_config from additional model fields", () => {
-      // configureAdditionalModelFields receives already-resolved effort from the provider,
-      // so passing undefined simulates the case where an invalid value was filtered out upstream.
-      const result = callConfigureFields(
-        "anthropic.claude-sonnet-4-6-20260514-v1:0",
-        true,
-        16_000,
-        [],
-      );
-      assert.ok(result.additionalModelRequestFields);
-      // Without a valid effort, output_config should not be set
-      assert.equal(result.additionalModelRequestFields.output_config, undefined);
-      // Extended thinking should still be configured
-      assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
     });
   });
 
