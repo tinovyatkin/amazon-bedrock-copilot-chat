@@ -61,8 +61,6 @@ export class StreamProcessor {
         this.handleEvent(event, progress, state);
       }
 
-      this.logCompletion(state);
-
       // Thinking was captured but could not be emitted to the UI because
       // LanguageModelThinkingPart is not available in this VS Code build.
       // Emit a visible fallback so the user doesn't see a silent empty turn.
@@ -107,6 +105,7 @@ export class StreamProcessor {
         state.hasEmittedContent = true;
       }
 
+      this.logCompletion(state);
       this.validateStreamResult(state, token);
 
       return { thinkingBlock: state.capturedThinkingBlock };
