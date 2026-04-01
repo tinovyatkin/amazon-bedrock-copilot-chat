@@ -72,6 +72,14 @@ export class StreamProcessor {
         state.capturedThinkingBlock?.text &&
         !token.isCancellationRequested
       ) {
+        // If the model hit MAX_TOKENS while reasoning, surface that error
+        // instead of the generic fallback so the user knows to adjust parameters.
+        if (state.stopReason === StopReason.MAX_TOKENS) {
+          throw new Error(
+            "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
+          );
+        }
+
         logger.warn(
           "[Stream Processor] Thinking captured but not emitted to UI (LanguageModelThinkingPart unavailable)",
         );
