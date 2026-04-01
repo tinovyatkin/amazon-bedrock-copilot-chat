@@ -257,7 +257,8 @@ export class StreamProcessor {
     progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
-    const reasoningText = reasoningContent?.text;
+    const rawReasoningText: unknown = reasoningContent?.text;
+    const reasoningText = typeof rawReasoningText === "string" ? rawReasoningText : undefined;
     const reasoningSignature = reasoningContent?.signature;
 
     if (reasoningText) {
@@ -289,6 +290,12 @@ export class StreamProcessor {
           logger.warn("[Stream Processor] Unexpected error emitting thinking part:", error);
         }
       }
+    } else if (rawReasoningText !== undefined) {
+      // Guard against non-string values (e.g. metadata objects) leaking through
+      logger.warn(
+        "[Stream Processor] Received non-string reasoning delta, skipping:",
+        typeof rawReasoningText,
+      );
     }
 
     if (typeof reasoningSignature === "string") {
@@ -299,7 +306,7 @@ export class StreamProcessor {
         "[Stream Processor] Reasoning signature delta received, total length:",
         state.capturedThinkingBlock.signature.length,
       );
-    } else if (!reasoningText) {
+    } else if (!reasoningText && rawReasoningText === undefined) {
       logger.trace(
         "[Stream Processor] Reasoning content delta with empty content (initialization)",
       );
