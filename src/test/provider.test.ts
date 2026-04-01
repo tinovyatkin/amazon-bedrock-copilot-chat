@@ -63,16 +63,28 @@ const callCalcThinkingConfig = (
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
+// Local types mirroring the production shapes for type-safe test assertions
+interface TestRequestInput {
+  additionalModelRequestFields?: {
+    anthropic_beta?: string[];
+    output_config?: { effort: TestThinkingEffort };
+    thinking?: { budget_tokens?: number; type: string };
+  };
+  inferenceConfig: { maxTokens: number };
+}
+
+type TestThinkingEffort = "high" | "low" | "medium";
+
 // Helper to call the private configureAdditionalModelFields method
 const callConfigureFields = (
   modelId: string,
   extendedThinkingEnabled: boolean,
   budgetTokens: number,
   betaHeaders: string[],
-  thinkingEffort?: string,
-) => {
+  thinkingEffort?: TestThinkingEffort,
+): TestRequestInput => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
-  const requestInput: any = {
+  const requestInput: TestRequestInput = {
     inferenceConfig: { maxTokens: 4096 },
   };
   (provider as any).configureAdditionalModelFields(
@@ -1019,7 +1031,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
   suite("configureAdditionalModelFields (thinking effort)", () => {
     test("valid effort 'low' is preserved in output_config.effort (with extended thinking)", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
@@ -1034,7 +1045,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("valid effort 'medium' is preserved in output_config.effort (with extended thinking)", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
@@ -1047,7 +1057,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("valid effort 'high' is preserved in output_config.effort (with extended thinking)", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
@@ -1060,7 +1069,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("effort without extended thinking sets output_config.effort only", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         false,
@@ -1075,7 +1083,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("undefined effort with extended thinking omits output_config", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
         true,
@@ -1088,7 +1095,6 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("beta headers are included alongside effort", () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
@@ -1103,10 +1109,21 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
     });
 
-    test("invalid effort value is not passed through (upstream resolves to 'high')", () => {
+    test("beta headers without effort or thinking sets only anthropic_beta", () => {
+      const result = callConfigureFields("anthropic.claude-sonnet-4-6-20260514-v1:0", false, 0, [
+        "context-1m-2025-08-07",
+      ]);
+      assert.ok(result.additionalModelRequestFields);
+      assert.deepStrictEqual(result.additionalModelRequestFields.anthropic_beta, [
+        "context-1m-2025-08-07",
+      ]);
+      assert.equal(result.additionalModelRequestFields.thinking, undefined);
+      assert.equal(result.additionalModelRequestFields.output_config, undefined);
+    });
+
+    test("undefined effort omits output_config from additional model fields", () => {
       // configureAdditionalModelFields receives already-resolved effort from the provider,
       // so passing undefined simulates the case where an invalid value was filtered out upstream.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = callConfigureFields(
         "anthropic.claude-sonnet-4-6-20260514-v1:0",
         true,
