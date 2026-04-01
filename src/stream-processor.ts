@@ -275,9 +275,18 @@ export class StreamProcessor {
           progress.report(new vscode.LanguageModelThinkingPart(reasoningText));
           state.hasEmittedThinking = true;
         }
-      } catch {
-        // Silently ignore — the thinking content is still captured in state
-        logger.trace("[Stream Processor] LanguageModelThinkingPart not available at runtime");
+      } catch (error: unknown) {
+        // The thinking content is still captured in state; only the UI emission failed.
+        // Distinguish expected "proposed API missing" errors from unexpected failures.
+        const isTypeError =
+          error instanceof TypeError ||
+          error instanceof ReferenceError ||
+          String(error).includes("LanguageModelThinkingPart");
+        if (isTypeError) {
+          logger.trace("[Stream Processor] LanguageModelThinkingPart not available at runtime");
+        } else {
+          logger.warn("[Stream Processor] Unexpected error emitting thinking part:", error);
+        }
       }
     }
 
