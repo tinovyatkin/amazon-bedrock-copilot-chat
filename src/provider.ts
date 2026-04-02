@@ -265,6 +265,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const date = c.model.updatedAt ?? c.model.createdAt;
             modelDateMap.set(c.model.modelId, date);
             modelDateMap.set(c.model.modelArn, date);
+            modelDateMap.set(c.modelIdToUse, date);
           }
           for (const p of applicationProfiles) {
             const date = p.updatedAt ?? p.createdAt;

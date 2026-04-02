@@ -107,29 +107,6 @@ export class StreamProcessor {
 
       this.logCompletion(state);
 
-      // For genuinely empty responses (no thinking, no text, no tools) with a
-      // normal end_turn stop reason, emit a friendly fallback message instead of
-      // throwing a hard error.  This is a known LLM edge case that can happen
-      // when the model has nothing to say or encounters an internal issue.
-      if (
-        !state.hasEmittedContent &&
-        !state.hasEmittedThinking &&
-        !state.capturedThinkingBlock?.text &&
-        !token.isCancellationRequested &&
-        state.stopReason === StopReason.END_TURN
-      ) {
-        logger.warn(
-          "[Stream Processor] Model returned empty response with stop reason:",
-          state.stopReason,
-        );
-        progress.report(
-          new vscode.LanguageModelTextPart(
-            "*(The model returned an empty response. Please try again or rephrase your request.)*",
-          ),
-        );
-        state.hasEmittedContent = true;
-      }
-
       this.validateStreamResult(state, token);
 
       return { thinkingBlock: state.capturedThinkingBlock };
