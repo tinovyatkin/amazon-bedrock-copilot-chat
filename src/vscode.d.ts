@@ -20337,23 +20337,6 @@ declare module 'vscode' {
 	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart;
 
 	/**
-	 * Represents a thinking/reasoning part in a language model response.
-	 * This is used when the model performs extended thinking before responding.
-	 */
-	export class LanguageModelThinkingPart {
-		/**
-		 * The thinking text content.
-		 */
-		value: string;
-
-		/**
-		 * Construct a thinking part with the given content.
-		 * @param value The thinking text.
-		 */
-		constructor(value: string);
-	}
-
-	/**
 	 * A [JSON Schema](https://json-schema.org) describing configuration options for a language model.
 	 * Each property in `properties` defines a configurable option using standard JSON Schema fields
 	 * plus additional display hints.

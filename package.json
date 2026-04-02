@@ -8,9 +8,9 @@
     "type": "git",
     "url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
   },
-  "version": "0.10.0",
+  "version": "0.11.0",
   "engines": {
-    "vscode": "^1.113.0"
+    "vscode": "^1.114.0"
   },
   "categories": [
     "AI",
@@ -156,7 +156,7 @@
     "@types/mocha": "10.0.10",
     "@types/node": "25.5.0",
     "@types/vscode": "1.110.0",
-    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "@typescript/native-preview": "7.0.0-dev.20260330.1",
     "@vscode/dts": "0.4.1",
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
