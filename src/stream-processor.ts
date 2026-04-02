@@ -6,7 +6,7 @@ import type {
 } from "@aws-sdk/client-bedrock-runtime";
 import { GuardrailContentPolicyAction, StopReason } from "@aws-sdk/client-bedrock-runtime";
 import * as vscode from "vscode";
-import { type CancellationToken, type LanguageModelResponsePart, type Progress } from "vscode";
+import { type CancellationToken, type LanguageModelResponsePart2, type Progress } from "vscode";
 
 import { logger } from "./logger";
 import { ToolBuffer } from "./tool-buffer";
@@ -23,6 +23,7 @@ export interface ThinkingBlock {
 interface ProcessingState {
   capturedThinkingBlock: ThinkingBlock | undefined;
   hasEmittedContent: boolean;
+  hasEmittedThinking: boolean;
   hasToolUse: boolean;
   stopReason: string | undefined;
   textChunkCount: number;
@@ -33,12 +34,13 @@ interface ProcessingState {
 export class StreamProcessor {
   async processStream(
     stream: AsyncIterable<ConverseStreamOutput>,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     token: CancellationToken,
   ): Promise<StreamProcessingResult> {
     const state: ProcessingState = {
       capturedThinkingBlock: undefined,
       hasEmittedContent: false,
+      hasEmittedThinking: false,
       hasToolUse: false,
       stopReason: undefined,
       textChunkCount: 0,
@@ -59,6 +61,50 @@ export class StreamProcessor {
         this.handleEvent(event, progress, state);
       }
 
+      // Thinking was captured but could not be emitted to the UI because
+      // LanguageModelThinkingPart is not available in this VS Code build.
+      // Emit a visible fallback so the user doesn't see a silent empty turn.
+      if (
+        !state.hasEmittedContent &&
+        !state.hasEmittedThinking &&
+        state.capturedThinkingBlock?.text &&
+        !token.isCancellationRequested &&
+        state.stopReason === StopReason.END_TURN
+      ) {
+        logger.warn(
+          "[Stream Processor] Thinking captured but not emitted to UI (LanguageModelThinkingPart unavailable)",
+        );
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            "*(The model produced only internal reasoning, but the thinking display is not supported in this environment. Please try again or rephrase your request.)*",
+          ),
+        );
+        state.hasEmittedContent = true;
+      }
+
+      // For genuinely empty responses (no thinking, no text, no tools) with a
+      // normal end_turn stop reason, emit a friendly fallback message instead of
+      // throwing a hard error.  This is a known LLM edge case that can happen
+      // when the model has nothing to say or encounters an internal issue.
+      if (
+        !state.hasEmittedContent &&
+        !state.hasEmittedThinking &&
+        !state.capturedThinkingBlock?.text &&
+        !token.isCancellationRequested &&
+        state.stopReason === StopReason.END_TURN
+      ) {
+        logger.warn(
+          "[Stream Processor] Model returned empty response with stop reason:",
+          state.stopReason,
+        );
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            "*(The model returned an empty response. Please try again or rephrase your request.)*",
+          ),
+        );
+        state.hasEmittedContent = true;
+      }
+
       this.logCompletion(state);
       this.validateStreamResult(state, token);
 
@@ -71,13 +117,13 @@ export class StreamProcessor {
 
   private handleContentBlockDelta(
     delta: NonNullable<ConverseStreamOutput["contentBlockDelta"]>,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     if ("text" in (delta.delta ?? {})) {
       this.handleTextDelta(delta.delta?.text, progress, state);
     } else if ("reasoningContent" in (delta.delta ?? {})) {
-      this.handleReasoningDelta(delta.delta?.reasoningContent, state);
+      this.handleReasoningDelta(delta.delta?.reasoningContent, progress, state);
     } else if ("toolUse" in (delta.delta ?? {})) {
       this.handleToolUseDelta(delta, progress, state);
     } else {
@@ -106,7 +152,7 @@ export class StreamProcessor {
 
   private handleContentBlockStop(
     stop: NonNullable<ConverseStreamOutput["contentBlockStop"]>,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     logger.info("[Stream Processor] Content block stop, index:", stop.contentBlockIndex);
@@ -134,7 +180,7 @@ export class StreamProcessor {
 
   private handleEvent(
     event: ConverseStreamOutput,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     if (event.messageStart) {
@@ -207,18 +253,51 @@ export class StreamProcessor {
 
   private handleReasoningDelta(
     reasoningContent: ReasoningContentBlockDelta | undefined,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
-    const reasoningText = reasoningContent?.text;
+    const rawReasoningText: unknown = reasoningContent?.text;
+    const reasoningText = typeof rawReasoningText === "string" ? rawReasoningText : undefined;
     const reasoningSignature = reasoningContent?.signature;
 
     if (reasoningText) {
       logger.trace(
-        "[Stream Processor] Reasoning content delta received (capturing), length:",
+        "[Stream Processor] Reasoning content delta received, length:",
         reasoningText.length,
       );
       state.capturedThinkingBlock ??= { text: "" };
       state.capturedThinkingBlock.text += reasoningText;
+
+      // Emit thinking part to VS Code so it shows in the collapsible thinking UI.
+      // Wrapped in try-catch because:
+      // 1. LanguageModelThinkingPart is a proposed API that may not exist at runtime
+      // 2. The trackingProgress wrapper re-throws on failure, so catching here
+      //    ensures hasEmittedThinking is only set when emission actually succeeded
+      try {
+        if (typeof vscode.LanguageModelThinkingPart === "function") {
+          progress.report(new vscode.LanguageModelThinkingPart(reasoningText));
+          // Only reached when progress.report didn't throw — the UI accepted the part.
+          state.hasEmittedThinking = true;
+        }
+      } catch (error: unknown) {
+        // The thinking content is still captured in state; only the UI emission failed.
+        // Distinguish expected "proposed API missing" errors from unexpected failures.
+        const isTypeError =
+          error instanceof TypeError ||
+          error instanceof ReferenceError ||
+          String(error).includes("LanguageModelThinkingPart");
+        if (isTypeError) {
+          logger.trace("[Stream Processor] LanguageModelThinkingPart not available at runtime");
+        } else {
+          logger.warn("[Stream Processor] Unexpected error emitting thinking part:", error);
+        }
+      }
+    } else if (rawReasoningText !== undefined && typeof rawReasoningText !== "string") {
+      // Guard against non-string values (e.g. metadata objects) leaking through
+      logger.warn(
+        "[Stream Processor] Received non-string reasoning delta, skipping:",
+        typeof rawReasoningText,
+      );
     }
 
     if (typeof reasoningSignature === "string") {
@@ -229,7 +308,7 @@ export class StreamProcessor {
         "[Stream Processor] Reasoning signature delta received, total length:",
         state.capturedThinkingBlock.signature.length,
       );
-    } else if (!reasoningText) {
+    } else if (rawReasoningText === undefined || rawReasoningText === "") {
       logger.trace(
         "[Stream Processor] Reasoning content delta with empty content (initialization)",
       );
@@ -238,7 +317,7 @@ export class StreamProcessor {
 
   private handleTextDelta(
     text: string | undefined,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     if (typeof text === "string" && text) {
@@ -288,7 +367,7 @@ export class StreamProcessor {
 
   private handleToolUseDelta(
     delta: NonNullable<ConverseStreamOutput["contentBlockDelta"]>,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     const toolUse = delta.delta?.toolUse;
@@ -303,10 +382,15 @@ export class StreamProcessor {
     this.tryEarlyToolEmission(delta.contentBlockIndex, progress, state);
   }
 
+  private hasVisibleOutput(state: ProcessingState): boolean {
+    return state.hasEmittedContent || state.hasEmittedThinking;
+  }
+
   private logCompletion(state: ProcessingState): void {
     logger.info("[Stream Processor] Stream processing completed", {
       capturedThinkingBlock: !!state.capturedThinkingBlock,
       hasEmittedContent: state.hasEmittedContent,
+      hasEmittedThinking: state.hasEmittedThinking,
       hasSignature: !!state.capturedThinkingBlock?.signature,
       signatureLength: state.capturedThinkingBlock?.signature?.length,
       stopReason: state.stopReason,
@@ -318,7 +402,7 @@ export class StreamProcessor {
 
   private tryEarlyToolEmission(
     contentBlockIndex: number,
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     if (state.toolBuffer.isEmitted(contentBlockIndex)) {
@@ -348,10 +432,19 @@ export class StreamProcessor {
       return;
     }
 
+    // Check MAX_TOKENS before thinking-only: if the model exhausted its token
+    // budget on reasoning, the user needs to know even though thinking was received.
     if (state.stopReason === StopReason.MAX_TOKENS) {
       throw new Error(
         "The model reached its maximum token limit while generating internal reasoning. Try reducing the conversation history or adjusting model parameters.",
       );
+    }
+
+    // Thinking-only responses are valid only when the thinking UI actually
+    // rendered the reasoning to the user and the stream completed normally.
+    // Require END_TURN so truncated/malformed streams aren't treated as successful.
+    if (state.hasEmittedThinking && state.stopReason === StopReason.END_TURN) {
+      return;
     }
 
     if (!token.isCancellationRequested) {
@@ -367,7 +460,7 @@ export class StreamProcessor {
       return;
     }
 
-    const message = state.hasEmittedContent
+    const message = this.hasVisibleOutput(state)
       ? "The response was filtered mid-generation by content safety policies. Some content may have been displayed before filtering. This may be due to Anthropic Claude's built-in safety filtering (common with Claude 4.5) or AWS Bedrock Guardrails. Please rephrase your request."
       : "The response was filtered by content safety policies before any content was generated. This may be due to Anthropic Claude's built-in safety filtering or AWS Bedrock Guardrails. Please rephrase your request.";
     throw new Error(message);
@@ -388,7 +481,7 @@ export class StreamProcessor {
       return;
     }
 
-    const message = state.hasEmittedContent
+    const message = this.hasVisibleOutput(state)
       ? "AWS Bedrock Guardrails blocked the response mid-generation. Some content may have been displayed before intervention. Please check your guardrail configuration or rephrase your request."
       : "AWS Bedrock Guardrails blocked the response before any content was generated. Please check your guardrail configuration or rephrase your request.";
     throw new Error(message);

@@ -13,6 +13,7 @@ import type {
   LanguageModelChatMessage,
   LanguageModelChatProvider,
   LanguageModelResponsePart,
+  LanguageModelResponsePart2,
   Progress,
 } from "vscode";
 import * as vscode from "vscode";
@@ -433,16 +434,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     progress: Progress<LanguageModelResponsePart>,
     token: CancellationToken,
   ): Promise<void> {
-    const trackingProgress: Progress<LanguageModelResponsePart> = {
+    const trackingProgress: Progress<LanguageModelResponsePart2> = {
       report: (part) => {
         try {
-          progress.report(part);
+          progress.report(part as LanguageModelResponsePart);
         } catch (error) {
           logger.warn("[Bedrock Model Provider] Progress.report failed", {
             error:
               error instanceof Error ? { message: error.message, name: error.name } : String(error),
             modelId: model.id,
           });
+          // Re-throw so callers can detect emission failures (e.g. stream-processor
+          // uses try-catch around ThinkingPart emission to track hasEmittedThinking).
+          throw error;
         }
       },
     };
@@ -1520,7 +1524,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   private async processResponseStream(
     requestInput: ConverseStreamCommandInput,
-    trackingProgress: Progress<LanguageModelResponsePart>,
+    trackingProgress: Progress<LanguageModelResponsePart2>,
     extendedThinkingEnabled: boolean,
     token: CancellationToken,
   ): Promise<void> {
