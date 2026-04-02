@@ -20337,26 +20337,10 @@ declare module 'vscode' {
 	export type LanguageModelResponsePart = LanguageModelTextPart | LanguageModelToolCallPart | LanguageModelToolResultPart;
 
 	/**
-	 * Extended response part type that includes thinking parts.
+	 * Extended response part type that includes proposed API types (e.g. thinking parts).
+	 * Used by the stream processor to emit reasoning content to the collapsible thinking UI.
 	 */
 	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart;
-
-	/**
-	 * Represents a thinking/reasoning part in a language model response.
-	 * This is used when the model performs extended thinking before responding.
-	 */
-	export class LanguageModelThinkingPart {
-		/**
-		 * The thinking text content.
-		 */
-		value: string;
-
-		/**
-		 * Construct a thinking part with the given content.
-		 * @param value The thinking text.
-		 */
-		constructor(value: string);
-	}
 
 	/**
 	 * A [JSON Schema](https://json-schema.org) describing configuration options for a language model.
@@ -20976,6 +20960,23 @@ declare module 'vscode' {
 		/**
 		 * Construct a text part with the given content.
 		 * @param value The text content of the part.
+		 */
+		constructor(value: string);
+	}
+
+	/**
+	 * A language model response part containing thinking/reasoning content (proposed API).
+	 * When reported via progress, VS Code renders it in a collapsible thinking UI.
+	 */
+	export class LanguageModelThinkingPart {
+		/**
+		 * The thinking/reasoning text content.
+		 */
+		value: string;
+
+		/**
+		 * Construct a thinking part with the given content.
+		 * @param value The thinking/reasoning text.
 		 */
 		constructor(value: string);
 	}
