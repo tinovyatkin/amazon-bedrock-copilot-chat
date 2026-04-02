@@ -826,6 +826,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     return anthropicBeta;
   }
 
+  /**
+   * Allow users with restricted permissions to manually supply a model or inference profile ID.
+   */
   private async buildManualModelInformation(
     modelId: string,
     settings: Awaited<ReturnType<typeof getBedrockSettings>>,
@@ -1409,7 +1412,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
-   * Allow users with restricted permissions to manually supply a model or inference profile ID.
+   * Returns the thinking effort configuration schema for models that support it.
    */
   private getThinkingEffortConfigurationSchema(
     modelId: string,
