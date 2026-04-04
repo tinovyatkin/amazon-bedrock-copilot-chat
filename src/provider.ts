@@ -12,6 +12,7 @@ import type {
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatProvider,
+  LanguageModelConfigurationSchema,
   LanguageModelResponsePart,
   LanguageModelResponsePart2,
   Progress,
@@ -28,6 +29,30 @@ import { getBedrockSettings } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
+
+/**
+ * Single source of truth for thinking effort levels.
+ * The union type, configuration schema enum, and runtime guard are all derived from this tuple.
+ */
+const THINKING_EFFORT_VALUES = ["low", "medium", "high"] as const;
+type ThinkingEffort = (typeof THINKING_EFFORT_VALUES)[number];
+
+/**
+ * Configuration schema for the thinking effort toggle in the VS Code model picker.
+ * When `group` is `"navigation"`, the property is shown as a primary action (toolbar toggle)
+ * in the model picker, similar to native models like GPT-5 mini.
+ */
+const THINKING_EFFORT_CONFIGURATION_SCHEMA: LanguageModelConfigurationSchema = {
+  properties: {
+    reasoningEffort: {
+      default: "high",
+      enum: THINKING_EFFORT_VALUES,
+      enumItemLabels: ["Low", "Medium", "High"],
+      group: "navigation",
+      type: "string",
+    },
+  },
+} as const;
 
 class NoAccessibleModelsError extends Error {
   constructor() {
@@ -145,6 +170,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       try {
         const fetchModels = async (
           progress?: vscode.Progress<{ message?: string }>,
+          // eslint-disable-next-line sonarjs/cognitive-complexity -- Model discovery involves many sequential guarded steps that cannot be meaningfully decomposed
         ): Promise<LanguageModelChatInformation[]> => {
           progress?.report({ message: "Fetching model list..." });
 
@@ -224,11 +250,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 : " (Regional Inference Profile)";
             }
 
+            const configSchema = this.getThinkingEffortConfigurationSchema(modelIdToUse);
+
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
                 toolCalling: true,
               },
+              ...(configSchema ? { configurationSchema: configSchema } : {}),
               family: "bedrock",
               id: modelIdToUse,
               maxInputTokens: maxInput,
@@ -264,11 +293,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
+            const appConfigSchema = this.getThinkingEffortConfigurationSchema(modelIdForLimits);
+
             const profileInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
                 toolCalling: true,
               },
+              ...(appConfigSchema ? { configurationSchema: appConfigSchema } : {}),
               family: "bedrock",
               id: profile.modelArn,
               maxInputTokens: maxInput,
@@ -431,7 +463,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     model: LanguageModelChatInformation,
     messages: readonly LanguageModelChatMessage[],
     options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
-    progress: Progress<LanguageModelResponsePart>,
+    progress: Progress<LanguageModelResponsePart2>,
     token: CancellationToken,
   ): Promise<void> {
     const trackingProgress: Progress<LanguageModelResponsePart2> = {
@@ -572,6 +604,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Determine if thinking effort should be applied (only for Opus 4.5 and Sonnet 4.6)
       const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
 
+      // Read thinking effort from VS Code model picker UI (configurationSchema) first,
+      // falling back to "high" as default for older VS Code versions without configurationSchema support
+      const uiEffort: unknown = options.modelConfiguration?.reasoningEffort;
+      let resolvedEffort: ThinkingEffort | undefined;
+      if (thinkingEffortEnabled) {
+        resolvedEffort = isReasoningEffort(uiEffort) ? uiEffort : "high";
+      }
+
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
@@ -589,7 +629,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         extendedThinkingEnabled,
         budgetTokens,
         betaHeaders,
-        thinkingEffortEnabled ? settings.thinking.effort : undefined,
+        resolvedEffort,
       );
 
       // Log request details
@@ -813,12 +853,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       const limits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
+      const manualConfigSchema = this.getThinkingEffortConfigurationSchema(baseModelId);
 
       return {
         capabilities: {
           imageInput: likelyVisionCapable,
           toolCalling: true,
         },
+        ...(manualConfigSchema ? { configurationSchema: manualConfigSchema } : {}),
         family: "bedrock",
         id: modelId,
         maxInputTokens: limits.maxInputTokens,
@@ -914,7 +956,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
   ): ConverseStreamCommandInput {
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
@@ -1001,7 +1043,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
   ): void {
     if (extendedThinkingEnabled) {
       // Extended thinking requires temperature 1.0
@@ -1370,6 +1412,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Returns the thinking effort configuration schema for models that support it.
+   */
+  private getThinkingEffortConfigurationSchema(
+    modelId: string,
+  ): LanguageModelConfigurationSchema | undefined {
+    return getModelProfile(modelId).supportsThinkingEffort
+      ? THINKING_EFFORT_CONFIGURATION_SCHEMA
+      : undefined;
+  }
+
+  /**
    * Log converted Bedrock messages for debugging
    */
   private logConvertedMessages(messages: Message[]): void {
@@ -1602,6 +1655,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       tokenLimit,
     });
   }
+}
+
+function isReasoningEffort(value: unknown): value is ThinkingEffort {
+  return typeof value === "string" && THINKING_EFFORT_VALUES.includes(value as ThinkingEffort);
 }
 
 /**

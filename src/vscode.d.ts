@@ -20059,6 +20059,12 @@ declare module 'vscode' {
 		};
 
 		/**
+		 * An optional configuration schema that defines model-specific settings
+		 * shown in the VS Code model picker UI.
+		 */
+		readonly configurationSchema?: LanguageModelConfigurationSchema;
+
+		/**
 		 * An optional, human-readable string which will be rendered alongside the model.
 		 */
 		readonly detail?: string;
@@ -20132,7 +20138,7 @@ declare module 'vscode' {
 		 * @param token A cancellation token for the request
 		 * @returns A promise that resolves when the response is complete. Results are actually passed to the progress callback.
 		 */
-		provideLanguageModelChatResponse(model: T, messages: readonly LanguageModelChatRequestMessage[], options: LanguageModelChatRequestHandleOptions, progress: Progress<LanguageModelResponsePart>, token: CancellationToken): Thenable<void>;
+		provideLanguageModelChatResponse(model: T, messages: readonly LanguageModelChatRequestMessage[], options: LanguageModelChatRequestHandleOptions, progress: Progress<LanguageModelResponsePart2>, token: CancellationToken): Thenable<void>;
 
 		/**
 		 * Returns the number of tokens for a given text using the model specific tokenizer logic
@@ -20153,6 +20159,15 @@ declare module 'vscode' {
 		 * and need to be looked up in the respective documentation.
 		 */
 		readonly modelOptions?: { readonly [name: string]: any };
+
+		/**
+		 * Per-model configuration provided by the user. This contains values configured
+		 * in the user's language models configuration file, validated against the model's
+		 * {@linkcode LanguageModelChatInformation.configurationSchema configurationSchema}.
+		 */
+		readonly modelConfiguration?: {
+			readonly [key: string]: any;
+		};
 
 		/**
 		 * 	The tool-selecting mode to use. {@link LanguageModelChatToolMode.Auto} by default.
@@ -20326,6 +20341,28 @@ declare module 'vscode' {
 	 * Used by the stream processor to emit reasoning content to the collapsible thinking UI.
 	 */
 	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart;
+
+	/**
+	 * A [JSON Schema](https://json-schema.org) describing configuration options for a language model.
+	 * Each property in `properties` defines a configurable option using standard JSON Schema fields
+	 * plus additional display hints.
+	 */
+	export type LanguageModelConfigurationSchema = {
+		readonly properties?: {
+			readonly [key: string]: Record<string, any> & {
+				/**
+				 * Human-readable labels for enum values, shown instead of the raw values.
+				 * Must have the same length and order as `enum`.
+				 */
+				readonly enumItemLabels?: string[];
+				/**
+				 * The group this property belongs to. When set to `'navigation'`, the property
+				 * is shown as a primary action in the model picker.
+				 */
+				readonly group?: string;
+			};
+		};
+	};
 
 	/**
 	 * Definitions that describe different types of Model Context Protocol servers,

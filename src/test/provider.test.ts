@@ -63,6 +63,41 @@ const callCalcThinkingConfig = (
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
+// Local types mirroring the production shapes for type-safe test assertions
+interface TestRequestInput {
+  additionalModelRequestFields?: {
+    anthropic_beta?: string[];
+    output_config?: { effort: TestThinkingEffort };
+    thinking?: { budget_tokens?: number; type: string };
+  };
+  inferenceConfig: { maxTokens: number };
+}
+
+type TestThinkingEffort = "high" | "low" | "medium";
+
+// Helper to call the private configureAdditionalModelFields method
+const callConfigureFields = (
+  modelId: string,
+  extendedThinkingEnabled: boolean,
+  budgetTokens: number,
+  betaHeaders: string[],
+  thinkingEffort?: TestThinkingEffort,
+): TestRequestInput => {
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+  const requestInput: TestRequestInput = {
+    inferenceConfig: { maxTokens: 4096 },
+  };
+  (provider as any).configureAdditionalModelFields(
+    requestInput,
+    modelId,
+    extendedThinkingEnabled,
+    budgetTokens,
+    betaHeaders,
+    thinkingEffort,
+  );
+  return requestInput;
+};
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
@@ -517,7 +552,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -540,7 +575,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -563,7 +598,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -583,7 +618,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -606,7 +641,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -631,7 +666,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -652,7 +687,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -669,7 +704,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [model];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -678,7 +713,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
 
       assert.equal(candidates.length, 1);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidate = candidates[0];
       assert.ok(candidate);
 
@@ -705,7 +740,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -735,7 +770,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -765,7 +800,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -797,7 +832,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -826,7 +861,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -853,7 +888,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -991,6 +1026,125 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // budgetTokens = min(16000, 32000, 96000) = 16000
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
+    });
+  });
+
+  suite("configureAdditionalModelFields (thinking effort)", () => {
+    // Table-driven: each valid effort value is preserved in output_config.effort
+    for (const effort of ["low", "medium", "high"] as const) {
+      test(`valid effort '${effort}' is preserved in output_config.effort (with extended thinking)`, () => {
+        const result = callConfigureFields(
+          "anthropic.claude-sonnet-4-6-20260514-v1:0",
+          true,
+          16_000,
+          [],
+          effort,
+        );
+        assert.ok(result.additionalModelRequestFields);
+        assert.equal(result.additionalModelRequestFields.output_config?.effort, effort);
+        assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+      });
+    }
+
+    test("first effort value also verifies budget_tokens propagation", () => {
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        true,
+        16_000,
+        [],
+        "low",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.thinking?.budget_tokens, 16_000);
+    });
+
+    test("effort without extended thinking sets output_config.effort only", () => {
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        false,
+        0,
+        [],
+        "low",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "low");
+      // Should NOT have thinking configuration
+      assert.equal(result.additionalModelRequestFields.thinking, undefined);
+    });
+
+    // Table-driven: undefined effort omits output_config regardless of model
+    for (const { budget, label, model, thinking } of [
+      {
+        budget: 16_000,
+        label: "effort-capable model with extended thinking",
+        model: "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        thinking: true,
+      },
+      {
+        budget: 16_000,
+        label: "non-effort model with extended thinking",
+        model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        thinking: true,
+      },
+    ]) {
+      test(`undefined effort omits output_config (${label})`, () => {
+        const result = callConfigureFields(model, thinking, budget, []);
+        assert.ok(result.additionalModelRequestFields);
+        assert.equal(result.additionalModelRequestFields.output_config, undefined);
+        if (thinking) {
+          assert.equal(result.additionalModelRequestFields.thinking?.type, "enabled");
+        }
+      });
+    }
+
+    test("beta headers are included alongside effort", () => {
+      const result = callConfigureFields(
+        "anthropic.claude-sonnet-4-6-20260514-v1:0",
+        true,
+        16_000,
+        ["interleaved-thinking-2025-05-14"],
+        "high",
+      );
+      assert.ok(result.additionalModelRequestFields);
+      assert.deepStrictEqual(result.additionalModelRequestFields.anthropic_beta, [
+        "interleaved-thinking-2025-05-14",
+      ]);
+      assert.equal(result.additionalModelRequestFields.output_config?.effort, "high");
+    });
+
+    test("beta headers without effort or thinking sets only anthropic_beta", () => {
+      const result = callConfigureFields("anthropic.claude-sonnet-4-6-20260514-v1:0", false, 0, [
+        "context-1m-2025-08-07",
+      ]);
+      assert.ok(result.additionalModelRequestFields);
+      assert.deepStrictEqual(result.additionalModelRequestFields.anthropic_beta, [
+        "context-1m-2025-08-07",
+      ]);
+      assert.equal(result.additionalModelRequestFields.thinking, undefined);
+      assert.equal(result.additionalModelRequestFields.output_config, undefined);
+    });
+  });
+
+  suite("getThinkingEffortConfigurationSchema", () => {
+    test("returns schema for models that support thinking effort", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Claude Opus 4.5 supports thinking effort (modelId must contain "opus-4-5")
+      const schema = (provider as any).getThinkingEffortConfigurationSchema(
+        "anthropic.claude-opus-4-5-20250514-v1:0",
+      );
+      assert.ok(schema);
+      assert.ok(schema.properties);
+      assert.ok(schema.properties.reasoningEffort);
+      assert.deepStrictEqual(schema.properties.reasoningEffort.enum, ["low", "medium", "high"]);
+    });
+
+    test("returns undefined for models that do not support thinking effort", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Claude 3.5 Sonnet does not support thinking effort
+      const schema = (provider as any).getThinkingEffortConfigurationSchema(
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      );
+      assert.equal(schema, undefined);
     });
   });
 });
