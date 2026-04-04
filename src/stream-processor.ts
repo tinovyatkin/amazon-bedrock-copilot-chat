@@ -106,6 +106,7 @@ export class StreamProcessor {
       }
 
       this.logCompletion(state);
+
       this.validateStreamResult(state, token);
 
       return { thinkingBlock: state.capturedThinkingBlock };

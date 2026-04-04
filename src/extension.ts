@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("bedrock.profile") ||
       e.affectsConfiguration("bedrock.preferredModel") ||
       e.affectsConfiguration("bedrock.inferenceProfiles.preferRegional") ||
-      e.affectsConfiguration("bedrock.context1M.enabled") ||
+      e.affectsConfiguration("bedrock.context1M.mode") ||
       e.affectsConfiguration("bedrock.promptCaching.enabled") ||
       e.affectsConfiguration("bedrock.thinking.enabled") ||
       e.affectsConfiguration("bedrock.thinking.budgetTokens") ||
@@ -60,40 +60,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // When user selects/deselects models in the global quick pick, refresh the list.
-  // However, we need to skip events during the initial model fetch to avoid feedback loops:
-  // 1. Extension activates → 2. Provider returns models → 3. VS Code fires onDidChangeChatModels →
-  // 4. If we immediately refresh, model IDs may differ (due to profile accessibility tests) →
-  // 5. This can cause the user's model selection to be lost
-  //
-  // We use the provider's isInitialFetchComplete() flag to know when the first fetch is done,
-  // and only respond to subsequent onDidChangeChatModels events (user-initiated changes).
-  let lmRefreshHandle: ReturnType<typeof setTimeout> | undefined;
-
-  const lmDisposable = vscode.lm.onDidChangeChatModels(() => {
-    // Skip events until the initial model fetch is complete to avoid feedback loops
-    if (!provider.isInitialFetchComplete()) {
-      logger.debug("[Extension] Ignoring onDidChangeChatModels before initial fetch complete");
-      return;
-    }
-
-    // Debounce to coalesce rapid changes
-    if (lmRefreshHandle) {
-      clearTimeout(lmRefreshHandle);
-    }
-    lmRefreshHandle = setTimeout(() => {
-      provider.notifyModelInformationChanged("selected chat models changed");
-      lmRefreshHandle = undefined;
-    }, 500);
-  });
-
-  // Clear any pending lm refresh timer on extension dispose
-  const lmDebounceDisposable = new vscode.Disposable(() => {
-    if (lmRefreshHandle) {
-      clearTimeout(lmRefreshHandle);
-      lmRefreshHandle = undefined;
-    }
-  });
+  // NOTE: We intentionally do NOT listen to vscode.lm.onDidChangeChatModels.
+  // That event fires every time VS Code resolves our models (including when WE trigger
+  // a refresh via onDidChangeLanguageModelInformation). Reacting to it would create a
+  // feedback loop: we return models → VS Code fires onDidChangeChatModels → we fire
+  // onDidChangeLanguageModelInformation → VS Code resolves us again → repeat.
+  // Configuration and secrets changes are already handled by their own listeners above.
 
   context.subscriptions.push(
     outputChannel,
@@ -103,8 +75,6 @@ export function activate(context: vscode.ExtensionContext) {
     cfgDisposable,
     secretsDisposable,
     secretsDebounceDisposable,
-    lmDisposable,
-    lmDebounceDisposable,
   );
 }
 

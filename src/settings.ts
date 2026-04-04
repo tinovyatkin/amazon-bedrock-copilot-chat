@@ -13,7 +13,7 @@ import { getProfileRegion } from "./aws-profiles";
 
 export interface BedrockSettings {
   context1M: {
-    enabled: boolean;
+    mode: Context1MMode;
   };
   inferenceProfiles: {
     preferRegional: boolean;
@@ -26,19 +26,11 @@ export interface BedrockSettings {
   region: string;
   thinking: {
     budgetTokens: number;
-    effort: ThinkingEffort;
     enabled: boolean;
   };
 }
 
-/**
- * Thinking effort level for Claude Opus 4.5 and Sonnet 4.6.
- * Controls how eager Claude is about spending tokens when responding.
- * - "high": Maximum capability—Claude uses as many tokens as needed for the best possible outcome
- * - "medium": Balanced approach with moderate token savings
- * - "low": Most efficient—significant token savings with some capability reduction
- */
-export type ThinkingEffort = "high" | "low" | "medium";
+export type Context1MMode = "both" | "extended" | "standard";
 
 /**
  * Get Bedrock settings with priority order
@@ -84,8 +76,19 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     preferredModel = preferredModelInspect.globalValue ?? undefined;
   }
 
-  // Read 1M context settings with defaults (enabled by default)
-  const context1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
+  // Read 1M context mode: "both" (default), "standard" (200K only), "extended" (1M only)
+  // The old boolean "context1M.enabled" is deprecated and intentionally ignored here.
+  // Users upgrading from the old setting get the new default "both"; they can explicitly
+  // set "context1M.mode" to "standard" if they want to disable 1M variants.
+  const validModes: Context1MMode[] = ["both", "standard", "extended"];
+  const modeInspect = config.inspect<string>("context1M.mode");
+  const explicitMode =
+    modeInspect?.workspaceFolderValue ?? modeInspect?.workspaceValue ?? modeInspect?.globalValue;
+
+  const context1MMode: Context1MMode =
+    typeof explicitMode === "string" && validModes.includes(explicitMode as Context1MMode)
+      ? (explicitMode as Context1MMode)
+      : "both";
 
   // Read prompt caching settings with defaults (enabled by default)
   const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
@@ -104,18 +107,9 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const thinkingBudgetTokens =
     copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
-  // Read thinking effort setting (only for Claude Opus 4.5 and Sonnet 4.6)
-  // Default to "high" for maximum capability
-  const validEffortValues: ThinkingEffort[] = ["high", "low", "medium"];
-  const rawEffort = config.get<string>("thinking.effort");
-  const thinkingEffort: ThinkingEffort =
-    rawEffort && validEffortValues.includes(rawEffort as ThinkingEffort)
-      ? (rawEffort as ThinkingEffort)
-      : "high";
-
   return {
     context1M: {
-      enabled: context1MEnabled,
+      mode: context1MMode,
     },
     inferenceProfiles: {
       preferRegional: preferRegionalInferenceProfiles,
@@ -128,7 +122,6 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     region,
     thinking: {
       budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024
-      effort: thinkingEffort,
       enabled: thinkingEnabled,
     },
   };

@@ -259,7 +259,27 @@ export class BedrockAPIClient {
         `[Bedrock API Client] Excluded ${allModels.length - activeModels.length} deprecated models`,
       );
 
-      return activeModels;
+      // Deduplicate by modelId — the API may return the same model more than once
+      const seen = new Set<string>();
+      const uniqueModels: typeof activeModels = [];
+      for (const model of activeModels) {
+        if (seen.has(model.modelId)) {
+          logger.warn(
+            `[Bedrock API Client] Duplicate model from API: ${model.modelId} (${model.modelName}) — skipping`,
+          );
+          continue;
+        }
+        seen.add(model.modelId);
+        uniqueModels.push(model);
+      }
+
+      if (uniqueModels.length < activeModels.length) {
+        logger.warn(
+          `[Bedrock API Client] Removed ${activeModels.length - uniqueModels.length} duplicate model(s) from API response`,
+        );
+      }
+
+      return uniqueModels;
     } catch (error) {
       if (error instanceof AccessDeniedException) {
         logger.warn(

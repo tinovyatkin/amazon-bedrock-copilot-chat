@@ -4,7 +4,8 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
-import { BedrockChatModelProvider } from "../provider";
+import { BedrockChatModelProvider, resolveContext1MFromModelId } from "../provider";
+import type { Context1MMode } from "../settings";
 import type { BedrockModelSummary } from "../types";
 
 // Mock implementations extracted to avoid function nesting depth issues
@@ -517,7 +518,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -540,7 +541,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -563,7 +564,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -583,7 +584,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -606,7 +607,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -631,7 +632,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -652,7 +653,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -669,7 +670,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [model];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -678,7 +679,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
 
       assert.equal(candidates.length, 1);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const candidate = candidates[0];
       assert.ok(candidate);
 
@@ -705,7 +706,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -735,7 +736,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -765,7 +766,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -797,7 +798,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -826,7 +827,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -853,7 +854,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Testing private methods requires type assertion
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -992,5 +993,70 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
     });
+  });
+
+  suite("resolveContext1MFromModelId", () => {
+    const baseId = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+    const suffixedId = `${baseId}#1m`;
+
+    // Table-driven: 3 modes × 2 ID forms = 6 cases
+    const cases: {
+      enable1M: boolean;
+      expectedRealId: string;
+      mode: Context1MMode;
+      modelId: string;
+      name: string;
+    }[] = [
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "extended",
+        modelId: baseId,
+        name: "extended + plain ID → 1M enabled",
+      },
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "extended",
+        modelId: suffixedId,
+        name: "extended + #1m suffix → 1M enabled, suffix stripped",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "standard",
+        modelId: baseId,
+        name: "standard + plain ID → 1M disabled",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "standard",
+        modelId: suffixedId,
+        name: "standard + #1m suffix → 1M disabled, suffix stripped",
+      },
+      {
+        enable1M: false,
+        expectedRealId: baseId,
+        mode: "both",
+        modelId: baseId,
+        name: "both + plain ID → 1M disabled (no suffix)",
+      },
+      {
+        enable1M: true,
+        expectedRealId: baseId,
+        mode: "both",
+        modelId: suffixedId,
+        name: "both + #1m suffix → 1M enabled",
+      },
+    ];
+
+    for (const { enable1M, expectedRealId, mode, modelId, name } of cases) {
+      test(name, () => {
+        const [realModelId, enable1MContext] = resolveContext1MFromModelId(modelId, mode);
+        assert.equal(realModelId, expectedRealId);
+        assert.equal(enable1MContext, enable1M);
+      });
+    }
   });
 });

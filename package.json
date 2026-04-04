@@ -78,26 +78,20 @@
           "description": "Number of tokens allocated for thinking. Minimum 1024. Note: For Anthropic Claude models, this is automatically calculated as 20% of the model's maximum output tokens and this setting is ignored.",
           "scope": "resource"
         },
-        "bedrock.thinking.effort": {
+        "bedrock.context1M.mode": {
           "type": "string",
-          "default": "high",
           "enum": [
-            "high",
-            "medium",
-            "low"
+            "both",
+            "standard",
+            "extended"
           ],
+          "default": "both",
           "enumDescriptions": [
-            "Maximum capability—Claude uses as many tokens as needed for the best possible outcome. Recommended for complex reasoning and difficult coding problems.",
-            "Balanced approach with moderate token savings. Good for tasks requiring a balance of speed, cost, and performance.",
-            "Most efficient—significant token savings with some capability reduction. Best for simpler tasks that need speed and lowest costs."
+            "Show both standard (200K) and extended (1M) context variants for supported models",
+            "Show only standard 200K context models",
+            "Show only extended 1M context models for supported models"
           ],
-          "description": "Thinking effort level for Claude Opus 4.5 and Sonnet 4.6. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
-          "scope": "resource"
-        },
-        "bedrock.context1M.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable 1M context window for Claude Sonnet 4.x and Opus 4.6 models. When enabled, these models can handle up to 1 million tokens of input context. Note: Using 1M context increases API costs.",
+          "description": "Control how 1M context window models appear for Claude Sonnet 4.x and Opus 4.6. 'both' shows separate standard and 1M entries, 'standard' shows only 200K context, 'extended' shows only 1M context. Note: Using 1M context increases API costs.",
           "scope": "resource"
         },
         "bedrock.promptCaching.enabled": {
