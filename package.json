@@ -170,7 +170,7 @@
     "eslint": "10.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
-    "eslint-plugin-perfectionist": "5.7.0",
+    "eslint-plugin-perfectionist": "5.8.0",
     "eslint-plugin-sonarjs": "4.0.2",
     "eslint-plugin-unicorn": "64.0.0",
     "globals": "17.4.0",
