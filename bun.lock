@@ -18,7 +18,7 @@
         "@eslint-community/eslint-plugin-eslint-comments": "4.7.1",
         "@eslint/js": "10.0.1",
         "@eslint/markdown": "8.0.1",
-        "@eslint/mcp": "0.3.2",
+        "@eslint/mcp": "0.3.3",
         "@homer0/prettier-plugin-jsdoc": "11.0.2",
         "@smithy/types": "4.13.1",
         "@stylistic/eslint-plugin": "5.10.0",
@@ -183,7 +183,7 @@
 
     "@eslint/markdown": ["@eslint/markdown@8.0.1", "", { "dependencies": { "@eslint/core": "^1.1.1", "@eslint/plugin-kit": "^0.6.1", "github-slugger": "^2.0.0", "mdast-util-from-markdown": "^2.0.2", "mdast-util-frontmatter": "^2.0.1", "mdast-util-gfm": "^3.1.0", "mdast-util-math": "^3.0.0", "micromark-extension-frontmatter": "^2.0.0", "micromark-extension-gfm": "^3.0.0", "micromark-extension-math": "^3.1.0", "micromark-util-normalize-identifier": "^2.0.1" } }, "sha512-WWKmld/EyNdEB8GMq7JMPX1SDWgyJAM1uhtCi5ySrqYQM4HQjmg11EX/q3ZpnpRXHfdccFtli3NBvvGaYjWyQw=="],
 
-    "@eslint/mcp": ["@eslint/mcp@0.3.2", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "eslint": "^10.1.0", "zod": "^4.1.13" }, "bin": { "mcp": "src/mcp-cli.js" } }, "sha512-4bOPr3mgeR/tBbiLO2d80FgYRKv7fJCtuf24jS608SoyGQBfYExhmHHVl70y0kqBCb9bm+rt4fp4Yoy/c4M66w=="],
+    "@eslint/mcp": ["@eslint/mcp@0.3.3", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "eslint": "^10.1.0", "zod": "^4.1.13" }, "bin": { "mcp": "src/mcp-cli.js" } }, "sha512-PJv8/q+6L4c73cGUV1+9r6t1+epDebIUXiqM0RaZ5c/gWlgmT9aUIAV+r/6UEqK0swx51OtxAWTZQj6FmmJqyQ=="],
 
     "@eslint/object-schema": ["@eslint/object-schema@3.0.4", "", {}, "sha512-55lO/7+Yp0ISKRP0PsPtNTeNGapXaO085aELZmWCVc5SH3jfrqpuU6YgOdIxMS99ZHkQN1cXKE+cdIqwww9ptw=="],
 
