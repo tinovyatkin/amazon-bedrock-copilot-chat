@@ -175,7 +175,7 @@
     "eslint-plugin-unicorn": "64.0.0",
     "globals": "17.4.0",
     "lefthook": "2.1.5",
-    "prettier": "3.8.1",
+    "prettier": "3.8.2",
     "prettier-plugin-organize-imports": "4.3.0",
     "type-fest": "5.5.0",
     "typescript-eslint": "8.58.1"
