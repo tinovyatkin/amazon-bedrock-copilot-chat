@@ -139,7 +139,7 @@
     "pretest": "tsgo",
     "test": "vscode-test",
     "package": "bun run compile",
-    "vsce:package": "bunx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
+    "vsce:package": "npx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1029.0",
