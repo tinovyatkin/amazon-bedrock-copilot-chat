@@ -398,13 +398,16 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID
-      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
+      // If GetInferenceProfile fails (e.g., due to missing permissions), normalize the ID
+      // by stripping inference profile prefixes to get the base model ID
+      // This allows internal logic (getModelProfile, getModelTokenLimits, CountTokens) to work
+      // while the original profile ID is still used for the actual inference API call
+      const normalizedId = this.normalizeInferenceProfileId(modelId);
       logger.trace(
-        `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
+        `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, using normalized base model ID: ${normalizedId}`,
         error,
       );
-      return modelId;
+      return normalizedId;
     }
   }
 
@@ -776,6 +779,27 @@ export class BedrockAPIClient {
    */
   private async testModelAccess(modelId: string, abortSignal?: AbortSignal): Promise<boolean> {
     return this.testAccessViaConverse(modelId, "Model", abortSignal);
+  }
+
+  /**
+   * Normalize an inference profile ID to a base model ID by stripping the prefix.
+   * Handles regional prefixes (us., eu., ap., etc.) and global prefix (global.)
+   *
+   * Examples:
+   * - "global.anthropic.claude-sonnet-4-6" → "anthropic.claude-sonnet-4-6"
+   * - "us.anthropic.claude-opus-4-5-20251101-v1:0" → "anthropic.claude-opus-4-5-20251101-v1:0"
+   * - "anthropic.claude-sonnet-4-6" → "anthropic.claude-sonnet-4-6" (no change)
+   *
+   * @param modelId The model ID or inference profile ID
+   * @returns The base model ID without inference profile prefix
+   */
+  private normalizeInferenceProfileId(modelId: string): string {
+    const parts = modelId.split(".");
+    // Check if it starts with a regional prefix (2-3 letter code) or "global"
+    if (parts.length > 2 && (parts[0].length === 2 || parts[0].length === 3 || parts[0] === "global")) {
+      return parts.slice(1).join(".");
+    }
+    return modelId;
   }
 }
 

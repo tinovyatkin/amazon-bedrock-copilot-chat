@@ -31,6 +31,48 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 
 ## Installation
 
+### Option 1: Install from Local Build
+
+To build and install the extension locally:
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Build the extension**:
+   ```bash
+   npm run compile
+   ```
+
+3. **Package the extension** (creates a `.vsix` file):
+   ```bash
+   npm run vsce:package
+   ```
+   
+   This creates `dist/extension.vsix`
+
+4. **Install in VSCode**:
+   
+   **Using Command Palette**:
+   - Open VSCode
+   - Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+   - Type "Extensions: Install from VSIX..."
+   - Select the `dist/extension.vsix` file
+   
+   **Using Command Line**:
+   ```bash
+   code --install-extension dist/extension.vsix
+   ```
+
+5. **Reload VSCode** to activate the extension
+
+6. **Configure AWS credentials**:
+   - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
+   - Run "Manage Amazon Bedrock Provider" command to select your AWS profile and region
+
+### Option 2: Install from VSCode Marketplace
+
 1. Install the extension from the VSCode marketplace
 2. Configure your AWS credentials if you haven't already:
    - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
@@ -111,14 +153,34 @@ Models are sorted with newest inference profiles first (by creation/update date)
 
    Attach the [`AmazonBedrockLimitedAccess`](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonBedrockLimitedAccess.html) managed policy to your IAM user or role. This policy includes all required permissions for using this extension.
 
-   **Option 2: Custom Policy with Specific Permissions**
+   **Option 2: Minimal Policy (Required Permissions Only)**
 
-   If you prefer granular control, ensure your policy includes:
-   - `bedrock:ListFoundationModels` - List available models (_optional but recommended - extension will fallback to check Anthropic models only_)
-   - `bedrock:GetFoundationModelAvailability` - Check model access status (_optional but recommended_)
-   - `bedrock:ListInferenceProfiles` - List cross-region inference profiles
-   - `bedrock:InvokeModel` - Invoke models
-   - `bedrock:InvokeModelWithResponseStream` - Stream model responses
+   For environments with strict IAM policies, the extension works with only these permissions:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": [
+           "bedrock:InvokeModel",
+           "bedrock:InvokeModelWithResponseStream"
+         ],
+         "Resource": "*"
+       }
+     ]
+   }
+   ```
+
+   **Option 3: Enhanced Policy (Better Model Discovery)**
+
+   For better user experience with automatic model discovery:
+   - `bedrock:InvokeModel` - **Required** - Invoke models
+   - `bedrock:InvokeModelWithResponseStream` - **Required** - Stream model responses
+   - `bedrock:ListFoundationModels` - _Optional_ - List available models (fallback to Anthropic models if denied)
+   - `bedrock:GetFoundationModelAvailability` - _Optional_ - Check model access status
+   - `bedrock:ListInferenceProfiles` - _Optional_ - List cross-region inference profiles (fallback to known profiles if denied)
+   - `bedrock:GetInferenceProfile` - _Optional_ - Resolve inference profile IDs (automatically normalized if denied)
 
 ## License
 
