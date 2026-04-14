@@ -1,12 +1,9 @@
 # Common settings that generally should always be used with your language specific settings
-
 # Auto detect text files and perform LF normalization
 *          text=auto
-
 #
 # The above will handle all files NOT found below
 #
-
 # Documents
 *.bibtex   text diff=bibtex
 *.doc      diff=astextplain
@@ -31,7 +28,6 @@
 *.txt      text
 *.sql      text
 *.epub     diff=astextplain
-
 # Graphics
 *.png      binary
 *.jpg      binary
@@ -46,7 +42,6 @@
 # use the following line instead.
 # *.svg    binary
 *.eps      binary
-
 # Scripts
 *.bash     text eol=lf
 *.fish     text eol=lf
@@ -57,14 +52,12 @@
 *.bat      text eol=crlf
 *.cmd      text eol=crlf
 *.ps1      text eol=crlf
-
 # Serialisation
 *.json     text
 *.toml     text
 *.xml      text
 *.yaml     text
 *.yml      text
-
 # Archives
 *.7z       binary
 *.bz       binary
@@ -85,16 +78,12 @@
 *.Z        binary
 *.zip      binary
 *.zst      binary
-
 # Text files where line endings should be preserved
 *.patch    -text
-
 #
 # Exclude files from exporting
 #
-
 .gitattributes export-ignore
 .gitignore     export-ignore
 .gitkeep       export-ignore
-
 src/vscode.d.ts		linguist-generated=true

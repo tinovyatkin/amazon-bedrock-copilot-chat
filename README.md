@@ -1,26 +1,10 @@
-# Amazon Bedrock Provider for GitHub Copilot Chat
+# Amazon Bedrock Provider for GitHub Copilot Chat (Locally Adapted)
+
+> **Note**: This is an adapted version of the public [Amazon Bedrock Provider for GitHub Copilot Chat](https://github.com/tinovyatkin/amazon-bedrock-copilot-chat) extension, optimized to work with minimal IAM permissions for restricted corporate environments.
 
 A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat using VSCode's official [Language Model Chat Provider API](https://code.visualstudio.com/api/extension-guides/ai/language-model-chat-provider) and the AWS SDK.
 
-**This is not a hack or workaround** - it's built on two official APIs:
-
-- VSCode's **Language Model Chat Provider API** for integrating custom models into Copilot Chat
-- **AWS SDK for JavaScript** for connecting to Amazon Bedrock
-
 > **Important**: Models provided through the Language Model Chat Provider API are currently only available to users on **individual GitHub Copilot plans**. Organization plans are not yet supported.
-
-## Features
-
-- **Native Amazon Bedrock Integration**: Access Claude, OpenAI OSS, DeepSeek, and other models directly in GitHub Copilot Chat
-- **Flexible Authentication**: Support for AWS Profiles, API Keys (bearer tokens), or Access Keys - all stored securely
-- **Streaming Support**: Real-time streaming responses for faster feedback
-- **Function Calling**: Full support for tool/function calling capabilities
-- **Cross-Region Inference**: Automatic support for cross-region inference profiles
-- **Extended Thinking**: Automatic support for extended thinking in Claude Opus 4+, Sonnet 4+, and Sonnet 3.7 for enhanced reasoning on complex tasks. Also respects GitHub Copilot's `github.copilot.chat.anthropic.thinking.enabled` and `github.copilot.chat.anthropic.thinking.maxTokens` settings
-- **Thinking Effort Control**: For Claude Opus 4.5 and Sonnet 4.6, configure thinking effort level (high/medium/low) via `bedrock.thinking.effort` setting to balance quality vs. token usage. Defaults to "high" for maximum capability
-- **1M Context Window**: Optional 1M token context window for Claude Sonnet 4.x and Opus 4.6 models (can be disabled in settings to reduce costs)
-- **Prompt Caching**: Automatic caching of system prompts, tool definitions, and conversation history for faster responses and reduced costs (Claude and Nova models)
-- **Vision Support**: Work with models that support image inputs
 
 ## Prerequisites
 
@@ -36,31 +20,35 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 To build and install the extension locally:
 
 1. **Install dependencies**:
+
    ```bash
    npm install
    ```
 
 2. **Build the extension**:
+
    ```bash
    npm run compile
    ```
 
 3. **Package the extension** (creates a `.vsix` file):
+
    ```bash
    npm run vsce:package
    ```
-   
+
    This creates `dist/extension.vsix`
 
 4. **Install in VSCode**:
-   
+
    **Using Command Palette**:
    - Open VSCode
    - Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
    - Type "Extensions: Install from VSIX..."
    - Select the `dist/extension.vsix` file
-   
+
    **Using Command Line**:
+
    ```bash
    code --install-extension dist/extension.vsix
    ```
@@ -71,12 +59,31 @@ To build and install the extension locally:
    - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
    - Run "Manage Amazon Bedrock Provider" command to select your AWS profile and region
 
-### Option 2: Install from VSCode Marketplace
+### Option 2: Install from Pre-built VSIX
 
-1. Install the extension from the VSCode marketplace
-2. Configure your AWS credentials if you haven't already:
-   - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) for details
-3. Run the "Manage Amazon Bedrock Provider" command to select your AWS profile and region
+If you don't want to build from source, you can install from a pre-built `.vsix` file:
+
+1. **Obtain the VSIX file**: Contact a colleague who has already built the extension and get the `extension.vsix` file from them
+
+2. **Install in VSCode**:
+
+   **Using Command Palette**:
+   - Open VSCode
+   - Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+   - Type "Extensions: Install from VSIX..."
+   - Select the `.vsix` file
+
+   **Using Command Line**:
+
+   ```bash
+   code --install-extension /path/to/extension.vsix
+   ```
+
+3. **Reload VSCode** to activate the extension
+
+4. **Configure AWS credentials**:
+   - See [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
+   - Run "Manage Amazon Bedrock Provider" command to select your AWS profile and region
 
 ## Configuration
 
@@ -96,15 +103,38 @@ To configure:
 4. Follow the prompts to enter credentials
 5. Choose "Set Region" to select your preferred AWS region
 
-### Available Regions
+### Extension Settings
 
-The extension supports all AWS partitions including:
+You can customize the extension's behavior through VSCode settings:
 
-- **Commercial AWS** - All standard regions (us-east-1, eu-west-1, ap-southeast-2, etc.)
-- **AWS GovCloud (US)** - us-gov-west-1, us-gov-east-1
-- **AWS China** - cn-north-1, cn-northwest-1
+**To access settings**:
 
-See [Model support by AWS Region in Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html) for the latest list of supported regions and [GOVCLOUD-COMPATIBILITY.md](./GOVCLOUD-COMPATIBILITY.md) for partition-specific details.
+- **Method 1**: Go to **Extensions** view (`Ctrl+Shift+X`), find "Amazon Bedrock Provider (Private Fork)", right-click and select **Extension Settings**
+- **Method 2**: Go to **File → Preferences → Settings** (or `Ctrl+,`), then search for "bedrock"
+
+**Available settings**:
+
+1. **Context Window Size** (`bedrock.context1M.enabled`)
+   - **Default**: Enabled
+   - **Description**: Enable 1M token context window for Claude Sonnet 4.x and Opus 4.6 models
+   - **Values**: `true` (1M context) or `false` (200K context)
+   - **Note**: Enabling 1M context increases API costs but allows much larger conversations
+
+2. **Thinking Effort** (`bedrock.thinking.effort`)
+   - **Default**: `high`
+   - **Description**: Controls how eager Claude is about spending tokens when thinking
+   - **Values**:
+     - `high` - Maximum capability (best quality, most tokens)
+     - `medium` - Balanced approach (good quality, moderate tokens)
+     - `low` - Most efficient (faster, fewer tokens, some capability reduction)
+   - **Applies to**: Claude Opus 4.5, Opus 4.6, and Sonnet 4.6
+
+3. **Extended Thinking** (`bedrock.thinking.enabled`)
+   - **Default**: Enabled
+   - **Description**: Enable extended thinking for supported Claude models
+   - **Note**: When enabled, models reason through complex tasks before responding
+
+These settings apply globally to all chat sessions using compatible models.
 
 ## Usage
 
@@ -115,34 +145,26 @@ Once configured, Bedrock models will appear in GitHub Copilot Chat's model selec
 3. Choose a Bedrock model (they will be labeled with "Amazon Bedrock")
 4. Start chatting!
 
-## Supported Models
+### Fallback Model Discovery
 
-The extension automatically filters and displays only models that:
+**Note**: The `nimbu-bedrock` IAM role does not provide certain optional AWS Bedrock permissions (`bedrock:ListFoundationModels`, `bedrock:GetInferenceProfile`, `bedrock:ListInferenceProfiles`). When these permissions are denied, the extension automatically uses a fallback discovery method:
 
-- Support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations
-- Are **enabled** in your Amazon Bedrock console (models must be authorized and available in your selected region)
+1. **Model Detection**: Instead of querying AWS for all available models, the extension probes known Anthropic Claude inference profiles (global and regional) to determine which models are accessible with your current credentials.
 
-### Models Automatically Excluded
+2. **Access Validation**: For each known model profile, the extension makes a minimal test request to verify accessibility. Only models that successfully respond are added to the model list.
 
-The extension automatically filters models to show only text generation models (using `byOutputModality: "TEXT"` in the Bedrock API). This excludes:
+3. **Visual Indicator**: Models discovered through this fallback method will have the label `(Detected via inference profile)` appended to their names in the model selector.
 
-- Embedding models
-- Image generation models
-- **Deprecated models** (models with `LEGACY` lifecycle status)
+4. **Supported Models**: The fallback currently detects the following Anthropic models when accessible:
+   - Claude Opus 4.6
+   - Claude Sonnet 4.6
+   - Claude Sonnet 4.5
+   - Claude Opus 4.5
+   - Claude Haiku 4.5
 
-Models are sorted with newest inference profiles first (by creation/update date), making it easier to find recently released models.
-
-**Note**: Some text models that appear in the list may have limited or no tool calling support (e.g., legacy Amazon Titan Text, AI21 Jurassic 2, Meta Llama 2 and 3.0). These will fail gracefully if tool calls are attempted.
+This approach ensures the extension remains functional with minimal IAM permissions while still providing access to the latest Claude models through inference profiles.
 
 ## Troubleshooting
-
-### Models not showing up
-
-1. Verify your AWS credentials are correctly configured
-2. Check that you've selected the correct AWS profile and region
-3. **Enable models in the Amazon Bedrock console**: Go to the [Bedrock Model Access page](https://console.aws.amazon.com/bedrock/home#/modelaccess) and request access to the models you want to use
-4. Ensure your AWS account has access to Bedrock in the selected region
-5. Check the "Amazon Bedrock Models" output channel for error messages
 
 ### Authentication errors
 
@@ -156,16 +178,14 @@ Models are sorted with newest inference profiles first (by creation/update date)
    **Option 2: Minimal Policy (Required Permissions Only)**
 
    For environments with strict IAM policies, the extension works with only these permissions:
+
    ```json
    {
      "Version": "2012-10-17",
      "Statement": [
        {
          "Effect": "Allow",
-         "Action": [
-           "bedrock:InvokeModel",
-           "bedrock:InvokeModelWithResponseStream"
-         ],
+         "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
          "Resource": "*"
        }
      ]
