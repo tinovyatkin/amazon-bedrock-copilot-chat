@@ -403,6 +403,10 @@ export class BedrockAPIClient {
       // This allows internal logic (getModelProfile, getModelTokenLimits, CountTokens) to work
       // while the original profile ID is still used for the actual inference API call
       const normalizedId = this.normalizeInferenceProfileId(modelId);
+
+      // Cache the normalized result to avoid repeated API calls
+      this.inferenceProfileCache.set(modelId, normalizedId);
+
       logger.trace(
         `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, using normalized base model ID: ${normalizedId}`,
         error,
@@ -796,7 +800,10 @@ export class BedrockAPIClient {
   private normalizeInferenceProfileId(modelId: string): string {
     const parts = modelId.split(".");
     // Check if it starts with a regional prefix (2-3 letter code) or "global"
-    if (parts.length > 2 && (parts[0].length === 2 || parts[0].length === 3 || parts[0] === "global")) {
+    if (
+      parts.length > 2 &&
+      (parts[0].length === 2 || parts[0].length === 3 || parts[0] === "global")
+    ) {
       return parts.slice(1).join(".");
     }
     return modelId;
