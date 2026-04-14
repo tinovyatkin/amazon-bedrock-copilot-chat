@@ -54274,6 +54274,7 @@ class BedrockAPIClient {
   profileCredentialsProviders = new Map;
   profileName;
   region;
+  countTokensAvailable = undefined;
   constructor(region, profileName) {
     this.region = region;
     this.profileName = profileName;
@@ -54281,6 +54282,10 @@ class BedrockAPIClient {
     this.bedrockRuntimeClient = new import_client_bedrock_runtime.BedrockRuntimeClient(this.getClientConfig());
   }
   async countTokens(modelId, input, abortSignal) {
+    if (this.countTokensAvailable === false) {
+      logger.trace(`[Bedrock API Client] Skipping CountTokens API call (known to be unavailable), using estimation`);
+      return;
+    }
     try {
       const baseModelId = await this.resolveModelId(modelId, abortSignal);
       const command = new import_client_bedrock_runtime.CountTokensCommand({
@@ -54291,8 +54296,19 @@ class BedrockAPIClient {
       if (baseModelId !== modelId) {
         logger.trace(`[Bedrock API Client] CountTokens used base model ID ${baseModelId} for inference profile ${modelId}`);
       }
+      if (this.countTokensAvailable === undefined) {
+        this.countTokensAvailable = true;
+        logger.debug("[Bedrock API Client] CountTokens API confirmed available");
+      }
       return response.inputTokens;
     } catch (error) {
+      if (error instanceof import_client_bedrock.AccessDeniedException || error instanceof import_client_bedrock_runtime.AccessDeniedException) {
+        if (this.countTokensAvailable === undefined) {
+          this.countTokensAvailable = false;
+          logger.info("[Bedrock API Client] CountTokens API not authorized - will use token estimation for all future requests");
+        }
+        return;
+      }
       logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
         error: error instanceof Error ? {
           message: error.message,
@@ -54663,6 +54679,7 @@ class BedrockAPIClient {
     this.bedrockClient = new import_client_bedrock.BedrockClient(this.getClientConfig());
     this.bedrockRuntimeClient = new import_client_bedrock_runtime.BedrockRuntimeClient(this.getClientConfig());
     this.inferenceProfileCache.clear();
+    this.countTokensAvailable = undefined;
   }
   async testAccessViaConverse(modelId, resourceType, abortSignal) {
     try {
@@ -56690,5 +56707,5 @@ function deactivate() {
   logger.trace("deactivate called");
 }
 
-//# debugId=CF84CC09AE18E3C164756E2164756E21
+//# debugId=79C2742231F442D964756E2164756E21
 //# sourceMappingURL=extension.js.map

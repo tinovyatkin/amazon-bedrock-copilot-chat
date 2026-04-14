@@ -51,6 +51,8 @@ export class BedrockAPIClient {
   private profileName?: string;
 
   private region: string;
+  // Tracks whether CountTokens API is available (circuit breaker to avoid repeated permission failures)
+  private countTokensAvailable: boolean | undefined = undefined;
 
   constructor(region: string, profileName?: string) {
     this.region = region;
@@ -75,6 +77,14 @@ export class BedrockAPIClient {
     input: CountTokensCommandInput["input"],
     abortSignal?: AbortSignal,
   ): Promise<number | undefined> {
+    // Circuit breaker: If we've already determined CountTokens is not available, skip the API call
+    if (this.countTokensAvailable === false) {
+      logger.trace(
+        `[Bedrock API Client] Skipping CountTokens API call (known to be unavailable), using estimation`,
+      );
+      return undefined;
+    }
+
     try {
       // Resolve the base model ID (uses GetInferenceProfile API for cross-region profiles)
       const baseModelId = await this.resolveModelId(modelId, abortSignal);
@@ -91,8 +101,26 @@ export class BedrockAPIClient {
         );
       }
 
+      // Mark as available on first success
+      if (this.countTokensAvailable === undefined) {
+        this.countTokensAvailable = true;
+        logger.debug("[Bedrock API Client] CountTokens API confirmed available");
+      }
+
       return response.inputTokens;
     } catch (error) {
+      // Check if this is an AccessDeniedException (permission denied)
+      if (error instanceof AccessDeniedException || error instanceof RuntimeAccessDeniedException) {
+        // Mark as unavailable to skip future attempts (circuit breaker)
+        if (this.countTokensAvailable === undefined) {
+          this.countTokensAvailable = false;
+          logger.info(
+            "[Bedrock API Client] CountTokens API not authorized - will use token estimation for all future requests",
+          );
+        }
+        return undefined;
+      }
+
       // Log detailed error information at trace level for debugging
       logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
         error:
@@ -728,6 +756,9 @@ export class BedrockAPIClient {
 
     // Clear inference profile cache since profiles may differ across regions/credentials
     this.inferenceProfileCache.clear();
+
+    // Reset CountTokens availability flag since permissions may differ with new credentials
+    this.countTokensAvailable = undefined;
   }
 
   /**
