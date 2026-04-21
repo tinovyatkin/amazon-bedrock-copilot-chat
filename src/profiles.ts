@@ -26,6 +26,12 @@ export interface ModelProfile {
    */
   supportsThinking: boolean;
   /**
+   * Whether the model uses adaptive thinking only (thinking.type: "adaptive"), without budget_tokens.
+   * Claude Opus 4.7 uses this mode exclusively; temperature/top_p/top_k are also unsupported.
+   * See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html
+   */
+  supportsAdaptiveThinkingOnly: boolean;
+  /**
    * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5, Sonnet 4.6)
    * Allows controlling token expenditure with "high", "medium", or "low" effort levels
    */
@@ -64,6 +70,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
     supportsThinking: false,
+    supportsAdaptiveThinkingOnly: false,
     supportsThinkingEffort: false,
     supportsToolChoice: false,
     supportsToolResultStatus: false,
@@ -99,6 +106,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
           supportsThinking: false,
+          supportsAdaptiveThinkingOnly: false,
           supportsThinkingEffort: false,
           supportsToolChoice: true,
           supportsToolResultStatus: false,
@@ -109,27 +117,40 @@ export function getModelProfile(modelId: string): ModelProfile {
     }
     case "anthropic": {
       // Claude models support tool choice and prompt caching
-      // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, and Sonnet 3.7
+      // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, Haiku 4.5+, and Sonnet 3.7
       const supportsThinking =
         modelId.includes("opus-4") ||
         modelId.includes("sonnet-4") ||
+        modelId.includes("haiku-4-5") ||
+        modelId.includes("haiku-4.5") ||
         modelId.includes("sonnet-3-7") ||
         modelId.includes("sonnet-3.7");
 
       // Interleaved thinking (beta header) is only for Claude 4 models
       const requiresInterleavedThinkingHeader =
-        modelId.includes("opus-4") || modelId.includes("sonnet-4");
+        modelId.includes("opus-4") ||
+        modelId.includes("sonnet-4") ||
+        modelId.includes("haiku-4-5") ||
+        modelId.includes("haiku-4.5");
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6, Opus 4.5, and Sonnet 4.6
+      // Opus 4.7 uses adaptive thinking only (thinking.type: "adaptive").
+      // budget_tokens and temperature/top_p/top_k are not supported and will return a 400 error.
+      // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html
+      const supportsAdaptiveThinkingOnly = modelId.includes("opus-4-7");
+
+      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6, Opus 4.5, Sonnet 4.6, Sonnet 4.5, and Haiku 4.5
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
       const supportsThinkingEffort =
         modelId.includes("opus-4-6") ||
         modelId.includes("opus-4-5") ||
-        modelId.includes("sonnet-4-6");
+        modelId.includes("sonnet-4-6") ||
+        modelId.includes("sonnet-4-5") ||
+        modelId.includes("haiku-4-5") ||
+        modelId.includes("haiku-4.5");
 
       return {
         requiresInterleavedThinkingHeader,
@@ -137,6 +158,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults,
         supportsPromptCaching: true,
         supportsThinking,
+        supportsAdaptiveThinkingOnly,
         supportsThinkingEffort,
         supportsToolChoice: true,
         supportsToolResultStatus: true, // Claude models support status field in tool results
@@ -151,6 +173,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsAdaptiveThinkingOnly: false,
         supportsThinkingEffort: false,
         supportsToolChoice: false,
         supportsToolResultStatus: false,
@@ -166,6 +189,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsAdaptiveThinkingOnly: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,
         supportsToolResultStatus: false,
@@ -194,6 +218,13 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
     return getClaudeTokenLimits(normalizedModelId, enable1MContext);
   }
 
+  // OpenAI GPT OSS models: 128K context, 16K output
+  // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-120b.html
+  // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html
+  if (normalizedModelId.startsWith("openai.gpt-oss")) {
+    return { maxInputTokens: 128_000 - 16_000, maxOutputTokens: 16_000 };
+  }
+
   // Default for unknown models
   return {
     maxInputTokens: 196_000, // 200K context - 4K output
@@ -208,6 +239,13 @@ function getClaudeTokenLimits(
   normalizedModelId: string,
   enable1MContext: boolean,
 ): ModelTokenLimits {
+  // Claude Opus 4.7: always 1M context window, 128K max output
+  // temperature/top_p/top_k not supported; adaptive thinking only (type: "adaptive")
+  // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html
+  if (normalizedModelId.includes("opus-4-7")) {
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
+  }
+
   // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output
   // https://platform.claude.com - Opus 4.6 supports 128K output and optional 1M context
   if (normalizedModelId.includes("opus-4-6")) {
@@ -295,7 +333,8 @@ function normalizeModelId(modelId: string): string {
  * Claude Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support extended 1M context via anthropic_beta parameter
  */
 function supports1MContext(modelId: string): boolean {
-  return modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
+  // Opus 4.7 always has 1M context (no toggle needed — it's the only option per the AWS doc)
+  return modelId.includes("opus-4-7") || modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
 }
 
 /**

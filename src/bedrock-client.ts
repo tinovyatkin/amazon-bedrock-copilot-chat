@@ -515,6 +515,15 @@ export class BedrockAPIClient {
       regionalProfileIds: string[];
     }[] = [
       {
+        // Converse API supported. Geo prefixes: us/eu/jp (not au).
+        // Adaptive thinking only (type: "adaptive"); temperature/top_p/top_k unsupported.
+        // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-7.html
+        baseModelId: "anthropic.claude-opus-4-7",
+        displayName: "Claude Opus 4.7",
+        globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-7" : null,
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-opus-4-7`],
+      },
+      {
         baseModelId: "anthropic.claude-opus-4-6-v1",
         displayName: "Claude Opus 4.6",
         globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-6-v1" : null,
@@ -551,6 +560,22 @@ export class BedrockAPIClient {
           ? "global.anthropic.claude-haiku-4-5-20251001-v1:0"
           : null,
         regionalProfileIds: [`${regionPrefix}.anthropic.claude-haiku-4-5-20251001-v1:0`],
+      },
+      {
+        // In-region only — no geo or global inference profiles.
+        // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-120b.html
+        baseModelId: "openai.gpt-oss-120b-1:0",
+        displayName: "GPT OSS 120B",
+        globalProfileId: null,
+        regionalProfileIds: [],
+      },
+      {
+        // In-region only — no geo or global inference profiles.
+        // See: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html
+        baseModelId: "openai.gpt-oss-20b-1:0",
+        displayName: "GPT OSS 20B",
+        globalProfileId: null,
+        regionalProfileIds: [],
       },
     ];
 
