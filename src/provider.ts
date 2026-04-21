@@ -665,7 +665,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     text: LanguageModelChatMessage | string,
     token: CancellationToken,
   ): Promise<number> {
-    // Fallback estimation function
+    // Fallback estimation function used when the CountTokens API is unavailable.
     const estimateTokens = (input: LanguageModelChatMessage | string): number => {
       if (typeof input === "string") {
         return Math.ceil(input.length / 4);
@@ -673,7 +673,41 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       let totalTokens = 0;
       for (const part of input.content) {
         if (part instanceof vscode.LanguageModelTextPart) {
+          // Plain text: standard char/4 heuristic
           totalTokens += Math.ceil(part.value.length / 4);
+        } else if (part instanceof vscode.LanguageModelToolCallPart) {
+          // Tool name + JSON-serialized input arguments
+          const inputStr = JSON.stringify(part.input) ?? "";
+          totalTokens += Math.ceil((part.name.length + inputStr.length) / 4);
+        } else if (part instanceof vscode.LanguageModelToolResultPart) {
+          // Recursively count text parts inside the result; serialize unknowns as fallback
+          for (const item of part.content) {
+            if (item instanceof vscode.LanguageModelTextPart) {
+              totalTokens += Math.ceil(item.value.length / 4);
+            } else {
+              try {
+                totalTokens += Math.ceil(JSON.stringify(item).length / 4);
+              } catch {
+                totalTokens += 100; // safe minimum for unserializable content
+              }
+            }
+          }
+        } else if (
+          typeof part === "object" &&
+          part !== null &&
+          "data" in part &&
+          "mimeType" in part
+        ) {
+          // LanguageModelDataPart (duck-typed to avoid runtime class availability issues)
+          const dataPart = part as { data: Uint8Array; mimeType: string };
+          if (dataPart.mimeType.startsWith("image/")) {
+            // Amortized estimate: (bytes × 15px/byte) / 750px/token = bytes / 50
+            // Capped at 1600 — Claude's hard maximum per image regardless of dimensions
+            totalTokens += Math.min(Math.ceil(dataPart.data.length / 50), 1600);
+          } else {
+            // Non-image binary (e.g. application/json): treat bytes as text chars
+            totalTokens += Math.ceil(dataPart.data.length / 4);
+          }
         }
       }
       return totalTokens;
