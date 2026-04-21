@@ -13,6 +13,11 @@ import { ToolBuffer } from "./tool-buffer";
 
 export interface StreamProcessingResult {
   thinkingBlock?: ThinkingBlock;
+  /** Actual token usage reported by the Bedrock API in the stream metadata event */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 
 export interface ThinkingBlock {
@@ -29,6 +34,7 @@ interface ProcessingState {
   textChunkCount: number;
   toolBuffer: ToolBuffer;
   toolCallCount: number;
+  usage: { inputTokens: number; outputTokens: number } | undefined;
 }
 
 export class StreamProcessor {
@@ -46,6 +52,7 @@ export class StreamProcessor {
       textChunkCount: 0,
       toolBuffer: new ToolBuffer(),
       toolCallCount: 0,
+      usage: undefined,
     };
 
     state.toolBuffer.clear();
@@ -108,7 +115,7 @@ export class StreamProcessor {
       this.logCompletion(state);
       this.validateStreamResult(state, token);
 
-      return { thinkingBlock: state.capturedThinkingBlock };
+      return { thinkingBlock: state.capturedThinkingBlock, usage: state.usage };
     } catch (error) {
       logger.error("[Stream Processor] Error during stream processing:", error);
       throw error;
@@ -194,7 +201,7 @@ export class StreamProcessor {
     } else if (event.messageStop) {
       this.handleMessageStop(event.messageStop, state);
     } else if (event.metadata) {
-      this.handleMetadata(event.metadata);
+      this.handleMetadata(event.metadata, state);
     } else {
       logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
     }
@@ -226,8 +233,20 @@ export class StreamProcessor {
     });
   }
 
-  private handleMetadata(metadata: NonNullable<ConverseStreamOutput["metadata"]>): void {
+  private handleMetadata(
+    metadata: NonNullable<ConverseStreamOutput["metadata"]>,
+    state: ProcessingState,
+  ): void {
     logger.info("[Stream Processor] Metadata received:", metadata);
+
+    // Capture actual token usage from the stream for context-window tracking
+    if (metadata?.usage?.inputTokens !== undefined && metadata?.usage?.outputTokens !== undefined) {
+      state.usage = {
+        inputTokens: metadata.usage.inputTokens,
+        outputTokens: metadata.usage.outputTokens,
+      };
+      logger.debug("[Stream Processor] Token usage from stream:", state.usage);
+    }
 
     const guardrailData = metadata?.trace?.guardrail;
     if (!guardrailData) {

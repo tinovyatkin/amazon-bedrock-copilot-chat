@@ -20110,9 +20110,9 @@ declare module 'vscode' {
 	export interface LanguageModelChatProvider<T extends LanguageModelChatInformation = LanguageModelChatInformation> {
 
 		/**
-		 * Signals a change from the provider to the editor so that {@linkcode prepareLanguageModelChatInformation} is called again
+		 * Signals a change from the provider to the editor so that {@linkcode provideLanguageModelChatInformation} is called again
 		 */
-		readonly onDidChangeLanguageModelInformation?: Event<void>;
+		readonly onDidChangeLanguageModelChatInformation?: Event<void>;
 
 		/**
 		 * Get the list of available language models contributed by this provider
@@ -20120,7 +20120,7 @@ declare module 'vscode' {
 		 * @param token A cancellation token which signals if the user cancelled the request or not
 		 * @returns A promise that resolves to the list of available language models
 		 */
-		prepareLanguageModelChatInformation(options: PrepareLanguageModelChatModelOptions, token: CancellationToken): ProviderResult<T[]>;
+		provideLanguageModelChatInformation(options: PrepareLanguageModelChatModelOptions, token: CancellationToken): ProviderResult<T[]>;
 
 		/**
 		 * Returns the response for a chat request, passing the results to the progress callback.

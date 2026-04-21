@@ -37,9 +37,10 @@ class NoAccessibleModelsError extends Error {
 }
 
 export class BedrockChatModelProvider implements vscode.Disposable, LanguageModelChatProvider {
-  // Event to notify VS Code that model information has changed
+  // Event to notify VS Code that model information has changed (stable API name)
   private readonly _onDidChangeLanguageModelInformation = new vscode.EventEmitter<void>();
-  readonly onDidChangeLanguageModelInformation = this._onDidChangeLanguageModelInformation.event;
+  readonly onDidChangeLanguageModelChatInformation =
+    this._onDidChangeLanguageModelInformation.event;
 
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
@@ -1560,6 +1561,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             textLength: result.thinkingBlock.text.length,
           },
         );
+      }
+
+      // Log actual token usage from the stream metadata for observability
+      if (result.usage) {
+        logger.info("[Bedrock Model Provider] Actual token usage from stream:", {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+        });
       }
 
       logger.info("[Bedrock Model Provider] Finished processing stream");

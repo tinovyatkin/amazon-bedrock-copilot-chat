@@ -55376,7 +55376,8 @@ class StreamProcessor {
       stopReason: undefined,
       textChunkCount: 0,
       toolBuffer: new ToolBuffer,
-      toolCallCount: 0
+      toolCallCount: 0,
+      usage: undefined
     };
     state.toolBuffer.clear();
     logger.info("[Stream Processor] Starting stream processing");
@@ -55400,7 +55401,7 @@ class StreamProcessor {
       }
       this.logCompletion(state);
       this.validateStreamResult(state, token);
-      return { thinkingBlock: state.capturedThinkingBlock };
+      return { thinkingBlock: state.capturedThinkingBlock, usage: state.usage };
     } catch (error) {
       logger.error("[Stream Processor] Error during stream processing:", error);
       throw error;
@@ -55462,7 +55463,7 @@ class StreamProcessor {
     } else if (event.messageStop) {
       this.handleMessageStop(event.messageStop, state);
     } else if (event.metadata) {
-      this.handleMetadata(event.metadata);
+      this.handleMetadata(event.metadata, state);
     } else {
       logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
     }
@@ -55480,8 +55481,15 @@ class StreamProcessor {
       stopReason: state.stopReason
     });
   }
-  handleMetadata(metadata) {
+  handleMetadata(metadata, state) {
     logger.info("[Stream Processor] Metadata received:", metadata);
+    if (metadata?.usage?.inputTokens !== undefined && metadata?.usage?.outputTokens !== undefined) {
+      state.usage = {
+        inputTokens: metadata.usage.inputTokens,
+        outputTokens: metadata.usage.outputTokens
+      };
+      logger.debug("[Stream Processor] Token usage from stream:", state.usage);
+    }
     const guardrailData = metadata?.trace?.guardrail;
     if (!guardrailData) {
       return;
@@ -55715,7 +55723,7 @@ class BedrockChatModelProvider {
   secrets;
   globalState;
   _onDidChangeLanguageModelInformation = new vscode6.EventEmitter;
-  onDidChangeLanguageModelInformation = this._onDidChangeLanguageModelInformation.event;
+  onDidChangeLanguageModelChatInformation = this._onDidChangeLanguageModelInformation.event;
   chatEndpoints = [];
   client;
   initialFetchComplete = false;
@@ -56612,6 +56620,12 @@ class BedrockChatModelProvider {
           textLength: result.thinkingBlock.text.length
         });
       }
+      if (result.usage) {
+        logger.info("[Bedrock Model Provider] Actual token usage from stream:", {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens
+        });
+      }
       logger.info("[Bedrock Model Provider] Finished processing stream");
     } finally {
       cancellationListener.dispose();
@@ -56707,5 +56721,5 @@ function deactivate() {
   logger.trace("deactivate called");
 }
 
-//# debugId=79C2742231F442D964756E2164756E21
+//# debugId=B8BF459F684F610E64756E2164756E21
 //# sourceMappingURL=extension.js.map
