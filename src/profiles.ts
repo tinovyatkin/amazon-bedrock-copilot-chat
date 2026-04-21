@@ -334,7 +334,9 @@ function normalizeModelId(modelId: string): string {
  */
 function supports1MContext(modelId: string): boolean {
   // Opus 4.7 always has 1M context (no toggle needed — it's the only option per the AWS doc)
-  return modelId.includes("opus-4-7") || modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
+  return (
+    modelId.includes("opus-4-7") || modelId.includes("opus-4-6") || modelId.includes("sonnet-4")
+  );
 }
 
 /**

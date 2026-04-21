@@ -54519,6 +54519,12 @@ class BedrockAPIClient {
     });
     const candidates = [
       {
+        baseModelId: "anthropic.claude-opus-4-7",
+        displayName: "Claude Opus 4.7",
+        globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-7" : null,
+        regionalProfileIds: [`${regionPrefix}.anthropic.claude-opus-4-7`]
+      },
+      {
         baseModelId: "anthropic.claude-opus-4-6-v1",
         displayName: "Claude Opus 4.6",
         globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-6-v1" : null,
@@ -54547,6 +54553,18 @@ class BedrockAPIClient {
         displayName: "Claude Haiku 4.5",
         globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-haiku-4-5-20251001-v1:0" : null,
         regionalProfileIds: [`${regionPrefix}.anthropic.claude-haiku-4-5-20251001-v1:0`]
+      },
+      {
+        baseModelId: "openai.gpt-oss-120b-1:0",
+        displayName: "GPT OSS 120B",
+        globalProfileId: null,
+        regionalProfileIds: []
+      },
+      {
+        baseModelId: "openai.gpt-oss-20b-1:0",
+        displayName: "GPT OSS 20B",
+        globalProfileId: null,
+        regionalProfileIds: []
       }
     ];
     const detected = [];
@@ -54746,6 +54764,7 @@ function getModelProfile(modelId) {
     supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
     supportsThinking: false,
+    supportsAdaptiveThinkingOnly: false,
     supportsThinkingEffort: false,
     supportsToolChoice: false,
     supportsToolResultStatus: false,
@@ -54771,6 +54790,7 @@ function getModelProfile(modelId) {
           supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
           supportsThinking: false,
+          supportsAdaptiveThinkingOnly: false,
           supportsThinkingEffort: false,
           supportsToolChoice: true,
           supportsToolResultStatus: false,
@@ -54780,16 +54800,18 @@ function getModelProfile(modelId) {
       return defaultProfile;
     }
     case "anthropic": {
-      const supportsThinking = modelId.includes("opus-4") || modelId.includes("sonnet-4") || modelId.includes("sonnet-3-7") || modelId.includes("sonnet-3.7");
-      const requiresInterleavedThinkingHeader = modelId.includes("opus-4") || modelId.includes("sonnet-4");
+      const supportsThinking = modelId.includes("opus-4") || modelId.includes("sonnet-4") || modelId.includes("haiku-4-5") || modelId.includes("haiku-4.5") || modelId.includes("sonnet-3-7") || modelId.includes("sonnet-3.7");
+      const requiresInterleavedThinkingHeader = modelId.includes("opus-4") || modelId.includes("sonnet-4") || modelId.includes("haiku-4-5") || modelId.includes("haiku-4.5");
       const supportsCachingWithToolResults = !supportsThinking;
-      const supportsThinkingEffort = modelId.includes("opus-4-6") || modelId.includes("opus-4-5") || modelId.includes("sonnet-4-6");
+      const supportsAdaptiveThinkingOnly = modelId.includes("opus-4-7");
+      const supportsThinkingEffort = modelId.includes("opus-4-6") || modelId.includes("opus-4-5") || modelId.includes("sonnet-4-6") || modelId.includes("sonnet-4-5") || modelId.includes("haiku-4-5") || modelId.includes("haiku-4.5");
       return {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
         supportsPromptCaching: true,
         supportsThinking,
+        supportsAdaptiveThinkingOnly,
         supportsThinkingEffort,
         supportsToolChoice: true,
         supportsToolResultStatus: true,
@@ -54803,6 +54825,7 @@ function getModelProfile(modelId) {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsAdaptiveThinkingOnly: false,
         supportsThinkingEffort: false,
         supportsToolChoice: false,
         supportsToolResultStatus: false,
@@ -54816,6 +54839,7 @@ function getModelProfile(modelId) {
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
         supportsThinking: false,
+        supportsAdaptiveThinkingOnly: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,
         supportsToolResultStatus: false,
@@ -54832,12 +54856,18 @@ function getModelTokenLimits(modelId, enable1MContext = false) {
   if (normalizedModelId.startsWith("anthropic.claude")) {
     return getClaudeTokenLimits(normalizedModelId, enable1MContext);
   }
+  if (normalizedModelId.startsWith("openai.gpt-oss")) {
+    return { maxInputTokens: 128000 - 16000, maxOutputTokens: 16000 };
+  }
   return {
     maxInputTokens: 196000,
     maxOutputTokens: 4096
   };
 }
 function getClaudeTokenLimits(normalizedModelId, enable1MContext) {
+  if (normalizedModelId.includes("opus-4-7")) {
+    return { maxInputTokens: 1e6 - 128000, maxOutputTokens: 128000 };
+  }
   if (normalizedModelId.includes("opus-4-6")) {
     return {
       maxInputTokens: (enable1MContext ? 1e6 : 200000) - 128000,
@@ -54887,7 +54917,7 @@ function normalizeModelId(modelId) {
   return modelId;
 }
 function supports1MContext(modelId) {
-  return modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
+  return modelId.includes("opus-4-7") || modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
 }
 
 // src/converters/messages.ts
@@ -56028,7 +56058,7 @@ class BedrockChatModelProvider {
       }
       const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
       const betaHeaders = this.buildBetaHeaders(modelProfile, extendedThinkingEnabled, settings.context1M.enabled, thinkingEffortEnabled);
-      const requestInput = this.buildRequestInput(model, converted, options, toolConfig, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffortEnabled ? settings.thinking.effort : undefined);
+      const requestInput = this.buildRequestInput(model, modelProfile, converted, options, toolConfig, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffortEnabled ? settings.thinking.effort : undefined);
       this.logRequestDetails(requestInput);
       await this.validateTokenCount(model, requestInput, token);
       await this.processResponseStream(requestInput, trackingProgress, extendedThinkingEnabled, token);
@@ -56079,6 +56109,28 @@ class BedrockChatModelProvider {
       for (const part of input.content) {
         if (part instanceof vscode6.LanguageModelTextPart) {
           totalTokens += Math.ceil(part.value.length / 4);
+        } else if (part instanceof vscode6.LanguageModelToolCallPart) {
+          const inputStr = JSON.stringify(part.input) ?? "";
+          totalTokens += Math.ceil((part.name.length + inputStr.length) / 4);
+        } else if (part instanceof vscode6.LanguageModelToolResultPart) {
+          for (const item of part.content) {
+            if (item instanceof vscode6.LanguageModelTextPart) {
+              totalTokens += Math.ceil(item.value.length / 4);
+            } else {
+              try {
+                totalTokens += Math.ceil(JSON.stringify(item).length / 4);
+              } catch {
+                totalTokens += 100;
+              }
+            }
+          }
+        } else if (typeof part === "object" && part !== null && "data" in part && "mimeType" in part) {
+          const dataPart = part;
+          if (dataPart.mimeType.startsWith("image/")) {
+            totalTokens += Math.min(Math.ceil(dataPart.data.length / 50), 1600);
+          } else {
+            totalTokens += Math.ceil(dataPart.data.length / 4);
+          }
         }
       }
       return totalTokens;
@@ -56225,11 +56277,13 @@ class BedrockChatModelProvider {
     }
     return candidates;
   }
-  buildRequestInput(model, converted, options, toolConfig, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort) {
+  buildRequestInput(model, modelProfile, converted, options, toolConfig, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort) {
     const requestInput = {
       inferenceConfig: {
         maxTokens: Math.min(typeof options.modelOptions?.max_tokens === "number" ? options.modelOptions.max_tokens : model.maxOutputTokens, model.maxOutputTokens),
-        temperature: typeof options.modelOptions?.temperature === "number" ? options.modelOptions?.temperature : 0.7
+        ...!modelProfile.supportsAdaptiveThinkingOnly && {
+          temperature: typeof options.modelOptions?.temperature === "number" ? options.modelOptions?.temperature : 0.7
+        }
       },
       messages: converted.messages,
       modelId: model.id
@@ -56237,7 +56291,7 @@ class BedrockChatModelProvider {
     if (converted.system.length > 0) {
       requestInput.system = converted.system;
     }
-    if (options.modelOptions) {
+    if (options.modelOptions && !modelProfile.supportsAdaptiveThinkingOnly) {
       const mo = options.modelOptions;
       if (typeof mo.top_p === "number") {
         requestInput.inferenceConfig.topP = mo.top_p;
@@ -56251,7 +56305,7 @@ class BedrockChatModelProvider {
     if (toolConfig) {
       requestInput.toolConfig = toolConfig;
     }
-    this.configureAdditionalModelFields(requestInput, model.id, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort);
+    this.configureAdditionalModelFields(requestInput, model.id, modelProfile, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort);
     return requestInput;
   }
   calculateThinkingConfig(modelProfile, modelLimits, maxTokensForRequest, thinkingEnabled) {
@@ -56262,26 +56316,37 @@ class BedrockChatModelProvider {
     const extendedThinkingEnabled = thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
     return { budgetTokens, extendedThinkingEnabled };
   }
-  configureAdditionalModelFields(requestInput, modelId, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort) {
+  configureAdditionalModelFields(requestInput, modelId, modelProfile, extendedThinkingEnabled, budgetTokens, betaHeaders, thinkingEffort) {
     if (extendedThinkingEnabled) {
-      requestInput.inferenceConfig.temperature = 1;
-      requestInput.additionalModelRequestFields = {
-        thinking: {
-          budget_tokens: budgetTokens,
-          type: "enabled"
-        },
-        ...betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {},
-        ...thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}
-      };
-      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
-        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
-        budgetTokens,
-        interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
-        modelId,
-        supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        temperature: 1,
-        thinkingEffort: thinkingEffort ?? "(not applicable)"
-      });
+      if (modelProfile.supportsAdaptiveThinkingOnly) {
+        requestInput.additionalModelRequestFields = {
+          thinking: { type: "adaptive" },
+          ...betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}
+        };
+        logger.debug("[Bedrock Model Provider] Adaptive thinking enabled (Opus 4.7)", {
+          anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+          modelId
+        });
+      } else {
+        requestInput.inferenceConfig.temperature = 1;
+        requestInput.additionalModelRequestFields = {
+          thinking: {
+            budget_tokens: budgetTokens,
+            type: "enabled"
+          },
+          ...betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {},
+          ...thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}
+        };
+        logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+          anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+          budgetTokens,
+          interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
+          modelId,
+          supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
+          temperature: 1,
+          thinkingEffort: thinkingEffort ?? "(not applicable)"
+        });
+      }
       return;
     }
     if (thinkingEffort) {
@@ -56721,5 +56786,5 @@ function deactivate() {
   logger.trace("deactivate called");
 }
 
-//# debugId=B8BF459F684F610E64756E2164756E21
+//# debugId=74459B5B17C0125864756E2164756E21
 //# sourceMappingURL=extension.js.map
