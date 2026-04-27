@@ -1025,15 +1025,20 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
       };
 
-      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+      const logData: Record<string, unknown> = {
         anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
         budgetTokens,
         interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
         modelId,
         supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        ...(supportsTemperature ? { temperature: 1 } : {}),
         thinkingEffort: thinkingEffort ?? "(not applicable)",
-      });
+      };
+
+      if (supportsTemperature) {
+        logData.temperature = 1;
+      }
+
+      logger.debug("[Bedrock Model Provider] Extended thinking enabled", logData);
       return;
     }
 
