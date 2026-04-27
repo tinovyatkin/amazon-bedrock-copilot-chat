@@ -916,7 +916,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     betaHeaders: string[],
     thinkingEffort?: "high" | "low" | "medium",
   ): ConverseStreamCommandInput {
-    const modelProfile = getModelProfile(model.id);
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
         maxTokens: Math.min(
@@ -930,7 +929,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       modelId: model.id,
     };
 
-    if (modelProfile.supportsTemperature) {
+    if (getModelProfile(model.id).supportsTemperature) {
       requestInput.inferenceConfig!.temperature =
         typeof options.modelOptions?.temperature === "number"
           ? options.modelOptions?.temperature

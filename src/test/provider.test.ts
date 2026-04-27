@@ -1,4 +1,5 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
+import type { ConverseStreamCommandInput } from "@aws-sdk/client-bedrock-runtime";
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
@@ -86,7 +87,7 @@ const callBuildRequestInput = (
     4096,
     [],
     undefined,
-  ) as { inferenceConfig?: { maxTokens?: number; temperature?: number } };
+  ) as ConverseStreamCommandInput;
 };
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
