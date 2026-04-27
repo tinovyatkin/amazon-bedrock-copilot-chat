@@ -63,6 +63,32 @@ const callCalcThinkingConfig = (
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
+const callBuildRequestInput = (
+  modelId: string,
+  options: vscode.LanguageModelChatRequestOptions = {},
+  extendedThinkingEnabled = false,
+) => {
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+  return (provider as any).buildRequestInput(
+    {
+      capabilities: {},
+      family: "bedrock",
+      id: modelId,
+      maxInputTokens: 200_000,
+      maxOutputTokens: 64_000,
+      name: modelId,
+      version: "1.0.0",
+    } as unknown as vscode.LanguageModelChatInformation,
+    { messages: [], system: [] },
+    options,
+    undefined,
+    extendedThinkingEnabled,
+    4096,
+    [],
+    undefined,
+  ) as { inferenceConfig?: { maxTokens?: number; temperature?: number } };
+};
+
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
@@ -991,6 +1017,31 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // budgetTokens = min(16000, 32000, 96000) = 16000
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
+    });
+  });
+
+  suite("buildRequestInput", () => {
+    test("omits temperature for Claude Opus 4.7", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-7-v1:0", {
+        modelOptions: { temperature: 0.2 },
+      });
+
+      assert.equal(requestInput.inferenceConfig?.temperature, undefined);
+      assert.equal(requestInput.inferenceConfig?.maxTokens, 64_000);
+    });
+
+    test("omits temperature for Claude Opus 4.7 extended thinking requests", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-7-v1:0", {}, true);
+
+      assert.equal(requestInput.inferenceConfig?.temperature, undefined);
+    });
+
+    test("preserves temperature for models that still support it", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-6-v1:0", {
+        modelOptions: { temperature: 0.2 },
+      });
+
+      assert.equal(requestInput.inferenceConfig?.temperature, 0.2);
     });
   });
 });

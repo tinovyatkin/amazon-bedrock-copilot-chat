@@ -22,6 +22,10 @@ export interface ModelProfile {
    */
   supportsPromptCaching: boolean;
   /**
+   * Whether the model accepts the Converse API temperature parameter
+   */
+  supportsTemperature: boolean;
+  /**
    * Whether the model supports extended thinking (Claude Opus 4.6, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
    */
   supportsThinking: boolean;
@@ -63,6 +67,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supports1MContext: false,
     supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
+    supportsTemperature: true,
     supportsThinking: false,
     supportsThinkingEffort: false,
     supportsToolChoice: false,
@@ -98,6 +103,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supports1MContext: false,
           supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
+          supportsTemperature: true,
           supportsThinking: false,
           supportsThinkingEffort: false,
           supportsToolChoice: true,
@@ -127,15 +133,17 @@ export function getModelProfile(modelId: string): ModelProfile {
       // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6, Opus 4.5, and Sonnet 4.6
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
       const supportsThinkingEffort =
-        modelId.includes("opus-4-6") ||
-        modelId.includes("opus-4-5") ||
-        modelId.includes("sonnet-4-6");
+        normalizedId.includes("opus-4-6") ||
+        normalizedId.includes("opus-4-5") ||
+        normalizedId.includes("sonnet-4-6");
+      const supportsTemperature = !normalizedId.includes("opus-4-7");
 
       return {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
         supportsPromptCaching: true,
+        supportsTemperature,
         supportsThinking,
         supportsThinkingEffort,
         supportsToolChoice: true,
@@ -150,6 +158,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supports1MContext: false,
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
+        supportsTemperature: true,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: false,
@@ -165,6 +174,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supports1MContext: false,
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
+        supportsTemperature: true,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,

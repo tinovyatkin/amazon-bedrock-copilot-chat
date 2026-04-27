@@ -916,6 +916,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     betaHeaders: string[],
     thinkingEffort?: "high" | "low" | "medium",
   ): ConverseStreamCommandInput {
+    const modelProfile = getModelProfile(model.id);
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
         maxTokens: Math.min(
@@ -924,14 +925,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             : model.maxOutputTokens,
           model.maxOutputTokens,
         ),
-        temperature:
-          typeof options.modelOptions?.temperature === "number"
-            ? options.modelOptions?.temperature
-            : 0.7,
       },
       messages: converted.messages,
       modelId: model.id,
     };
+
+    if (modelProfile.supportsTemperature) {
+      requestInput.inferenceConfig!.temperature =
+        typeof options.modelOptions?.temperature === "number"
+          ? options.modelOptions?.temperature
+          : 0.7;
+    }
 
     if (converted.system.length > 0) {
       requestInput.system = converted.system;
@@ -1004,8 +1008,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     thinkingEffort?: "high" | "low" | "medium",
   ): void {
     if (extendedThinkingEnabled) {
-      // Extended thinking requires temperature 1.0
-      requestInput.inferenceConfig!.temperature = 1;
+      const { supportsTemperature } = getModelProfile(modelId);
+
+      if (supportsTemperature) {
+        // Extended thinking requires temperature 1.0 for models that still support it
+        requestInput.inferenceConfig!.temperature = 1;
+      }
 
       // Add thinking configuration to additionalModelRequestFields
       requestInput.additionalModelRequestFields = {
@@ -1024,7 +1032,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
         modelId,
         supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        temperature: 1,
+        ...(supportsTemperature ? { temperature: 1 } : {}),
         thinkingEffort: thinkingEffort ?? "(not applicable)",
       });
       return;
