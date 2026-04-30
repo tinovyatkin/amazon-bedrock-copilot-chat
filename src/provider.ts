@@ -590,6 +590,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         budgetTokens,
         betaHeaders,
         thinkingEffortEnabled ? settings.thinking.effort : undefined,
+        modelProfile.temperatureDeprecated,
+        modelProfile.requiresAdaptiveThinking,
       );
 
       // Log request details
@@ -916,6 +918,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     budgetTokens: number,
     betaHeaders: string[],
     thinkingEffort?: "high" | "low" | "medium",
+    temperatureDeprecated?: boolean,
+    requiresAdaptiveThinking?: boolean,
   ): ConverseStreamCommandInput {
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
@@ -925,10 +929,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             : model.maxOutputTokens,
           model.maxOutputTokens,
         ),
-        temperature:
-          typeof options.modelOptions?.temperature === "number"
-            ? options.modelOptions?.temperature
-            : 0.7,
+        // CLI-verified: Claude Opus 4.7 rejects requests that include
+        // `temperature`. All other models still accept it.
+        ...(!temperatureDeprecated && {
+          temperature:
+            typeof options.modelOptions?.temperature === "number"
+              ? options.modelOptions?.temperature
+              : 0.7,
+        }),
       },
       messages: converted.messages,
       modelId: model.id,
@@ -962,6 +970,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       budgetTokens,
       betaHeaders,
       thinkingEffort,
+      temperatureDeprecated,
+      requiresAdaptiveThinking,
     );
 
     return requestInput;
@@ -1003,17 +1013,26 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     budgetTokens: number,
     betaHeaders: string[],
     thinkingEffort?: "high" | "low" | "medium",
+    temperatureDeprecated?: boolean,
+    requiresAdaptiveThinking?: boolean,
   ): void {
     if (extendedThinkingEnabled) {
-      // Extended thinking requires temperature 1.0
-      requestInput.inferenceConfig!.temperature = 1;
+      // Extended thinking normally requires temperature 1.0, but Claude Opus 4.7
+      // rejects any `temperature` parameter. For all other models, force 1.0.
+      if (!temperatureDeprecated) {
+        requestInput.inferenceConfig!.temperature = 1;
+      }
 
-      // Add thinking configuration to additionalModelRequestFields
+      // CLI-verified: Claude Opus 4.7 rejects thinking.type="enabled" and
+      // requires thinking.type="adaptive" (with no budget_tokens). All other
+      // Claude models still use enabled+budget.
+      const thinkingField: { budget_tokens?: number; type: "adaptive" | "enabled" } =
+        requiresAdaptiveThinking
+          ? { type: "adaptive" }
+          : { budget_tokens: budgetTokens, type: "enabled" };
+
       requestInput.additionalModelRequestFields = {
-        thinking: {
-          budget_tokens: budgetTokens,
-          type: "enabled",
-        },
+        thinking: thinkingField,
         ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
         // Add thinking effort for Claude Opus 4.5 and Sonnet 4.6 (controls token expenditure)
         ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
@@ -1021,12 +1040,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
         anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
-        budgetTokens,
+        budgetTokens: requiresAdaptiveThinking ? "(adaptive)" : budgetTokens,
         interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
         modelId,
         supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        temperature: 1,
+        temperature: temperatureDeprecated ? "(omitted)" : 1,
         thinkingEffort: thinkingEffort ?? "(not applicable)",
+        thinkingType: requiresAdaptiveThinking ? "adaptive" : "enabled",
       });
       return;
     }

@@ -4,6 +4,12 @@
 
 export interface ModelProfile {
   /**
+   * Whether the model requires adaptive thinking (thinking.type="adaptive") instead of
+   * the usual thinking.type="enabled" with budget_tokens.
+   * CLI-verified: only Claude Opus 4.7 requires this.
+   */
+  requiresAdaptiveThinking: boolean;
+  /**
    * Whether the model requires the interleaved-thinking beta header (Claude 4 models only)
    */
   requiresInterleavedThinkingHeader: boolean;
@@ -41,6 +47,11 @@ export interface ModelProfile {
    */
   supportsToolResultStatus: boolean;
   /**
+   * Whether the temperature parameter is deprecated and must be omitted from requests.
+   * CLI-verified: only Claude Opus 4.7 rejects requests that include `temperature`.
+   */
+  temperatureDeprecated: boolean;
+  /**
    * Format to use for tool result content ('text' or 'json')
    */
   toolResultFormat: "json" | "text";
@@ -59,6 +70,7 @@ export interface ModelTokenLimits {
 
 export function getModelProfile(modelId: string): ModelProfile {
   const defaultProfile: ModelProfile = {
+    requiresAdaptiveThinking: false,
     requiresInterleavedThinkingHeader: false,
     supports1MContext: false,
     supportsCachingWithToolResults: false,
@@ -67,6 +79,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supportsThinkingEffort: false,
     supportsToolChoice: false,
     supportsToolResultStatus: false,
+    temperatureDeprecated: false,
     toolResultFormat: "text",
   };
 
@@ -94,6 +107,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       // Nova does NOT support cachePoint after toolResult blocks
       if (modelId.includes("nova")) {
         return {
+          requiresAdaptiveThinking: false,
           requiresInterleavedThinkingHeader: false,
           supports1MContext: false,
           supportsCachingWithToolResults: false,
@@ -102,6 +116,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supportsThinkingEffort: false,
           supportsToolChoice: true,
           supportsToolResultStatus: false,
+          temperatureDeprecated: false,
           toolResultFormat: "text",
         };
       }
@@ -124,14 +139,27 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Adaptive thinking / thinking effort parameter is supported by Claude Opus 4.6, Opus 4.5, and Sonnet 4.6
+      // Adaptive thinking / thinking effort parameter is supported by
+      // Claude Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
       const supportsThinkingEffort =
+        modelId.includes("opus-4-7") ||
         modelId.includes("opus-4-6") ||
         modelId.includes("opus-4-5") ||
         modelId.includes("sonnet-4-6");
 
+      // CLI-verified: Opus 4.7 rejects `thinking.type="enabled"` and requires
+      // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
+      // models still use enabled+budget.
+      const requiresAdaptiveThinking = modelId.includes("opus-4-7");
+
+      // CLI-verified: Opus 4.7 rejects requests that include the `temperature`
+      // inference parameter (Bedrock returns a ValidationException). All other
+      // Claude models still accept temperature.
+      const temperatureDeprecated = modelId.includes("opus-4-7");
+
       return {
+        requiresAdaptiveThinking,
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
@@ -140,12 +168,14 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsThinkingEffort,
         supportsToolChoice: true,
         supportsToolResultStatus: true, // Claude models support status field in tool results
+        temperatureDeprecated,
         toolResultFormat: "text",
       };
     }
     case "mistral": {
       // Mistral models require JSON format for tool results
       return {
+        requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
@@ -154,6 +184,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsThinkingEffort: false,
         supportsToolChoice: false,
         supportsToolResultStatus: false,
+        temperatureDeprecated: false,
         toolResultFormat: "json",
       };
     }
@@ -161,6 +192,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     case "openai": {
       // OpenAI models support tool choice but not prompt caching
       return {
+        requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
@@ -169,6 +201,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsThinkingEffort: false,
         supportsToolChoice: true,
         supportsToolResultStatus: false,
+        temperatureDeprecated: false,
         toolResultFormat: "text",
       };
     }
