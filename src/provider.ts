@@ -216,25 +216,32 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = m.inputModalities.includes(ModelModality.IMAGE);
 
-            // Determine tooltip suffix based on inference profile type
-            let tooltipSuffix = "";
-            if (hasInferenceProfile) {
-              tooltipSuffix = modelIdToUse.startsWith("global.")
-                ? " (Global Inference Profile)"
-                : " (Regional Inference Profile)";
-            }
+            // Classify the invocation route so the tooltip can state it plainly.
+            const route = hasInferenceProfile
+              ? modelIdToUse.startsWith("global.")
+                ? "Global inference profile"
+                : "Local/regional inference profile"
+              : "Direct foundation model";
 
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
                 imageInput: vision,
                 toolCalling: true,
               },
+              detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
               family: "bedrock",
               id: modelIdToUse,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: m.modelName,
-              tooltip: `Amazon Bedrock - ${m.providerName}${tooltipSuffix}`,
+              tooltip: this.formatTooltip({
+                maxInput,
+                maxOutput,
+                modelId: modelIdToUse,
+                providerName: m.providerName,
+                route,
+                vision,
+              }),
               version: "1.0.0",
             };
             infos.push(modelInfo);
@@ -269,12 +276,20 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 imageInput: vision,
                 toolCalling: true,
               },
+              detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
               family: "bedrock",
               id: profile.modelArn,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: profile.modelName,
-              tooltip: `Amazon Bedrock - ${profile.providerName} (Application Inference Profile)`,
+              tooltip: this.formatTooltip({
+                maxInput,
+                maxOutput,
+                modelId: modelIdForLimits,
+                providerName: profile.providerName,
+                route: "Application inference profile",
+                vision,
+              }),
               version: "1.0.0",
             };
             infos.push(profileInfo);
@@ -791,6 +806,80 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Build the inline detail string shown next to the model name in the picker.
+   * Format: "<context> ctx · <output>K out · <thinking-mode> · <vision>".
+   * The model ID is used only to consult getModelProfile for capability flags;
+   * display-side values (context and output) are the effective numeric limits.
+   */
+  private formatDetail(
+    modelId: string,
+    maxInput: number,
+    maxOutput: number,
+    vision: boolean,
+  ): string {
+    const profile = getModelProfile(modelId);
+    const ctxK = Math.round((maxInput + maxOutput) / 1000);
+    const outK = Math.round(maxOutput / 1000);
+    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M` : `${ctxK}K`;
+    const parts = [`${ctxLabel} ctx`, `${outK}K out`];
+
+    if (profile.requiresAdaptiveThinking) {
+      parts.push("adaptive thinking");
+    } else if (profile.supportsThinkingEffort) {
+      parts.push("adaptive or budget thinking");
+    } else if (profile.supportsThinking) {
+      parts.push("budget thinking");
+    }
+
+    if (vision) parts.push("vision");
+
+    return parts.join(" \u00B7 ");
+  }
+
+  /**
+   * Build a multi-line tooltip describing the model's capabilities and the
+   * Bedrock invocation route (direct model, regional/global inference profile,
+   * application inference profile, or manual entry). The route is surfaced so
+   * users can distinguish between, e.g., `us.anthropic.claude-opus-4-7` vs
+   * `global.anthropic.claude-opus-4-7` vs the base foundation model.
+   */
+  private formatTooltip(args: {
+    maxInput: number;
+    maxOutput: number;
+    modelId: string;
+    providerName: string;
+    route: string;
+    vision: boolean;
+  }): string {
+    const profile = getModelProfile(args.modelId);
+    const lines: string[] = [`Amazon Bedrock - ${args.providerName}`];
+    lines.push(`Route: ${args.route}`);
+    lines.push(`Model ID: ${args.modelId}`);
+
+    const ctxK = Math.round((args.maxInput + args.maxOutput) / 1000);
+    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M tokens` : `${ctxK}K tokens`;
+    lines.push(`Context: ${ctxLabel} | Max output: ${Math.round(args.maxOutput / 1000)}K tokens`);
+
+    if (profile.requiresAdaptiveThinking) {
+      lines.push("Thinking: adaptive only (uses output_config.effort)");
+    } else if (profile.supportsThinkingEffort) {
+      lines.push("Thinking: adaptive (recommended) or enabled+budget");
+    } else if (profile.supportsThinking) {
+      lines.push("Thinking: enabled+budget_tokens");
+    }
+
+    if (profile.temperatureDeprecated) {
+      lines.push("Note: temperature parameter is not supported");
+    }
+
+    if (args.vision) {
+      lines.push("Vision: image input supported");
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
    * Allow users with restricted permissions to manually supply a model or inference profile ID.
    */
   private async buildManualModelInformation(
@@ -823,12 +912,25 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           imageInput: likelyVisionCapable,
           toolCalling: true,
         },
+        detail: this.formatDetail(
+          baseModelId,
+          limits.maxInputTokens,
+          limits.maxOutputTokens,
+          likelyVisionCapable,
+        ),
         family: "bedrock",
         id: modelId,
         maxInputTokens: limits.maxInputTokens,
         maxOutputTokens: limits.maxOutputTokens,
         name: modelId,
-        tooltip: "Amazon Bedrock - manual model entry",
+        tooltip: this.formatTooltip({
+          maxInput: limits.maxInputTokens,
+          maxOutput: limits.maxOutputTokens,
+          modelId: baseModelId,
+          providerName: "Bedrock",
+          route: "Manual entry",
+          vision: likelyVisionCapable,
+        }),
         version: "1.0.0",
       };
     } catch (error) {
