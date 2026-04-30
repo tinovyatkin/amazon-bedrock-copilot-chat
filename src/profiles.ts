@@ -124,12 +124,15 @@ export function getModelProfile(modelId: string): ModelProfile {
     }
     case "anthropic": {
       // Claude models support tool choice and prompt caching
-      // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, and Sonnet 3.7
+      // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, Sonnet 3.7,
+      // and Haiku 4.5
       const supportsThinking =
         modelId.includes("opus-4") ||
         modelId.includes("sonnet-4") ||
         modelId.includes("sonnet-3-7") ||
-        modelId.includes("sonnet-3.7");
+        modelId.includes("sonnet-3.7") ||
+        modelId.includes("haiku-4-5") ||
+        modelId.includes("haiku-4.5");
 
       // Interleaved thinking (beta header) is only for Claude 4 models
       const requiresInterleavedThinkingHeader =
