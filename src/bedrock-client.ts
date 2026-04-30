@@ -361,10 +361,14 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
+    // - Regional/Global: starts with a 2-letter AWS region prefix or "global"
+    //   (us., eu., ap., ca., sa., me., af., il., cn., global.)
+    //   Restricted to known prefixes so we don't false-positive on vendor IDs
+    //   like `zai.glm-5` (zai is 3 letters but is NOT an AWS region prefix).
     // - Application: starts with "ip-" (ip-...)
-    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/... or application-inference-profile/...)
-    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
+    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...
+    //   or application-inference-profile/...)
+    const dotProfilePattern = /^(global|us|eu|ap|ca|sa|me|af|il|cn)\./;
     const arnProfilePattern =
       /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
     const appProfileIdPattern = /^ip-[a-z0-9]+/i;
@@ -398,8 +402,11 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID
-      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
+      // If GetInferenceProfile fails, assume it's a regular model ID.
+      // Cache the negative result (mapping to itself) so we don't hammer the
+      // API on every token-count call -- Copilot Chat issues many of those
+      // per turn and each round-trip adds noticeable latency.
+      this.inferenceProfileCache.set(modelId, modelId);
       logger.trace(
         `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
         error,
