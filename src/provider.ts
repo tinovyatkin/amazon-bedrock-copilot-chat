@@ -1,20 +1,20 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-  ConverseStreamCommandInput,
-  CountTokensCommandInput,
-  Message,
-  SystemContentBlock,
-  ToolConfiguration,
+    ConverseStreamCommandInput,
+    CountTokensCommandInput,
+    Message,
+    SystemContentBlock,
+    ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-  CancellationToken,
-  LanguageModelChatInformation,
-  LanguageModelChatMessage,
-  LanguageModelChatProvider,
-  LanguageModelResponsePart,
-  LanguageModelResponsePart2,
-  Progress,
+    CancellationToken,
+    LanguageModelChatInformation,
+    LanguageModelChatMessage,
+    LanguageModelChatProvider,
+    LanguageModelResponsePart,
+    LanguageModelResponsePart2,
+    Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
@@ -217,11 +217,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const vision = m.inputModalities.includes(ModelModality.IMAGE);
 
             // Classify the invocation route so the tooltip can state it plainly.
-            const route = hasInferenceProfile
-              ? modelIdToUse.startsWith("global.")
-                ? "Global inference profile"
-                : "Local/regional inference profile"
-              : "Direct foundation model";
+            let route: string;
+            if (!hasInferenceProfile) {
+              route = "Direct foundation model";
+            } else if (modelIdToUse.startsWith("global.")) {
+              route = "Global inference profile";
+            } else {
+              route = "Local/regional inference profile";
+            }
 
             const modelInfo: LanguageModelChatInformation = {
               capabilities: {
@@ -772,6 +775,81 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Apply extended-thinking-related fields (thinking, beta headers, optional
+   * output_config.effort, and the temperature override) to the request input.
+   * Extracted from configureAdditionalModelFields to keep cognitive complexity
+   * below the SonarJS threshold.
+   */
+  private applyExtendedThinkingFields(
+    requestInput: ConverseStreamCommandInput,
+    modelId: string,
+    budgetTokens: number,
+    betaHeaders: string[],
+    thinkingEffort: "high" | "low" | "medium" | undefined,
+    temperatureDeprecated: boolean | undefined,
+    requiresAdaptiveThinking: boolean | undefined,
+  ): void {
+    // Extended thinking normally requires temperature 1.0, but Claude Opus 4.7
+    // rejects any `temperature` parameter. For all other models, force 1.0.
+    if (!temperatureDeprecated) {
+      requestInput.inferenceConfig!.temperature = 1;
+    }
+
+    // CLI-verified: Claude Opus 4.7 rejects thinking.type="enabled" and
+    // requires thinking.type="adaptive" (with no budget_tokens). All other
+    // Claude models still use enabled+budget.
+    const thinkingField: { budget_tokens?: number; type: "adaptive" | "enabled" } =
+      requiresAdaptiveThinking
+        ? { type: "adaptive" }
+        : { budget_tokens: budgetTokens, type: "enabled" };
+
+    requestInput.additionalModelRequestFields = {
+      thinking: thinkingField,
+      ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
+      // Add thinking effort for Claude Opus 4.5 and Sonnet 4.6 (controls token expenditure)
+      ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
+    };
+
+    logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
+      anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+      budgetTokens: requiresAdaptiveThinking ? "(adaptive)" : budgetTokens,
+      interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
+      modelId,
+      supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
+      temperature: temperatureDeprecated ? "(omitted)" : 1,
+      thinkingEffort: thinkingEffort ?? "(not applicable)",
+      thinkingType: requiresAdaptiveThinking ? "adaptive" : "enabled",
+    });
+  }
+
+  /**
+   * Merge the OpenAI-style `reasoning_effort` field into
+   * additionalModelRequestFields, alongside anything already set by
+   * thinking/beta-header handling. Called last so the field coexists with
+   * Anthropic's `thinking` / `output_config` blocks.
+   *
+   * Only OpenAI gpt-oss accepts `minimal`; for other providers that opted in
+   * (DeepSeek V3.2, Kimi K2.x, Qwen3, GLM, MiniMax) `minimal` is clamped to
+   * `low` to avoid a Converse ValidationException.
+   */
+  private applyReasoningEffort(
+    requestInput: ConverseStreamCommandInput,
+    modelId: string,
+    reasoningEffort: ReasoningEffort,
+  ): void {
+    const resolved =
+      reasoningEffort === "minimal" && !modelId.startsWith("openai.") ? "low" : reasoningEffort;
+    requestInput.additionalModelRequestFields = {
+      ...((requestInput.additionalModelRequestFields ?? {}) as Record<string, unknown>),
+      reasoning_effort: resolved,
+    };
+    logger.debug("[Bedrock Model Provider] reasoning_effort set", {
+      modelId,
+      reasoningEffort: resolved,
+    });
+  }
+
+  /**
    * Build beta headers array for the request
    */
   private buildBetaHeaders(
@@ -803,80 +881,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     return anthropicBeta;
-  }
-
-  /**
-   * Build the inline detail string shown next to the model name in the picker.
-   * Format: "<context> ctx · <output>K out · <thinking-mode> · <vision>".
-   * The model ID is used only to consult getModelProfile for capability flags;
-   * display-side values (context and output) are the effective numeric limits.
-   */
-  private formatDetail(
-    modelId: string,
-    maxInput: number,
-    maxOutput: number,
-    vision: boolean,
-  ): string {
-    const profile = getModelProfile(modelId);
-    const ctxK = Math.round((maxInput + maxOutput) / 1000);
-    const outK = Math.round(maxOutput / 1000);
-    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M` : `${ctxK}K`;
-    const parts = [`${ctxLabel} ctx`, `${outK}K out`];
-
-    if (profile.requiresAdaptiveThinking) {
-      parts.push("adaptive thinking");
-    } else if (profile.supportsThinkingEffort) {
-      parts.push("adaptive or budget thinking");
-    } else if (profile.supportsThinking) {
-      parts.push("budget thinking");
-    }
-
-    if (vision) parts.push("vision");
-
-    return parts.join(" \u00B7 ");
-  }
-
-  /**
-   * Build a multi-line tooltip describing the model's capabilities and the
-   * Bedrock invocation route (direct model, regional/global inference profile,
-   * application inference profile, or manual entry). The route is surfaced so
-   * users can distinguish between, e.g., `us.anthropic.claude-opus-4-7` vs
-   * `global.anthropic.claude-opus-4-7` vs the base foundation model.
-   */
-  private formatTooltip(args: {
-    maxInput: number;
-    maxOutput: number;
-    modelId: string;
-    providerName: string;
-    route: string;
-    vision: boolean;
-  }): string {
-    const profile = getModelProfile(args.modelId);
-    const lines: string[] = [`Amazon Bedrock - ${args.providerName}`];
-    lines.push(`Route: ${args.route}`);
-    lines.push(`Model ID: ${args.modelId}`);
-
-    const ctxK = Math.round((args.maxInput + args.maxOutput) / 1000);
-    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M tokens` : `${ctxK}K tokens`;
-    lines.push(`Context: ${ctxLabel} | Max output: ${Math.round(args.maxOutput / 1000)}K tokens`);
-
-    if (profile.requiresAdaptiveThinking) {
-      lines.push("Thinking: adaptive only (uses output_config.effort)");
-    } else if (profile.supportsThinkingEffort) {
-      lines.push("Thinking: adaptive (recommended) or enabled+budget");
-    } else if (profile.supportsThinking) {
-      lines.push("Thinking: enabled+budget_tokens");
-    }
-
-    if (profile.temperatureDeprecated) {
-      lines.push("Note: temperature parameter is not supported");
-    }
-
-    if (args.vision) {
-      lines.push("Vision: image input supported");
-    }
-
-    return lines.join("\n");
   }
 
   /**
@@ -1122,63 +1126,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     requiresAdaptiveThinking?: boolean,
     reasoningEffort?: ReasoningEffort,
   ): void {
-    const applyReasoningEffort = (): void => {
-      if (!reasoningEffort) {
-        return;
-      }
-      // OpenAI gpt-oss accepts `minimal`; other providers only accept low/medium/high,
-      // so clamp `minimal` to `low` for non-OpenAI models.
-      const resolved =
-        reasoningEffort === "minimal" && !modelId.startsWith("openai.")
-          ? "low"
-          : reasoningEffort;
-      requestInput.additionalModelRequestFields = {
-        ...((requestInput.additionalModelRequestFields ?? {}) as Record<string, unknown>),
-        reasoning_effort: resolved,
-      };
-      logger.debug("[Bedrock Model Provider] reasoning_effort set", {
-        modelId,
-        reasoningEffort: resolved,
-      });
-    };
-
     if (extendedThinkingEnabled) {
-      // Extended thinking normally requires temperature 1.0, but Claude Opus 4.7
-      // rejects any `temperature` parameter. For all other models, force 1.0.
-      if (!temperatureDeprecated) {
-        requestInput.inferenceConfig!.temperature = 1;
-      }
-
-      // CLI-verified: Claude Opus 4.7 rejects thinking.type="enabled" and
-      // requires thinking.type="adaptive" (with no budget_tokens). All other
-      // Claude models still use enabled+budget.
-      const thinkingField: { budget_tokens?: number; type: "adaptive" | "enabled" } =
-        requiresAdaptiveThinking
-          ? { type: "adaptive" }
-          : { budget_tokens: budgetTokens, type: "enabled" };
-
-      requestInput.additionalModelRequestFields = {
-        thinking: thinkingField,
-        ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
-        // Add thinking effort for Claude Opus 4.5 and Sonnet 4.6 (controls token expenditure)
-        ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
-      };
-
-      logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
-        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
-        budgetTokens: requiresAdaptiveThinking ? "(adaptive)" : budgetTokens,
-        interleavedThinking: betaHeaders.includes("interleaved-thinking-2025-05-14"),
+      this.applyExtendedThinkingFields(
+        requestInput,
         modelId,
-        supports1MContext: betaHeaders.includes("context-1m-2025-08-07"),
-        temperature: temperatureDeprecated ? "(omitted)" : 1,
-        thinkingEffort: thinkingEffort ?? "(not applicable)",
-        thinkingType: requiresAdaptiveThinking ? "adaptive" : "enabled",
-      });
-      applyReasoningEffort();
-      return;
-    }
-
-    if (thinkingEffort) {
+        budgetTokens,
+        betaHeaders,
+        thinkingEffort,
+        temperatureDeprecated,
+        requiresAdaptiveThinking,
+      );
+    } else if (thinkingEffort) {
       // Claude Opus 4.5 and Sonnet 4.6 effort parameter can be used even without extended thinking
       // This affects all token spend including tool calls
       requestInput.additionalModelRequestFields = {
@@ -1191,11 +1149,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         modelId,
         thinkingEffort,
       });
-      applyReasoningEffort();
-      return;
-    }
-
-    if (betaHeaders.length > 0) {
+    } else if (betaHeaders.length > 0) {
       // Add beta headers even without thinking or effort
       requestInput.additionalModelRequestFields = {
         anthropic_beta: betaHeaders,
@@ -1204,7 +1158,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       logger.debug("[Bedrock Model Provider] 1M context enabled", { modelId });
     }
 
-    applyReasoningEffort();
+    if (reasoningEffort) {
+      this.applyReasoningEffort(requestInput, modelId, reasoningEffort);
+    }
   }
 
   /**
@@ -1455,6 +1411,83 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       `[Bedrock Model Provider] No accessible inference profile or base model for ${candidate.model.modelId}`,
     );
     return { ...candidate, isAccessible: false };
+  }
+
+  /**
+   * Build the inline detail string shown next to the model name in the picker.
+   * Format: "<context> ctx · <output>K out · <thinking-mode> · <vision>".
+   * The model ID is used only to consult getModelProfile for capability flags;
+   * display-side values (context and output) are the effective numeric limits.
+   */
+  private formatDetail(
+    modelId: string,
+    maxInput: number,
+    maxOutput: number,
+    vision: boolean,
+  ): string {
+    const profile = getModelProfile(modelId);
+    const ctxK = Math.round((maxInput + maxOutput) / 1000);
+    const outK = Math.round(maxOutput / 1000);
+    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M` : `${ctxK}K`;
+
+    let thinkingDescription: string | undefined;
+    if (profile.requiresAdaptiveThinking) {
+      thinkingDescription = "adaptive thinking";
+    } else if (profile.supportsThinkingEffort) {
+      thinkingDescription = "adaptive or budget thinking";
+    } else if (profile.supportsThinking) {
+      thinkingDescription = "budget thinking";
+    }
+
+    const parts = [
+      `${ctxLabel} ctx`,
+      `${outK}K out`,
+      ...(thinkingDescription ? [thinkingDescription] : []),
+      ...(vision ? ["vision"] : []),
+    ];
+
+    return parts.join(" \u00B7 ");
+  }
+
+  /**
+   * Build a multi-line tooltip describing the model's capabilities and the
+   * Bedrock invocation route (direct model, regional/global inference profile,
+   * application inference profile, or manual entry). The route is surfaced so
+   * users can distinguish between, e.g., `us.anthropic.claude-opus-4-7` vs
+   * `global.anthropic.claude-opus-4-7` vs the base foundation model.
+   */
+  private formatTooltip(args: {
+    maxInput: number;
+    maxOutput: number;
+    modelId: string;
+    providerName: string;
+    route: string;
+    vision: boolean;
+  }): string {
+    const profile = getModelProfile(args.modelId);
+    const ctxK = Math.round((args.maxInput + args.maxOutput) / 1000);
+    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M tokens` : `${ctxK}K tokens`;
+
+    let thinkingLine: string | undefined;
+    if (profile.requiresAdaptiveThinking) {
+      thinkingLine = "Thinking: adaptive only (uses output_config.effort)";
+    } else if (profile.supportsThinkingEffort) {
+      thinkingLine = "Thinking: adaptive (recommended) or enabled+budget";
+    } else if (profile.supportsThinking) {
+      thinkingLine = "Thinking: enabled+budget_tokens";
+    }
+
+    const lines = [
+      `Amazon Bedrock - ${args.providerName}`,
+      `Route: ${args.route}`,
+      `Model ID: ${args.modelId}`,
+      `Context: ${ctxLabel} | Max output: ${Math.round(args.maxOutput / 1000)}K tokens`,
+      ...(thinkingLine ? [thinkingLine] : []),
+      ...(profile.temperatureDeprecated ? ["Note: temperature parameter is not supported"] : []),
+      ...(args.vision ? ["Vision: image input supported"] : []),
+    ];
+
+    return lines.join("\n");
   }
 
   /**

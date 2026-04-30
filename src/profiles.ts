@@ -103,14 +103,26 @@ export function getModelProfile(modelId: string): ModelProfile {
 
   const provider = parts[0];
 
-  // Provider-specific profiles
+  // Provider-specific profiles. Cases are alphabetical to satisfy the
+  // perfectionist/sort-switch-case lint rule.
   switch (provider) {
     case "ai21":
-
     case "cohere":
-    case "meta": {
-      // Older models don't support tool choice
-      return defaultProfile;
+    case "google":
+    case "meta":
+    case "nvidia": {
+      // CLI-verified tool-calling opt-ins with no reasoning/thinking support:
+      // - AI21 Jamba 1.5 supports tool calling
+      // - Cohere Command R/R+ support tool calling
+      // - Google Gemma 3 supports tool calling (reasoning_effort silently
+      //   ignored, so not advertised)
+      // - Meta Llama 3/3.1/3.2/3.3/4 all support tool calling via Converse
+      // - NVIDIA Nemotron supports tool calling (reasoning_effort silently
+      //   ignored, no reasoningContent emitted -- not advertised)
+      //
+      // Older J2/Command/Llama2 variants that predate tool calling are no
+      // longer surfaced on current Bedrock, so the blanket opt-in is safe.
+      return { ...defaultProfile, supportsToolChoice: true };
     }
 
     case "amazon": {
@@ -134,6 +146,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       }
       return defaultProfile;
     }
+
     case "anthropic": {
       // Claude models support tool choice and prompt caching
       // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, Sonnet 3.7,
@@ -188,8 +201,46 @@ export function getModelProfile(modelId: string): ModelProfile {
         toolResultFormat: "text",
       };
     }
+
+    case "deepseek": {
+      // CLI-verified: DeepSeek V3.2 supports tool calling and the
+      // reasoning_effort parameter. DeepSeek R1 is a reasoning-only model
+      // with always-on thinking -- it rejects tool configs and the
+      // reasoning_effort parameter, so we opt it out of both.
+      const isR1 = modelId.includes("r1");
+      return {
+        ...defaultProfile,
+        supportsReasoningEffort: !isR1,
+        supportsToolChoice: !isR1,
+      };
+    }
+
+    case "minimax":
+    case "moonshot":
+    case "moonshotai":
+    case "qwen":
+    case "zai": {
+      // CLI-verified: all of MiniMax M2.x, Moonshot Kimi K2.x, Qwen3
+      // (dense/VL/Coder/Next), and Z.AI GLM 4.7/5 support both tool calling
+      // and the OpenAI-style reasoning_effort parameter via Converse.
+      return {
+        ...defaultProfile,
+        supportsReasoningEffort: true,
+        supportsToolChoice: true,
+      };
+    }
+
     case "mistral": {
-      // Mistral models require JSON format for tool results
+      // CLI-verified: modern Mistral models on Bedrock (Large 3, Pixtral Large,
+      // Magistral, Ministral 3, Devstral 2, Voxtral) all support tool calling
+      // via the Converse API. The two legacy models -- mistral-7b-instruct and
+      // mixtral-8x7b-instruct -- predate tool calling and are still listed by
+      // Bedrock; they must be opted out individually.
+      //
+      // Mistral expects tool results in JSON form rather than plain text.
+      // reasoning_effort is silently ignored on this family.
+      const isLegacyNonTool =
+        modelId.includes("mistral-7b-instruct") || modelId.includes("mixtral-8x7b-instruct");
       return {
         requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
@@ -199,7 +250,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsReasoningEffort: false,
         supportsThinking: false,
         supportsThinkingEffort: false,
-        supportsToolChoice: false,
+        supportsToolChoice: !isLegacyNonTool,
         supportsToolResultStatus: false,
         temperatureDeprecated: false,
         toolResultFormat: "json",
@@ -224,6 +275,15 @@ export function getModelProfile(modelId: string): ModelProfile {
         temperatureDeprecated: false,
         toolResultFormat: "text",
       };
+    }
+
+    case "writer": {
+      // CLI-verified: Palmyra X4/X5 support tool calling (via inference
+      // profile). Palmyra Vision 7B is vision-only and rejects tool configs.
+      if (modelId.includes("vision")) {
+        return defaultProfile;
+      }
+      return { ...defaultProfile, supportsToolChoice: true };
     }
 
     default: {
