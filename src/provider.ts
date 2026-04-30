@@ -24,7 +24,7 @@ import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits } from "./profiles";
-import { getBedrockSettings } from "./settings";
+import { getBedrockSettings, type ReasoningEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
@@ -592,6 +592,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         thinkingEffortEnabled ? settings.thinking.effort : undefined,
         modelProfile.temperatureDeprecated,
         modelProfile.requiresAdaptiveThinking,
+        modelProfile.supportsReasoningEffort ? settings.reasoningEffort : undefined,
       );
 
       // Log request details
@@ -920,6 +921,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     thinkingEffort?: "high" | "low" | "medium",
     temperatureDeprecated?: boolean,
     requiresAdaptiveThinking?: boolean,
+    reasoningEffort?: ReasoningEffort,
   ): ConverseStreamCommandInput {
     const requestInput: ConverseStreamCommandInput = {
       inferenceConfig: {
@@ -972,6 +974,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       thinkingEffort,
       temperatureDeprecated,
       requiresAdaptiveThinking,
+      reasoningEffort,
     );
 
     return requestInput;
@@ -1015,7 +1018,28 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     thinkingEffort?: "high" | "low" | "medium",
     temperatureDeprecated?: boolean,
     requiresAdaptiveThinking?: boolean,
+    reasoningEffort?: ReasoningEffort,
   ): void {
+    const applyReasoningEffort = (): void => {
+      if (!reasoningEffort) {
+        return;
+      }
+      // OpenAI gpt-oss accepts `minimal`; other providers only accept low/medium/high,
+      // so clamp `minimal` to `low` for non-OpenAI models.
+      const resolved =
+        reasoningEffort === "minimal" && !modelId.startsWith("openai.")
+          ? "low"
+          : reasoningEffort;
+      requestInput.additionalModelRequestFields = {
+        ...((requestInput.additionalModelRequestFields ?? {}) as Record<string, unknown>),
+        reasoning_effort: resolved,
+      };
+      logger.debug("[Bedrock Model Provider] reasoning_effort set", {
+        modelId,
+        reasoningEffort: resolved,
+      });
+    };
+
     if (extendedThinkingEnabled) {
       // Extended thinking normally requires temperature 1.0, but Claude Opus 4.7
       // rejects any `temperature` parameter. For all other models, force 1.0.
@@ -1048,6 +1072,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         thinkingEffort: thinkingEffort ?? "(not applicable)",
         thinkingType: requiresAdaptiveThinking ? "adaptive" : "enabled",
       });
+      applyReasoningEffort();
       return;
     }
 
@@ -1064,6 +1089,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         modelId,
         thinkingEffort,
       });
+      applyReasoningEffort();
       return;
     }
 
@@ -1075,6 +1101,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       logger.debug("[Bedrock Model Provider] 1M context enabled", { modelId });
     }
+
+    applyReasoningEffort();
   }
 
   /**

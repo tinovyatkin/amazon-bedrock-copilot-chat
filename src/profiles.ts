@@ -28,6 +28,16 @@ export interface ModelProfile {
    */
   supportsPromptCaching: boolean;
   /**
+   * Whether the model accepts the OpenAI-style `reasoning_effort` field via
+   * additionalModelRequestFields. Valid values: low | medium | high (and
+   * `minimal` for OpenAI gpt-oss only -- handled at the call site).
+   *
+   * Only opt in when CLI-verified that the model actually produces reasoning
+   * content for the parameter; models that silently ignore the field (e.g.
+   * Mistral, Google Gemma, NVIDIA Nemotron) should leave this false.
+   */
+  supportsReasoningEffort: boolean;
+  /**
    * Whether the model supports extended thinking (Claude Opus 4.6, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Sonnet 3.7)
    */
   supportsThinking: boolean;
@@ -75,6 +85,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     supports1MContext: false,
     supportsCachingWithToolResults: false,
     supportsPromptCaching: false,
+    supportsReasoningEffort: false,
     supportsThinking: false,
     supportsThinkingEffort: false,
     supportsToolChoice: false,
@@ -112,6 +123,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           supports1MContext: false,
           supportsCachingWithToolResults: false,
           supportsPromptCaching: true,
+          supportsReasoningEffort: false,
           supportsThinking: false,
           supportsThinkingEffort: false,
           supportsToolChoice: true,
@@ -167,6 +179,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
         supportsPromptCaching: true,
+        supportsReasoningEffort: false, // Anthropic uses thinking.* / output_config.effort, not reasoning_effort
         supportsThinking,
         supportsThinkingEffort,
         supportsToolChoice: true,
@@ -183,6 +196,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supports1MContext: false,
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
+        supportsReasoningEffort: false,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: false,
@@ -193,13 +207,16 @@ export function getModelProfile(modelId: string): ModelProfile {
     }
 
     case "openai": {
-      // OpenAI models support tool choice but not prompt caching
+      // OpenAI gpt-oss models support tool choice AND the OpenAI-style
+      // `reasoning_effort` parameter (CLI-verified: low | medium | high work;
+      // `minimal` is OpenAI-only; `max` is rejected).
       return {
         requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
         supportsPromptCaching: false,
+        supportsReasoningEffort: true,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,
