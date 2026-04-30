@@ -244,6 +244,15 @@ function getClaudeTokenLimits(
   normalizedModelId: string,
   enable1MContext: boolean,
 ): ModelTokenLimits {
+  // Claude Opus 4.7: always 1M context, 128K max output (per Anthropic docs).
+  // Opus 4.7 does not require the context-1m-* beta header -- 1M is the default.
+  if (normalizedModelId.includes("opus-4-7")) {
+    return {
+      maxInputTokens: 1_000_000 - 128_000,
+      maxOutputTokens: 128_000,
+    };
+  }
+
   // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output
   // https://platform.claude.com - Opus 4.6 supports 128K output and optional 1M context
   if (normalizedModelId.includes("opus-4-6")) {
@@ -274,9 +283,21 @@ function getClaudeTokenLimits(
     return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
-  // Claude Opus 4.5, 4.1 and 4: 200K context, 64K output
-  if (normalizedModelId.includes("opus-4")) {
+  // Claude Opus 4.5: 200K context, 64K output (per Anthropic docs)
+  if (normalizedModelId.includes("opus-4-5")) {
     return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32000)
+  // Upstream previously used 64K output; Anthropic's published limit is 32K.
+  if (normalizedModelId.includes("opus-4-1")) {
+    return { maxInputTokens: 200_000 - 32_000, maxOutputTokens: 32_000 };
+  }
+
+  // Claude Opus 4: 200K context, 32K output (AWS-verified limit: 32768)
+  // Upstream previously used 64K output; Anthropic's published limit is 32K.
+  if (normalizedModelId.includes("opus-4")) {
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
   }
 
   // Claude Haiku 4.5: 200K context, 64K output
@@ -328,10 +349,15 @@ function normalizeModelId(modelId: string): string {
 
 /**
  * Check if a model supports 1M context window
- * Claude Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support extended 1M context via anthropic_beta parameter
+ * Claude Opus 4.7 (always), Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support
+ * extended 1M context via anthropic_beta parameter.
  */
 function supports1MContext(modelId: string): boolean {
-  return modelId.includes("opus-4-6") || modelId.includes("sonnet-4");
+  return (
+    modelId.includes("opus-4-7") ||
+    modelId.includes("opus-4-6") ||
+    modelId.includes("sonnet-4")
+  );
 }
 
 /**
