@@ -52,6 +52,14 @@ export class BedrockAPIClient {
 
   private region: string;
 
+  // Cache of model IDs for which the CountTokens API is unsupported in the current
+  // region/partition (e.g. some application inference profiles, or newer models that
+  // have not yet been added to CountTokens). Once we see the first failure we stop
+  // hitting the network for subsequent calls -- Copilot Chat invokes
+  // provideTokenCount many times per turn while assembling tool-heavy requests, so
+  // retrying every call adds perceptible latency and log noise.
+  private readonly unsupportedCountTokensModels = new Set<string>();
+
   constructor(region: string, profileName?: string) {
     this.region = region;
     this.profileName = profileName;
@@ -75,9 +83,25 @@ export class BedrockAPIClient {
     input: CountTokensCommandInput["input"],
     abortSignal?: AbortSignal,
   ): Promise<number | undefined> {
+    // If we already know CountTokens is unsupported for this model in this region,
+    // short-circuit so the caller can fall back to estimation without hitting the
+    // network.
+    if (this.unsupportedCountTokensModels.has(modelId)) {
+      return undefined;
+    }
+
+    let baseModelId: string | undefined;
     try {
       // Resolve the base model ID (uses GetInferenceProfile API for cross-region profiles)
-      const baseModelId = await this.resolveModelId(modelId, abortSignal);
+      baseModelId = await this.resolveModelId(modelId, abortSignal);
+
+      // Also check the resolved base model ID -- once we know the underlying
+      // foundation model doesn't support CountTokens, don't re-issue the request
+      // for other inference profiles that resolve to the same base model.
+      if (baseModelId !== modelId && this.unsupportedCountTokensModels.has(baseModelId)) {
+        this.unsupportedCountTokensModels.add(modelId);
+        return undefined;
+      }
 
       const command = new CountTokensCommand({
         input,
@@ -93,6 +117,16 @@ export class BedrockAPIClient {
 
       return response.inputTokens;
     } catch (error) {
+      // Don't cache cancellations -- the user just aborted this particular call.
+      const isAbort =
+        error instanceof Error && (error.name === "AbortError" || abortSignal?.aborted);
+      if (!isAbort) {
+        this.unsupportedCountTokensModels.add(modelId);
+        if (baseModelId && baseModelId !== modelId) {
+          this.unsupportedCountTokensModels.add(baseModelId);
+        }
+      }
+
       // Log detailed error information at trace level for debugging
       logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
         error:
@@ -106,9 +140,11 @@ export class BedrockAPIClient {
         modelId,
       });
 
-      // If the CountTokens API is not supported for this model/region, return undefined
-      // The caller should fall back to estimation
-      logger.debug(
+      // If the CountTokens API is not supported for this model/region, return undefined.
+      // The caller should fall back to estimation. Logged at trace level because Copilot
+      // Chat calls provideTokenCount many times per turn -- one line per call would
+      // flood the output channel.
+      logger.trace(
         `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
