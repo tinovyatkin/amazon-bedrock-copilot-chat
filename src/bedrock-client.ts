@@ -740,8 +740,11 @@ export class BedrockAPIClient {
       return undefined;
     }
 
-    const metadata = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
-    return metadata?.httpStatusCode;
+    const errorWithStatus = error as {
+      $metadata?: { httpStatusCode?: number };
+      $response?: { statusCode?: number };
+    };
+    return errorWithStatus.$metadata?.httpStatusCode ?? errorWithStatus.$response?.statusCode;
   }
 
   private getProfileCredentialsProvider(
@@ -802,8 +805,10 @@ export class BedrockAPIClient {
     const message = this.getErrorMessage(error);
     return (
       code === "ValidationException" &&
-      /count\s*tokens|counttokens/i.test(message) &&
-      /not supported|unsupported|not available/i.test(message)
+      /count\s*tokens|counttokens|token counting/i.test(message) &&
+      /does not (?:currently )?support|not supported|unsupported|not available|not yet enabled/i.test(
+        message,
+      )
     );
   }
 

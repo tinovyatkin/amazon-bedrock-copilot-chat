@@ -15,11 +15,22 @@ interface MockSendClient {
 
 const countTokensInput = {} as Parameters<BedrockAPIClient["countTokens"]>[1];
 
-function awsError(name: string, message: string, httpStatusCode?: number): Error {
-  const error = new Error(message) as Error & { $metadata?: { httpStatusCode: number } };
+function awsError(
+  name: string,
+  message: string,
+  httpStatusCode?: number,
+  responseStatusCode?: number,
+): Error {
+  const error = new Error(message) as Error & {
+    $metadata?: { httpStatusCode: number };
+    $response?: { statusCode: number };
+  };
   error.name = name;
   if (httpStatusCode) {
     error.$metadata = { httpStatusCode };
+  }
+  if (responseStatusCode) {
+    error.$response = { statusCode: responseStatusCode };
   }
   return error;
 }
@@ -58,6 +69,47 @@ suite("BedrockAPIClient unit tests", () => {
         send: async () => {
           countTokensCalls += 1;
           throw awsError("ResourceNotFoundException", "Model does not support CountTokens", 404);
+        },
+      };
+
+      await client.countTokens("openai.gpt-oss-120b-1:0", countTokensInput);
+      await client.countTokens("openai.gpt-oss-120b-1:0", countTokensInput);
+
+      assert.equal(countTokensCalls, 1);
+      assert.equal(state.unsupportedCountTokensModels.has("openai.gpt-oss-120b-1:0"), true);
+    });
+
+    test("caches current CountTokens unsupported validation messages", async () => {
+      const client = new BedrockAPIClient("us-east-1");
+      const state = internals(client);
+      let countTokensCalls = 0;
+
+      state.bedrockRuntimeClient = {
+        send: async () => {
+          countTokensCalls += 1;
+          throw awsError(
+            "ValidationException",
+            "CountTokens API does not currently support this model.",
+          );
+        },
+      };
+
+      await client.countTokens("openai.gpt-oss-120b-1:0", countTokensInput);
+      await client.countTokens("openai.gpt-oss-120b-1:0", countTokensInput);
+
+      assert.equal(countTokensCalls, 1);
+      assert.equal(state.unsupportedCountTokensModels.has("openai.gpt-oss-120b-1:0"), true);
+    });
+
+    test("caches structured not-found CountTokens responses", async () => {
+      const client = new BedrockAPIClient("us-east-1");
+      const state = internals(client);
+      let countTokensCalls = 0;
+
+      state.bedrockRuntimeClient = {
+        send: async () => {
+          countTokensCalls += 1;
+          throw awsError("ValidationException", "Model lookup failed", undefined, 404);
         },
       };
 

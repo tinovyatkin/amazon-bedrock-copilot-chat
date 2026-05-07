@@ -148,7 +148,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
       );
-      const modelId = "global.anthropic.claude-opus-4-6-20251124-v1:0";
+      const modelId = "global.anthropic.claude-opus-4-6-v1";
 
       const betaHeaders = provider.buildBetaHeaders(
         getModelProfile(modelId),
@@ -197,7 +197,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
       );
-      const modelId = "anthropic.claude-opus-4-6-20251124-v1:0";
+      const modelId = "anthropic.claude-opus-4-6-v1";
 
       const detail = provider.formatDetail(modelId, 872_000, 128_000, false);
       const tooltip = provider.formatTooltip({

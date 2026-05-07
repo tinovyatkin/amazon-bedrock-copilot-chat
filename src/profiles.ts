@@ -374,10 +374,10 @@ function getClaudeTokenLimits(
     return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
-  // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32000)
+  // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32768)
   // Upstream previously used 64K output; Anthropic's published limit is 32K.
   if (normalizedModelId.includes("opus-4-1")) {
-    return { maxInputTokens: 200_000 - 32_000, maxOutputTokens: 32_000 };
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
   }
 
   // Claude Opus 4: 200K context, 32K output (AWS-verified limit: 32768)
