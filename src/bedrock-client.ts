@@ -117,10 +117,7 @@ export class BedrockAPIClient {
 
       return response.inputTokens;
     } catch (error) {
-      // Don't cache cancellations -- the user just aborted this particular call.
-      const isAbort =
-        error instanceof Error && (error.name === "AbortError" || abortSignal?.aborted);
-      if (!isAbort) {
+      if (this.isUnsupportedCountTokensError(error, abortSignal)) {
         this.unsupportedCountTokensModels.add(modelId);
         if (baseModelId && baseModelId !== modelId) {
           this.unsupportedCountTokensModels.add(baseModelId);
@@ -438,11 +435,11 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID.
-      // Cache the negative result (mapping to itself) so we don't hammer the
-      // API on every token-count call -- Copilot Chat issues many of those
-      // per turn and each round-trip adds noticeable latency.
-      this.inferenceProfileCache.set(modelId, modelId);
+      // If GetInferenceProfile fails, assume it's a regular model ID. Only
+      // cache definite misses; transient errors and cancellations should retry.
+      if (this.isResourceNotFoundError(error) && !this.isAbortError(error, abortSignal)) {
+        this.inferenceProfileCache.set(modelId, modelId);
+      }
       logger.trace(
         `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
         error,
@@ -724,6 +721,29 @@ export class BedrockAPIClient {
       : base;
   }
 
+  private getErrorCode(error: unknown): string | undefined {
+    if (typeof error !== "object" || error === null) {
+      return undefined;
+    }
+
+    const record = error as Record<string, unknown>;
+    const code = record.code ?? record.Code ?? record.name;
+    return typeof code === "string" ? code : undefined;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private getHttpStatusCode(error: unknown): number | undefined {
+    if (typeof error !== "object" || error === null) {
+      return undefined;
+    }
+
+    const metadata = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
+    return metadata?.httpStatusCode;
+  }
+
   private getProfileCredentialsProvider(
     profile: string,
     options?: { stsRegion?: string },
@@ -758,12 +778,42 @@ export class BedrockAPIClient {
     return wrapped;
   }
 
+  private isAbortError(error: unknown, abortSignal?: AbortSignal): boolean {
+    return abortSignal?.aborted === true || (error instanceof Error && error.name === "AbortError");
+  }
+
+  private isResourceNotFoundError(error: unknown): boolean {
+    return (
+      this.getHttpStatusCode(error) === 404 ||
+      this.getErrorCode(error) === "ResourceNotFoundException"
+    );
+  }
+
+  private isUnsupportedCountTokensError(error: unknown, abortSignal?: AbortSignal): boolean {
+    if (this.isAbortError(error, abortSignal)) {
+      return false;
+    }
+
+    if (this.isResourceNotFoundError(error)) {
+      return true;
+    }
+
+    const code = this.getErrorCode(error);
+    const message = this.getErrorMessage(error);
+    return (
+      code === "ValidationException" &&
+      /count\s*tokens|counttokens/i.test(message) &&
+      /not supported|unsupported|not available/i.test(message)
+    );
+  }
+
   private recreateClients(): void {
     this.bedrockClient = new BedrockClient(this.getClientConfig());
     this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
 
-    // Clear inference profile cache since profiles may differ across regions/credentials
+    // Clear context-scoped caches since model support can differ across regions/credentials
     this.inferenceProfileCache.clear();
+    this.unsupportedCountTokensModels.clear();
   }
 
   /**

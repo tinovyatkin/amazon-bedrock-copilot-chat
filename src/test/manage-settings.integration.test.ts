@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 
 import { getBedrockRegionsFromSSM } from "../commands/manage-settings";
+import { shouldRunAwsIntegrationTests } from "./aws-integration";
 
 /**
  * Integration tests for manage-settings.ts
@@ -14,10 +15,16 @@ import { getBedrockRegionsFromSSM } from "../commands/manage-settings";
  * - IAM permissions for ssm:GetParametersByPath
  *
  * To run these tests:
- *   bun run test
+ *   RUN_AWS_INTEGRATION_TESTS=1 bun run test
  */
 
 suite("getBedrockRegionsFromSSM Integration Tests", () => {
+  setup(function () {
+    if (!shouldRunAwsIntegrationTests()) {
+      this.skip();
+    }
+  });
+
   test("should fetch Bedrock regions from SSM Parameter Store", async function () {
     this.timeout(30_000); // Allow 30 seconds for AWS API call
 

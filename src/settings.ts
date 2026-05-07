@@ -132,8 +132,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const validReasoningEffortValues: ReasoningEffort[] = ["high", "low", "medium", "minimal"];
   const rawReasoningEffort = config.get<string>("reasoningEffort");
   const reasoningEffort: ReasoningEffort | undefined =
-    rawReasoningEffort &&
-    validReasoningEffortValues.includes(rawReasoningEffort as ReasoningEffort)
+    rawReasoningEffort && validReasoningEffortValues.includes(rawReasoningEffort as ReasoningEffort)
       ? (rawReasoningEffort as ReasoningEffort)
       : undefined;
 

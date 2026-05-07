@@ -4,8 +4,38 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
+import { getModelProfile } from "../profiles";
 import { BedrockChatModelProvider } from "../provider";
 import type { BedrockModelSummary } from "../types";
+
+interface ProviderInternals {
+  applyReasoningEffort: (
+    requestInput: { additionalModelRequestFields?: Record<string, unknown> },
+    modelId: string,
+    baseModelId: string,
+    reasoningEffort: "high" | "low" | "medium" | "minimal",
+  ) => void;
+  buildBetaHeaders: (
+    modelProfile: ReturnType<typeof getModelProfile>,
+    modelId: string,
+    extendedThinkingEnabled: boolean,
+    context1MEnabled: boolean,
+    thinkingEffortEnabled: boolean,
+  ) => string[];
+  formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
+  formatTooltip: (args: {
+    maxInput: number;
+    maxOutput: number;
+    modelId: string;
+    providerName: string;
+    route: string;
+    vision: boolean;
+  }) => string;
+}
+
+function providerInternals(provider: BedrockChatModelProvider): ProviderInternals {
+  return provider as unknown as ProviderInternals;
+}
 
 // Mock implementations extracted to avoid function nesting depth issues
 const mockSecretStorage = {
@@ -93,6 +123,96 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
       assert.equal(typeof est, "number");
       assert.ok(est > 0);
+    });
+
+    test("does not add 1M context beta header for Opus 4.7", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "anthropic.claude-opus-4-7-20260420-v1:0";
+
+      const betaHeaders = provider.buildBetaHeaders(
+        getModelProfile(modelId),
+        modelId,
+        true,
+        true,
+        true,
+      );
+
+      assert.equal(betaHeaders.includes("context-1m-2025-08-07"), false);
+      assert.equal(betaHeaders.includes("interleaved-thinking-2025-05-14"), true);
+      assert.equal(betaHeaders.includes("effort-2025-11-24"), true);
+    });
+
+    test("adds 1M context beta header for models that require opt-in", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "global.anthropic.claude-opus-4-6-20251124-v1:0";
+
+      const betaHeaders = provider.buildBetaHeaders(
+        getModelProfile(modelId),
+        modelId,
+        false,
+        true,
+        false,
+      );
+
+      assert.deepStrictEqual(betaHeaders, ["context-1m-2025-08-07"]);
+    });
+
+    test("keeps minimal reasoning effort for routed OpenAI models", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput: { additionalModelRequestFields?: Record<string, unknown> } = {};
+
+      provider.applyReasoningEffort(
+        requestInput,
+        "global.openai.gpt-oss-120b-1:0",
+        "openai.gpt-oss-120b-1:0",
+        "minimal",
+      );
+
+      assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, "minimal");
+    });
+
+    test("downgrades minimal reasoning effort for non-OpenAI models", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput: { additionalModelRequestFields?: Record<string, unknown> } = {};
+
+      provider.applyReasoningEffort(
+        requestInput,
+        "global.qwen.qwen3-coder-480b-a35b-v1:0",
+        "qwen.qwen3-coder-480b-a35b-v1:0",
+        "minimal",
+      );
+
+      assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, "low");
+    });
+
+    test("labels non-adaptive effort-capable Claude models as budget thinking", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "anthropic.claude-opus-4-6-20251124-v1:0";
+
+      const detail = provider.formatDetail(modelId, 872_000, 128_000, false);
+      const tooltip = provider.formatTooltip({
+        maxInput: 872_000,
+        maxOutput: 128_000,
+        modelId,
+        providerName: "Anthropic",
+        route: "Direct foundation model",
+        vision: false,
+      });
+
+      assert.match(detail, /budget thinking/);
+      assert.doesNotMatch(detail, /adaptive/);
+      assert.match(tooltip, /enabled\+budget_tokens/);
+      assert.doesNotMatch(tooltip, /adaptive/);
     });
   });
 

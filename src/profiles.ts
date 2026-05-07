@@ -315,6 +315,15 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
 }
 
 /**
+ * Check if a model needs the 1M context beta header when 1M context is enabled.
+ * Claude Opus 4.7 is 1M-by-default and must not receive the beta header.
+ */
+export function requires1MContextBetaHeader(modelId: string): boolean {
+  const normalizedModelId = normalizeModelId(modelId);
+  return normalizedModelId.includes("opus-4-6") || normalizedModelId.includes("sonnet-4");
+}
+
+/**
  * Get token limits for a Claude model based on its normalized model ID
  */
 function getClaudeTokenLimits(
@@ -427,14 +436,11 @@ function normalizeModelId(modelId: string): string {
 /**
  * Check if a model supports 1M context window
  * Claude Opus 4.7 (always), Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support
- * extended 1M context via anthropic_beta parameter.
+ * extended 1M context.
  */
 function supports1MContext(modelId: string): boolean {
-  return (
-    modelId.includes("opus-4-7") ||
-    modelId.includes("opus-4-6") ||
-    modelId.includes("sonnet-4")
-  );
+  const normalizedModelId = normalizeModelId(modelId);
+  return normalizedModelId.includes("opus-4-7") || requires1MContextBetaHeader(normalizedModelId);
 }
 
 /**

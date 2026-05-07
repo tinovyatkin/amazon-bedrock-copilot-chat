@@ -95,7 +95,10 @@
           "scope": "resource"
         },
         "bedrock.reasoningEffort": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "enum": [
             null,

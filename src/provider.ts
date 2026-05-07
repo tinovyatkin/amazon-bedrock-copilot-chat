@@ -1,20 +1,20 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-    ConverseStreamCommandInput,
-    CountTokensCommandInput,
-    Message,
-    SystemContentBlock,
-    ToolConfiguration,
+  ConverseStreamCommandInput,
+  CountTokensCommandInput,
+  Message,
+  SystemContentBlock,
+  ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-    CancellationToken,
-    LanguageModelChatInformation,
-    LanguageModelChatMessage,
-    LanguageModelChatProvider,
-    LanguageModelResponsePart,
-    LanguageModelResponsePart2,
-    Progress,
+  CancellationToken,
+  LanguageModelChatInformation,
+  LanguageModelChatMessage,
+  LanguageModelChatProvider,
+  LanguageModelResponsePart,
+  LanguageModelResponsePart2,
+  Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
@@ -23,7 +23,7 @@ import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-cli
 import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
-import { getModelProfile, getModelTokenLimits } from "./profiles";
+import { getModelProfile, getModelTokenLimits, requires1MContextBetaHeader } from "./profiles";
 import { getBedrockSettings, type ReasoningEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
@@ -593,6 +593,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Build beta headers
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
+        baseModelId,
         extendedThinkingEnabled,
         settings.context1M.enabled,
         thinkingEffortEnabled,
@@ -601,6 +602,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Build request input
       const requestInput = this.buildRequestInput(
         model,
+        baseModelId,
         converted,
         options,
         toolConfig,
@@ -835,15 +837,22 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private applyReasoningEffort(
     requestInput: ConverseStreamCommandInput,
     modelId: string,
+    baseModelId: string,
     reasoningEffort: ReasoningEffort,
   ): void {
+    const openAiIndex = baseModelId.indexOf("openai.");
+    const normalizedBaseModelId = openAiIndex === -1 ? baseModelId : baseModelId.slice(openAiIndex);
+    const supportsMinimalReasoningEffort =
+      getModelProfile(normalizedBaseModelId).supportsReasoningEffort &&
+      normalizedBaseModelId.startsWith("openai.");
     const resolved =
-      reasoningEffort === "minimal" && !modelId.startsWith("openai.") ? "low" : reasoningEffort;
+      reasoningEffort === "minimal" && !supportsMinimalReasoningEffort ? "low" : reasoningEffort;
     requestInput.additionalModelRequestFields = {
       ...((requestInput.additionalModelRequestFields ?? {}) as Record<string, unknown>),
       reasoning_effort: resolved,
     };
     logger.debug("[Bedrock Model Provider] reasoning_effort set", {
+      baseModelId,
       modelId,
       reasoningEffort: resolved,
     });
@@ -854,11 +863,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   private buildBetaHeaders(
     modelProfile: ReturnType<typeof getModelProfile>,
+    modelId: string,
     extendedThinkingEnabled: boolean,
     context1MEnabled: boolean,
     thinkingEffortEnabled: boolean,
   ): string[] {
     const anthropicBeta: string[] = [];
+    const shouldAdd1MContextBetaHeader =
+      modelProfile.supports1MContext && context1MEnabled && requires1MContextBetaHeader(modelId);
 
     if (extendedThinkingEnabled) {
       // Add interleaved-thinking beta header for Claude 4 models
@@ -866,12 +878,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         anthropicBeta.push("interleaved-thinking-2025-05-14");
       }
 
-      // Add 1M context beta header for models that support it and setting is enabled
-      if (modelProfile.supports1MContext && context1MEnabled) {
+      // Add 1M context beta header only for models that require the beta opt-in.
+      if (shouldAdd1MContextBetaHeader) {
         anthropicBeta.push("context-1m-2025-08-07");
       }
-    } else if (modelProfile.supports1MContext && context1MEnabled) {
-      // Even if thinking is not enabled, add 1M context beta header
+    } else if (shouldAdd1MContextBetaHeader) {
+      // Even if thinking is not enabled, add the 1M context beta header when required.
       anthropicBeta.push("context-1m-2025-08-07");
     }
 
@@ -1018,6 +1030,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   private buildRequestInput(
     model: LanguageModelChatInformation,
+    baseModelId: string,
     converted: { messages: Message[]; system: SystemContentBlock[] },
     options: Parameters<LanguageModelChatProvider["provideLanguageModelChatResponse"]>[2],
     toolConfig: ToolConfiguration | undefined,
@@ -1074,6 +1087,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     this.configureAdditionalModelFields(
       requestInput,
       model.id,
+      baseModelId,
       extendedThinkingEnabled,
       budgetTokens,
       betaHeaders,
@@ -1118,6 +1132,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private configureAdditionalModelFields(
     requestInput: ConverseStreamCommandInput,
     modelId: string,
+    baseModelId: string,
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
@@ -1159,7 +1174,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     if (reasoningEffort) {
-      this.applyReasoningEffort(requestInput, modelId, reasoningEffort);
+      this.applyReasoningEffort(requestInput, modelId, baseModelId, reasoningEffort);
     }
   }
 
@@ -1434,7 +1449,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     if (profile.requiresAdaptiveThinking) {
       thinkingDescription = "adaptive thinking";
     } else if (profile.supportsThinkingEffort) {
-      thinkingDescription = "adaptive or budget thinking";
+      thinkingDescription = "budget thinking";
     } else if (profile.supportsThinking) {
       thinkingDescription = "budget thinking";
     }
@@ -1472,7 +1487,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     if (profile.requiresAdaptiveThinking) {
       thinkingLine = "Thinking: adaptive only (uses output_config.effort)";
     } else if (profile.supportsThinkingEffort) {
-      thinkingLine = "Thinking: adaptive (recommended) or enabled+budget";
+      thinkingLine = "Thinking: enabled+budget_tokens with effort setting";
     } else if (profile.supportsThinking) {
       thinkingLine = "Thinking: enabled+budget_tokens";
     }
