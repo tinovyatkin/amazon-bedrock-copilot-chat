@@ -125,7 +125,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.ok(est > 0);
     });
 
-    test("does not add 1M context beta header for Opus 4.7", () => {
+    test("does not add legacy opt-in beta headers for Opus 4.7", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
       );
@@ -140,8 +140,25 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
 
       assert.equal(betaHeaders.includes("context-1m-2025-08-07"), false);
-      assert.equal(betaHeaders.includes("interleaved-thinking-2025-05-14"), true);
+      assert.equal(betaHeaders.includes("interleaved-thinking-2025-05-14"), false);
       assert.equal(betaHeaders.includes("effort-2025-11-24"), true);
+    });
+
+    test("adds interleaved thinking beta header for Opus 4.6", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "anthropic.claude-opus-4-6-v1";
+
+      const betaHeaders = provider.buildBetaHeaders(
+        getModelProfile(modelId),
+        modelId,
+        true,
+        false,
+        false,
+      );
+
+      assert.equal(betaHeaders.includes("interleaved-thinking-2025-05-14"), true);
     });
 
     test("adds 1M context beta header for models that require opt-in", () => {

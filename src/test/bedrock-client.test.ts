@@ -132,6 +132,31 @@ suite("BedrockAPIClient unit tests", () => {
   });
 
   suite("inference profile negative cache", () => {
+    test("resolves apac dotted inference profiles", async () => {
+      const client = new BedrockAPIClient("us-east-1");
+      const state = internals(client);
+      let lookupCalls = 0;
+
+      state.bedrockClient = {
+        send: async () => {
+          lookupCalls += 1;
+          return {
+            models: [
+              {
+                modelArn:
+                  "arn:aws:bedrock:ap-southeast-1::foundation-model/anthropic.claude-3-sonnet:0",
+              },
+            ],
+          };
+        },
+      };
+
+      const resolvedModelId = await client.resolveModelId("apac.anthropic.claude-3-sonnet:0");
+
+      assert.equal(lookupCalls, 1);
+      assert.equal(resolvedModelId, "anthropic.claude-3-sonnet:0");
+    });
+
     test("does not cache aborted profile lookups", async () => {
       const client = new BedrockAPIClient("us-east-1");
       const state = internals(client);

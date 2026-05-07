@@ -117,7 +117,8 @@ export class BedrockAPIClient {
 
       return response.inputTokens;
     } catch (error) {
-      if (this.isUnsupportedCountTokensError(error, abortSignal)) {
+      const countTokensUnsupported = this.isUnsupportedCountTokensError(error, abortSignal);
+      if (countTokensUnsupported) {
         this.unsupportedCountTokensModels.add(modelId);
         if (baseModelId && baseModelId !== modelId) {
           this.unsupportedCountTokensModels.add(baseModelId);
@@ -141,11 +142,13 @@ export class BedrockAPIClient {
       // The caller should fall back to estimation. Logged at trace level because Copilot
       // Chat calls provideTokenCount many times per turn -- one line per call would
       // flood the output channel.
-      logger.trace(
-        `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      if (countTokensUnsupported) {
+        logger.trace(
+          `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       return undefined;
     }
   }
@@ -394,14 +397,14 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional/Global: starts with a 2-letter AWS region prefix or "global"
-    //   (us., eu., ap., ca., sa., me., af., il., cn., global.)
+    // - Regional/Global: starts with a valid Bedrock cross-region inference
+    //   profile prefix (us., eu., apac., global.)
     //   Restricted to known prefixes so we don't false-positive on vendor IDs
     //   like `zai.glm-5` (zai is 3 letters but is NOT an AWS region prefix).
     // - Application: starts with "ip-" (ip-...)
     // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...
     //   or application-inference-profile/...)
-    const dotProfilePattern = /^(global|us|eu|ap|ca|sa|me|af|il|cn)\./;
+    const dotProfilePattern = /^(global|us|eu|apac)\./;
     const arnProfilePattern =
       /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
     const appProfileIdPattern = /^ip-[a-z0-9]+/i;

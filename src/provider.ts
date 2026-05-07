@@ -1448,9 +1448,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     let thinkingDescription: string | undefined;
     if (profile.requiresAdaptiveThinking) {
       thinkingDescription = "adaptive thinking";
-    } else if (profile.supportsThinkingEffort) {
-      thinkingDescription = "budget thinking";
-    } else if (profile.supportsThinking) {
+    } else if (profile.supportsThinkingEffort || profile.supportsThinking) {
       thinkingDescription = "budget thinking";
     }
 

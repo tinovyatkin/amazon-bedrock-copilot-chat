@@ -161,7 +161,8 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       // Interleaved thinking (beta header) is only for Claude 4 models
       const requiresInterleavedThinkingHeader =
-        modelId.includes("opus-4") || modelId.includes("sonnet-4");
+        (modelId.includes("opus-4") && !modelId.includes("opus-4-7")) ||
+        modelId.includes("sonnet-4");
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
