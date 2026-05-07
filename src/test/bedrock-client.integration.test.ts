@@ -3,6 +3,7 @@ import * as assert from "node:assert";
 import { ModelModality } from "@aws-sdk/client-bedrock";
 
 import { BedrockAPIClient } from "../bedrock-client";
+import { shouldRunAwsIntegrationTests } from "./aws-integration";
 
 /**
  * Integration tests for BedrockAPIClient
@@ -16,7 +17,7 @@ import { BedrockAPIClient } from "../bedrock-client";
  * - Network access to Amazon Bedrock API endpoints
  *
  * To run these tests:
- *   npm run test
+ *   RUN_AWS_INTEGRATION_TESTS=1 bun run test
  *
  * To skip these tests if credentials aren't configured, they will be marked as skipped.
  */
@@ -25,7 +26,11 @@ suite("BedrockAPIClient Integration Tests", () => {
   const TEST_REGION = "us-east-1";
   let client: BedrockAPIClient;
 
-  setup(() => {
+  setup(function () {
+    if (!shouldRunAwsIntegrationTests()) {
+      this.skip();
+    }
+
     client = new BedrockAPIClient(TEST_REGION);
   });
 

@@ -52,6 +52,14 @@ export class BedrockAPIClient {
 
   private region: string;
 
+  // Cache of model IDs for which the CountTokens API is unsupported in the current
+  // region/partition (e.g. some application inference profiles, or newer models that
+  // have not yet been added to CountTokens). Once we see the first failure we stop
+  // hitting the network for subsequent calls -- Copilot Chat invokes
+  // provideTokenCount many times per turn while assembling tool-heavy requests, so
+  // retrying every call adds perceptible latency and log noise.
+  private readonly unsupportedCountTokensModels = new Set<string>();
+
   constructor(region: string, profileName?: string) {
     this.region = region;
     this.profileName = profileName;
@@ -75,9 +83,25 @@ export class BedrockAPIClient {
     input: CountTokensCommandInput["input"],
     abortSignal?: AbortSignal,
   ): Promise<number | undefined> {
+    // If we already know CountTokens is unsupported for this model in this region,
+    // short-circuit so the caller can fall back to estimation without hitting the
+    // network.
+    if (this.unsupportedCountTokensModels.has(modelId)) {
+      return undefined;
+    }
+
+    let baseModelId: string | undefined;
     try {
       // Resolve the base model ID (uses GetInferenceProfile API for cross-region profiles)
-      const baseModelId = await this.resolveModelId(modelId, abortSignal);
+      baseModelId = await this.resolveModelId(modelId, abortSignal);
+
+      // Also check the resolved base model ID -- once we know the underlying
+      // foundation model doesn't support CountTokens, don't re-issue the request
+      // for other inference profiles that resolve to the same base model.
+      if (baseModelId !== modelId && this.unsupportedCountTokensModels.has(baseModelId)) {
+        this.unsupportedCountTokensModels.add(modelId);
+        return undefined;
+      }
 
       const command = new CountTokensCommand({
         input,
@@ -93,6 +117,14 @@ export class BedrockAPIClient {
 
       return response.inputTokens;
     } catch (error) {
+      const countTokensUnsupported = this.isUnsupportedCountTokensError(error, abortSignal);
+      if (countTokensUnsupported) {
+        this.unsupportedCountTokensModels.add(modelId);
+        if (baseModelId && baseModelId !== modelId) {
+          this.unsupportedCountTokensModels.add(baseModelId);
+        }
+      }
+
       // Log detailed error information at trace level for debugging
       logger.trace(`[Bedrock API Client] CountTokens failed for model ${modelId}`, {
         error:
@@ -106,13 +138,17 @@ export class BedrockAPIClient {
         modelId,
       });
 
-      // If the CountTokens API is not supported for this model/region, return undefined
-      // The caller should fall back to estimation
-      logger.debug(
-        `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      // If the CountTokens API is not supported for this model/region, return undefined.
+      // The caller should fall back to estimation. Logged at trace level because Copilot
+      // Chat calls provideTokenCount many times per turn -- one line per call would
+      // flood the output channel.
+      if (countTokensUnsupported) {
+        logger.trace(
+          `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       return undefined;
     }
   }
@@ -361,10 +397,14 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional/Global: starts with 2-3 letter region code or "global" (us.*, eu.*, global.*)
+    // - Regional/Global: starts with a valid Bedrock cross-region inference
+    //   profile prefix (us., eu., apac., global.)
+    //   Restricted to known prefixes so we don't false-positive on vendor IDs
+    //   like `zai.glm-5` (zai is 3 letters but is NOT an AWS region prefix).
     // - Application: starts with "ip-" (ip-...)
-    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/... or application-inference-profile/...)
-    const dotProfilePattern = /^(global|[a-z]{2,3})\./;
+    // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...
+    //   or application-inference-profile/...)
+    const dotProfilePattern = /^(global|us|eu|apac)\./;
     const arnProfilePattern =
       /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
     const appProfileIdPattern = /^ip-[a-z0-9]+/i;
@@ -398,8 +438,11 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID
-      // This could happen if the ID format looks like a profile but isn't, or if we don't have permissions
+      // If GetInferenceProfile fails, assume it's a regular model ID. Only
+      // cache definite misses; transient errors and cancellations should retry.
+      if (this.isResourceNotFoundError(error) && !this.isAbortError(error, abortSignal)) {
+        this.inferenceProfileCache.set(modelId, modelId);
+      }
       logger.trace(
         `[Bedrock API Client] GetInferenceProfile failed for ${modelId}, treating as regular model ID`,
         error,
@@ -681,6 +724,32 @@ export class BedrockAPIClient {
       : base;
   }
 
+  private getErrorCode(error: unknown): string | undefined {
+    if (typeof error !== "object" || error === null) {
+      return undefined;
+    }
+
+    const record = error as Record<string, unknown>;
+    const code = record.code ?? record.Code ?? record.name;
+    return typeof code === "string" ? code : undefined;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private getHttpStatusCode(error: unknown): number | undefined {
+    if (typeof error !== "object" || error === null) {
+      return undefined;
+    }
+
+    const errorWithStatus = error as {
+      $metadata?: { httpStatusCode?: number };
+      $response?: { statusCode?: number };
+    };
+    return errorWithStatus.$metadata?.httpStatusCode ?? errorWithStatus.$response?.statusCode;
+  }
+
   private getProfileCredentialsProvider(
     profile: string,
     options?: { stsRegion?: string },
@@ -715,12 +784,44 @@ export class BedrockAPIClient {
     return wrapped;
   }
 
+  private isAbortError(error: unknown, abortSignal?: AbortSignal): boolean {
+    return abortSignal?.aborted === true || (error instanceof Error && error.name === "AbortError");
+  }
+
+  private isResourceNotFoundError(error: unknown): boolean {
+    return (
+      this.getHttpStatusCode(error) === 404 ||
+      this.getErrorCode(error) === "ResourceNotFoundException"
+    );
+  }
+
+  private isUnsupportedCountTokensError(error: unknown, abortSignal?: AbortSignal): boolean {
+    if (this.isAbortError(error, abortSignal)) {
+      return false;
+    }
+
+    if (this.isResourceNotFoundError(error)) {
+      return true;
+    }
+
+    const code = this.getErrorCode(error);
+    const message = this.getErrorMessage(error);
+    return (
+      code === "ValidationException" &&
+      /count\s*tokens|counttokens|token counting/i.test(message) &&
+      /does not (?:currently )?support|not supported|unsupported|not available|not yet enabled/i.test(
+        message,
+      )
+    );
+  }
+
   private recreateClients(): void {
     this.bedrockClient = new BedrockClient(this.getClientConfig());
     this.bedrockRuntimeClient = new BedrockRuntimeClient(this.getClientConfig());
 
-    // Clear inference profile cache since profiles may differ across regions/credentials
+    // Clear context-scoped caches since model support can differ across regions/credentials
     this.inferenceProfileCache.clear();
+    this.unsupportedCountTokensModels.clear();
   }
 
   /**

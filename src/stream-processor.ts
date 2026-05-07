@@ -105,6 +105,26 @@ export class StreamProcessor {
         state.hasEmittedContent = true;
       }
 
+      // tool_use stop reason with no emitted content means the model tried to
+      // call a tool but the tool call failed to parse (common with models like
+      // GPT OSS that produce malformed tool JSON). Emit a fallback message so
+      // Copilot Chat surfaces something rather than leaving the turn silent.
+      if (
+        !state.hasEmittedContent &&
+        !token.isCancellationRequested &&
+        state.stopReason === StopReason.TOOL_USE
+      ) {
+        logger.warn(
+          "[Stream Processor] Model returned tool_use but no content was emitted (tool call may have failed to parse)",
+        );
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            "*(The model attempted a tool call but the response could not be processed. This model may have limited tool calling support. Please try again or use a different model.)*",
+          ),
+        );
+        state.hasEmittedContent = true;
+      }
+
       this.logCompletion(state);
       this.validateStreamResult(state, token);
 
@@ -444,6 +464,15 @@ export class StreamProcessor {
     // rendered the reasoning to the user and the stream completed normally.
     // Require END_TURN so truncated/malformed streams aren't treated as successful.
     if (state.hasEmittedThinking && state.stopReason === StopReason.END_TURN) {
+      return;
+    }
+
+    // tool_use stop reason with no emitted content means the model responded
+    // with only a tool call that failed to parse (e.g., invalid JSON from
+    // models like GPT OSS). Don't throw -- the fallback message in
+    // processStream covers the user-visible case, and throwing here would
+    // surface a less helpful "No response content was generated" error.
+    if (state.stopReason === StopReason.TOOL_USE) {
       return;
     }
 

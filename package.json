@@ -94,6 +94,29 @@
           "description": "Thinking effort level for Claude Opus 4.5 and Sonnet 4.6. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
           "scope": "resource"
         },
+        "bedrock.reasoningEffort": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            null,
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "enumDescriptions": [
+            "Do not send the reasoning_effort parameter.",
+            "OpenAI gpt-oss only. Fastest, lowest cost. For other models this is treated as 'low'.",
+            "Lowest reasoning budget.",
+            "Balanced reasoning budget.",
+            "Maximum reasoning budget."
+          ],
+          "markdownDescription": "Controls the OpenAI-style `reasoning_effort` additional-model-request field for non-Anthropic models that accept it (currently OpenAI gpt-oss). Leave unset to omit the parameter. Anthropic Claude models are unaffected and continue to use the `bedrock.thinking.*` settings.",
+          "scope": "resource"
+        },
         "bedrock.context1M.enabled": {
           "type": "boolean",
           "default": true,

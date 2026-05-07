@@ -23,6 +23,7 @@ export interface BedrockSettings {
   promptCaching: {
     enabled: boolean;
   };
+  reasoningEffort: ReasoningEffort | undefined;
   region: string;
   thinking: {
     budgetTokens: number;
@@ -30,6 +31,18 @@ export interface BedrockSettings {
     enabled: boolean;
   };
 }
+
+/**
+ * Reasoning effort level for non-Anthropic models that accept the OpenAI-style
+ * `reasoning_effort` additional model request field (OpenAI gpt-oss and any
+ * other models whose profile sets `supportsReasoningEffort`).
+ *
+ * - `minimal`: OpenAI gpt-oss only (fastest, lowest cost). For other models
+ *   this is clamped to `low` at the call site.
+ * - `low` / `medium` / `high`: universally accepted.
+ * - `undefined`: do not send the parameter at all (default).
+ */
+export type ReasoningEffort = "high" | "low" | "medium" | "minimal";
 
 /**
  * Thinking effort level for Claude Opus 4.5 and Sonnet 4.6.
@@ -113,6 +126,16 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
       ? (rawEffort as ThinkingEffort)
       : "high";
 
+  // Read reasoning effort for non-Anthropic models (OpenAI gpt-oss style
+  // `reasoning_effort` parameter). Default is `undefined` -- the parameter is
+  // only sent when the user explicitly opts in.
+  const validReasoningEffortValues: ReasoningEffort[] = ["high", "low", "medium", "minimal"];
+  const rawReasoningEffort = config.get<string>("reasoningEffort");
+  const reasoningEffort: ReasoningEffort | undefined =
+    rawReasoningEffort && validReasoningEffortValues.includes(rawReasoningEffort as ReasoningEffort)
+      ? (rawReasoningEffort as ReasoningEffort)
+      : undefined;
+
   return {
     context1M: {
       enabled: context1MEnabled,
@@ -125,6 +148,7 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
     promptCaching: {
       enabled: promptCachingEnabled,
     },
+    reasoningEffort,
     region,
     thinking: {
       budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024
