@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
   },
-  "version": "0.11.0",
+  "version": "0.12.0",
   "engines": {
     "vscode": "^1.119.0"
   },
