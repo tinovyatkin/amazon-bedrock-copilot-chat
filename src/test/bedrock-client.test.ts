@@ -321,5 +321,39 @@ suite("BedrockAPIClient unit tests", () => {
       assert.ok(models.some((model) => model.modelId === "anthropic.claude-opus-4-7"));
       assert.ok(client.getFallbackInferenceProfileIds().has("jp.anthropic.claude-opus-4-7"));
     });
+
+    test("does not probe commercial US Claude 4.7 geo profiles in GovCloud", async () => {
+      const client = new BedrockAPIClient("us-gov-west-1");
+      const state = internals(client);
+      const probedProfileIds: string[] = [];
+
+      state.bedrockRuntimeClient = {
+        send: async (command) => {
+          const modelId = getCommandModelId(command);
+          if (modelId) {
+            probedProfileIds.push(modelId);
+          }
+          if (modelId === "us-gov-west.anthropic.claude-opus-4-7") {
+            return {};
+          }
+          throw runtimeValidationError();
+        },
+      };
+      state.bedrockClient = {
+        send: async () => ({
+          authorizationStatus: "NOT_AUTHORIZED",
+          regionAvailability: "UNAVAILABLE",
+        }),
+      };
+
+      const models = await state.detectAnthropicFallbackModels();
+
+      assert.equal(probedProfileIds.includes("us.anthropic.claude-opus-4-7"), false);
+      assert.ok(probedProfileIds.includes("us-gov-west.anthropic.claude-opus-4-7"));
+      assert.ok(models.some((model) => model.modelId === "anthropic.claude-opus-4-7"));
+      assert.ok(
+        client.getFallbackInferenceProfileIds().has("us-gov-west.anthropic.claude-opus-4-7"),
+      );
+    });
   });
 });

@@ -922,7 +922,7 @@ function createBearerTokenSigner(apiKey: string) {
 }
 
 function getClaude47GeoPrefix(region: string): string | undefined {
-  if (region.startsWith("us-") || region.startsWith("ca-")) {
+  if ((region.startsWith("us-") && !region.startsWith("us-gov-")) || region.startsWith("ca-")) {
     return "us";
   }
 
