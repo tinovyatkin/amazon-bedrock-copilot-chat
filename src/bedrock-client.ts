@@ -397,14 +397,15 @@ export class BedrockAPIClient {
 
     // Check if this looks like an inference profile
     // Patterns:
-    // - Regional/Global: starts with a valid Bedrock cross-region inference
-    //   profile prefix (us., eu., apac., global.)
+    // - Regional/Global: starts with a valid Bedrock cross-region inference profile prefix
+    //   (global., geography prefixes like us./eu./jp./au., or partition-specific prefixes)
     //   Restricted to known prefixes so we don't false-positive on vendor IDs
     //   like `zai.glm-5` (zai is 3 letters but is NOT an AWS region prefix).
     // - Application: starts with "ip-" (ip-...)
     // - ARN: full ARN format (arn:aws:bedrock:region:account:inference-profile/...
     //   or application-inference-profile/...)
-    const dotProfilePattern = /^(global|us|eu|apac)\./;
+    const dotProfilePattern =
+      /^(global|af|ap|apac|au|ca|cn-north|cn-northwest|eu|il|jp|me|mx|sa|us|us-gov-east|us-gov-west)\./;
     const arnProfilePattern =
       /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
     const appProfileIdPattern = /^ip-[a-z0-9]+/i;
@@ -522,6 +523,26 @@ export class BedrockAPIClient {
       globalProfileId: null | string;
       regionalProfileIds: string[];
     }[] = [
+      {
+        baseModelId: "anthropic.claude-opus-4-7",
+        displayName: "Claude Opus 4.7",
+        globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-opus-4-7" : null,
+        regionalProfileIds: getClaude47RegionalProfileIds(
+          this.region,
+          regionPrefix,
+          "anthropic.claude-opus-4-7",
+        ),
+      },
+      {
+        baseModelId: "anthropic.claude-sonnet-4-7",
+        displayName: "Claude Sonnet 4.7",
+        globalProfileId: hasGlobalProfiles ? "global.anthropic.claude-sonnet-4-7" : null,
+        regionalProfileIds: getClaude47RegionalProfileIds(
+          this.region,
+          regionPrefix,
+          "anthropic.claude-sonnet-4-7",
+        ),
+      },
       {
         baseModelId: "anthropic.claude-opus-4-6-v1",
         displayName: "Claude Opus 4.6",
@@ -898,4 +919,40 @@ function createBearerTokenSigner(apiKey: string) {
       return request;
     },
   };
+}
+
+function getClaude47GeoPrefix(region: string): string | undefined {
+  if ((region.startsWith("us-") && !region.startsWith("us-gov-")) || region.startsWith("ca-")) {
+    return "us";
+  }
+
+  if (region.startsWith("eu-")) {
+    return "eu";
+  }
+
+  if (region === "ap-northeast-1" || region === "ap-northeast-3") {
+    return "jp";
+  }
+
+  if (region === "ap-southeast-2" || region === "ap-southeast-4" || region === "ap-southeast-6") {
+    return "au";
+  }
+
+  return undefined;
+}
+
+function getClaude47RegionalProfileIds(
+  region: string,
+  defaultRegionPrefix: string,
+  baseModelId: string,
+): string[] {
+  const prefixes = new Set<string>();
+  const geoPrefix = getClaude47GeoPrefix(region);
+
+  if (geoPrefix) {
+    prefixes.add(geoPrefix);
+  }
+  prefixes.add(defaultRegionPrefix);
+
+  return [...prefixes].map((prefix) => `${prefix}.${baseModelId}`);
 }

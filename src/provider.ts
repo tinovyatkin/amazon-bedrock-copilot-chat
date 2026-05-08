@@ -172,6 +172,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             availableProfileIds,
             regionPrefix,
             settings.inferenceProfiles.preferRegional,
+            settings.region,
           );
 
           progress?.report({
@@ -187,6 +188,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 availableProfileIds,
                 settings.inferenceProfiles.preferRegional,
                 abortController.signal,
+                settings.region,
               ),
             ),
           );
@@ -964,6 +966,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     regionPrefix: string,
     preferRegional = false,
+    sourceRegion?: string,
   ): {
     hasInferenceProfile: boolean;
     model: BedrockModelSummary;
@@ -984,14 +987,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // By default, prefer global inference profiles for best availability, then regional, then base model
       // When preferRegional is enabled, check regional profiles first (for Control Tower compliance)
       const globalProfileId = `global.${m.modelId}`;
-      const regionalProfileId = `${regionPrefix}.${m.modelId}`;
+      const regionalProfileId = this.findRegionalProfileId(
+        m.modelId,
+        availableProfileIds,
+        regionPrefix,
+        this.getRegionalProfilePriorityPrefixes(regionPrefix, sourceRegion),
+      );
 
       let modelIdToUse = m.modelId;
       let hasInferenceProfile = false;
 
       if (preferRegional) {
         // Prefer regional profiles first
-        if (availableProfileIds.has(regionalProfileId)) {
+        if (regionalProfileId) {
           modelIdToUse = regionalProfileId;
           hasInferenceProfile = true;
           logger.trace(
@@ -1010,7 +1018,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           modelIdToUse = globalProfileId;
           hasInferenceProfile = true;
           logger.trace(`[Bedrock Model Provider] Using global inference profile for ${m.modelId}`);
-        } else if (availableProfileIds.has(regionalProfileId)) {
+        } else if (regionalProfileId) {
           modelIdToUse = regionalProfileId;
           hasInferenceProfile = true;
           logger.trace(
@@ -1295,6 +1303,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     preferRegional: boolean,
     abortSignal: AbortSignal,
+    sourceRegion?: string,
   ): Promise<{
     hasInferenceProfile: boolean;
     isAccessible: boolean;
@@ -1328,6 +1337,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         availableProfileIds,
         preferRegional,
         abortSignal,
+        sourceRegion,
       );
     }
 
@@ -1356,6 +1366,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     preferRegional: boolean,
     abortSignal: AbortSignal,
+    sourceRegion?: string,
   ): Promise<{
     hasInferenceProfile: boolean;
     isAccessible: boolean;
@@ -1368,8 +1379,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     // If this was a global profile, try regional
     if (candidate.modelIdToUse.startsWith("global.")) {
-      const regionalProfileId = `${regionPrefix}.${candidate.model.modelId}`;
-      if (availableProfileIds.has(regionalProfileId)) {
+      const regionalProfileId = this.findRegionalProfileId(
+        candidate.model.modelId,
+        availableProfileIds,
+        regionPrefix,
+        this.getRegionalProfilePriorityPrefixes(regionPrefix, sourceRegion),
+        new Set([candidate.modelIdToUse]),
+      );
+      if (regionalProfileId) {
         // Profile is in ListInferenceProfiles, trust it
         logger.info(
           `[Bedrock Model Provider] Using regional profile ${regionalProfileId} instead of global profile`,
@@ -1381,7 +1398,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           modelIdToUse: regionalProfileId,
         };
       }
-    } else if (candidate.modelIdToUse.startsWith(`${regionPrefix}.`)) {
+    } else if (this.isRegionalProfileForModel(candidate.modelIdToUse, candidate.model.modelId)) {
       // If this was a regional profile and preferRegional=true, skip global fallback
       // (honors user preference for regional-only in Control Tower/SCP environments)
       if (preferRegional) {
@@ -1426,6 +1443,37 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       `[Bedrock Model Provider] No accessible inference profile or base model for ${candidate.model.modelId}`,
     );
     return { ...candidate, isAccessible: false };
+  }
+
+  private findRegionalProfileId(
+    modelId: string,
+    availableProfileIds: Set<string>,
+    regionPrefix: string,
+    profilePrefixPriority: string[],
+    excludedProfileIds = new Set<string>(),
+  ): string | undefined {
+    const preferredProfileId = `${regionPrefix}.${modelId}`;
+    if (
+      availableProfileIds.has(preferredProfileId) &&
+      !excludedProfileIds.has(preferredProfileId)
+    ) {
+      return preferredProfileId;
+    }
+
+    const priorityByPrefix = new Map(
+      profilePrefixPriority.map((prefix, index) => [prefix, index] as const),
+    );
+
+    return [...availableProfileIds]
+      .filter(
+        (profileId) =>
+          !excludedProfileIds.has(profileId) && this.isRegionalProfileForModel(profileId, modelId),
+      )
+      .toSorted((a, b) => {
+        const aPriority = priorityByPrefix.get(a.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
+        const bPriority = priorityByPrefix.get(b.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
+        return aPriority - bPriority || a.localeCompare(b);
+      })[0];
   }
 
   /**
@@ -1564,6 +1612,56 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     return undefined;
+  }
+
+  private getRegionalProfilePriorityPrefixes(
+    regionPrefix: string,
+    sourceRegion?: string,
+  ): string[] {
+    const prefixes = new Set<string>();
+    const geoPrefix = this.getSourceRegionGeoProfilePrefix(sourceRegion);
+
+    if (geoPrefix) {
+      prefixes.add(geoPrefix);
+    }
+    prefixes.add(regionPrefix);
+
+    return [...prefixes];
+  }
+
+  private getSourceRegionGeoProfilePrefix(sourceRegion?: string): string | undefined {
+    if (!sourceRegion) {
+      return undefined;
+    }
+
+    if (
+      (sourceRegion.startsWith("us-") && !sourceRegion.startsWith("us-gov-")) ||
+      sourceRegion.startsWith("ca-")
+    ) {
+      return "us";
+    }
+
+    if (sourceRegion.startsWith("eu-")) {
+      return "eu";
+    }
+
+    if (sourceRegion === "ap-northeast-1" || sourceRegion === "ap-northeast-3") {
+      return "jp";
+    }
+
+    if (
+      sourceRegion === "ap-southeast-2" ||
+      sourceRegion === "ap-southeast-4" ||
+      sourceRegion === "ap-southeast-6"
+    ) {
+      return "au";
+    }
+
+    return undefined;
+  }
+
+  private isRegionalProfileForModel(profileId: string, modelId: string): boolean {
+    return !profileId.startsWith("global.") && profileId.endsWith(`.${modelId}`);
   }
 
   /**

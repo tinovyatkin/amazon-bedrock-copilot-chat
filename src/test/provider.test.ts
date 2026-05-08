@@ -654,7 +654,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -677,7 +677,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0",
       ]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -700,7 +700,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -720,7 +720,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set(["us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -738,12 +738,34 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(candidates[0].hasInferenceProfile, true);
     });
 
+    test("uses detected regional profile when prefix differs from region prefix", () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const models = [createTestModel("anthropic.claude-opus-4-7")];
+      const availableProfiles = new Set([
+        "au.anthropic.claude-opus-4-7",
+        "jp.anthropic.claude-opus-4-7",
+      ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
+      const candidates = (provider as any).buildModelCandidates(
+        models,
+        availableProfiles,
+        "ap",
+        false,
+        "ap-northeast-1",
+      );
+
+      assert.equal(candidates.length, 1);
+      assert.equal(candidates[0].modelIdToUse, "jp.anthropic.claude-opus-4-7");
+      assert.equal(candidates[0].hasInferenceProfile, true);
+    });
+
     test("no profiles available: uses base model", () => {
       const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
       const models = [createTestModel("anthropic.claude-3-5-sonnet-20241022-v2:0")];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -768,7 +790,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -789,7 +811,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ];
       const availableProfiles = new Set<string>();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -806,7 +828,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const models = [model];
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
         models,
         availableProfiles,
@@ -815,7 +837,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
 
       assert.equal(candidates.length, 1);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidate = candidates[0];
       assert.ok(candidate);
 
@@ -842,7 +864,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -856,6 +878,36 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.hasInferenceProfile, true);
 
       assert.equal(result.modelIdToUse, "us-west-2.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    });
+
+    test("global failure falls back to alternate regional profile", async () => {
+      const provider = createMockClientProvider(false);
+      const model = createTestModel("anthropic.claude-opus-4-7");
+      const candidate = {
+        hasInferenceProfile: true,
+        model,
+        modelIdToUse: "global.anthropic.claude-opus-4-7",
+      };
+      const availableProfiles = new Set([
+        "au.anthropic.claude-opus-4-7",
+        "global.anthropic.claude-opus-4-7",
+        "jp.anthropic.claude-opus-4-7",
+      ]);
+      const abortController = new AbortController();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
+      const result = await (provider as any).findAlternativeProfile(
+        candidate,
+        "ap",
+        availableProfiles,
+        false,
+        abortController.signal,
+        "ap-northeast-1",
+      );
+
+      assert.equal(result.isAccessible, true);
+      assert.equal(result.hasInferenceProfile, true);
+      assert.equal(result.modelIdToUse, "jp.anthropic.claude-opus-4-7");
     });
 
     test("preferRegional=false, regional fails: falls back to global profile", async () => {
@@ -872,7 +924,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -902,7 +954,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -934,7 +986,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -963,7 +1015,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
@@ -990,7 +1042,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const availableProfiles = new Set(["global.anthropic.claude-3-5-sonnet-20241022-v2:0"]);
       const abortController = new AbortController();
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const result = await (provider as any).findAlternativeProfile(
         candidate,
         "us-west-2",
