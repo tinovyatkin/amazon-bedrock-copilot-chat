@@ -741,7 +741,10 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("uses detected regional profile when prefix differs from region prefix", () => {
       const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
       const models = [createTestModel("anthropic.claude-opus-4-7")];
-      const availableProfiles = new Set(["jp.anthropic.claude-opus-4-7"]);
+      const availableProfiles = new Set([
+        "au.anthropic.claude-opus-4-7",
+        "jp.anthropic.claude-opus-4-7",
+      ]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- private-method test
       const candidates = (provider as any).buildModelCandidates(
@@ -749,6 +752,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         availableProfiles,
         "ap",
         false,
+        "ap-northeast-1",
       );
 
       assert.equal(candidates.length, 1);
@@ -885,6 +889,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         modelIdToUse: "global.anthropic.claude-opus-4-7",
       };
       const availableProfiles = new Set([
+        "au.anthropic.claude-opus-4-7",
         "global.anthropic.claude-opus-4-7",
         "jp.anthropic.claude-opus-4-7",
       ]);
@@ -897,6 +902,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         availableProfiles,
         false,
         abortController.signal,
+        "ap-northeast-1",
       );
 
       assert.equal(result.isAccessible, true);

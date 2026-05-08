@@ -172,6 +172,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             availableProfileIds,
             regionPrefix,
             settings.inferenceProfiles.preferRegional,
+            settings.region,
           );
 
           progress?.report({
@@ -187,6 +188,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 availableProfileIds,
                 settings.inferenceProfiles.preferRegional,
                 abortController.signal,
+                settings.region,
               ),
             ),
           );
@@ -964,6 +966,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     regionPrefix: string,
     preferRegional = false,
+    sourceRegion?: string,
   ): {
     hasInferenceProfile: boolean;
     model: BedrockModelSummary;
@@ -988,6 +991,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         m.modelId,
         availableProfileIds,
         regionPrefix,
+        this.getRegionalProfilePriorityPrefixes(regionPrefix, sourceRegion),
       );
 
       let modelIdToUse = m.modelId;
@@ -1299,6 +1303,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     preferRegional: boolean,
     abortSignal: AbortSignal,
+    sourceRegion?: string,
   ): Promise<{
     hasInferenceProfile: boolean;
     isAccessible: boolean;
@@ -1332,6 +1337,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         availableProfileIds,
         preferRegional,
         abortSignal,
+        sourceRegion,
       );
     }
 
@@ -1360,6 +1366,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     availableProfileIds: Set<string>,
     preferRegional: boolean,
     abortSignal: AbortSignal,
+    sourceRegion?: string,
   ): Promise<{
     hasInferenceProfile: boolean;
     isAccessible: boolean;
@@ -1376,6 +1383,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         candidate.model.modelId,
         availableProfileIds,
         regionPrefix,
+        this.getRegionalProfilePriorityPrefixes(regionPrefix, sourceRegion),
         new Set([candidate.modelIdToUse]),
       );
       if (regionalProfileId) {
@@ -1441,6 +1449,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     availableProfileIds: Set<string>,
     regionPrefix: string,
+    profilePrefixPriority: string[],
     excludedProfileIds = new Set<string>(),
   ): string | undefined {
     const preferredProfileId = `${regionPrefix}.${modelId}`;
@@ -1451,12 +1460,20 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return preferredProfileId;
     }
 
+    const priorityByPrefix = new Map(
+      profilePrefixPriority.map((prefix, index) => [prefix, index] as const),
+    );
+
     return [...availableProfileIds]
       .filter(
         (profileId) =>
           !excludedProfileIds.has(profileId) && this.isRegionalProfileForModel(profileId, modelId),
       )
-      .toSorted()[0];
+      .toSorted((a, b) => {
+        const aPriority = priorityByPrefix.get(a.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
+        const bPriority = priorityByPrefix.get(b.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
+        return aPriority - bPriority || a.localeCompare(b);
+      })[0];
   }
 
   /**
@@ -1592,6 +1609,52 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         result.sessionToken = sessionToken;
       }
       return result;
+    }
+
+    return undefined;
+  }
+
+  private getRegionalProfilePriorityPrefixes(
+    regionPrefix: string,
+    sourceRegion?: string,
+  ): string[] {
+    const prefixes = new Set<string>();
+    const geoPrefix = this.getSourceRegionGeoProfilePrefix(sourceRegion);
+
+    if (geoPrefix) {
+      prefixes.add(geoPrefix);
+    }
+    prefixes.add(regionPrefix);
+
+    return [...prefixes];
+  }
+
+  private getSourceRegionGeoProfilePrefix(sourceRegion?: string): string | undefined {
+    if (!sourceRegion) {
+      return undefined;
+    }
+
+    if (
+      (sourceRegion.startsWith("us-") && !sourceRegion.startsWith("us-gov-")) ||
+      sourceRegion.startsWith("ca-")
+    ) {
+      return "us";
+    }
+
+    if (sourceRegion.startsWith("eu-")) {
+      return "eu";
+    }
+
+    if (sourceRegion === "ap-northeast-1" || sourceRegion === "ap-northeast-3") {
+      return "jp";
+    }
+
+    if (
+      sourceRegion === "ap-southeast-2" ||
+      sourceRegion === "ap-southeast-4" ||
+      sourceRegion === "ap-southeast-6"
+    ) {
+      return "au";
     }
 
     return undefined;
