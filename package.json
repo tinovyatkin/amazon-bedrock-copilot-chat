@@ -16,6 +16,9 @@
     "AI",
     "Chat"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "galleryBanner": {
     "color": "#349885",
     "theme": "dark"

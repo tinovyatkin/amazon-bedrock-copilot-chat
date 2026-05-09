@@ -29,6 +29,13 @@ import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
 
+type PickerLanguageModelChatInformation = LanguageModelChatInformation & {
+  readonly capabilities: LanguageModelChatInformation["capabilities"] & {
+    readonly agentMode: boolean;
+  };
+  readonly isUserSelectable: boolean;
+};
+
 class NoAccessibleModelsError extends Error {
   constructor() {
     super("No accessible Bedrock models detected");
@@ -228,14 +235,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               route = "Local/regional inference profile";
             }
 
-            const modelInfo: LanguageModelChatInformation = {
+            const modelInfo: PickerLanguageModelChatInformation = {
               capabilities: {
+                agentMode: true,
                 imageInput: vision,
                 toolCalling: true,
               },
               detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
               family: "bedrock",
               id: modelIdToUse,
+              isUserSelectable: true,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: m.modelName,
@@ -276,14 +285,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
-            const profileInfo: LanguageModelChatInformation = {
+            const profileInfo: PickerLanguageModelChatInformation = {
               capabilities: {
+                agentMode: true,
                 imageInput: vision,
                 toolCalling: true,
               },
               detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
               family: "bedrock",
               id: profile.modelArn,
+              isUserSelectable: true,
               maxInputTokens: maxInput,
               maxOutputTokens: maxOutput,
               name: profile.modelName,
