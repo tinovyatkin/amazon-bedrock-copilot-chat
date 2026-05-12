@@ -8,13 +8,16 @@
     "type": "git",
     "url": "https://github.com/tinovyatkin/amazon-bedrock-copilot-chat"
   },
-  "version": "0.11.0",
+  "version": "0.13.1",
   "engines": {
-    "vscode": "^1.117.0"
+    "vscode": "^1.119.0"
   },
   "categories": [
     "AI",
     "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
   ],
   "galleryBanner": {
     "color": "#349885",
@@ -94,6 +97,29 @@
           "description": "Thinking effort level for Claude Opus 4.5 and Sonnet 4.6. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
           "scope": "resource"
         },
+        "bedrock.reasoningEffort": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            null,
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "enumDescriptions": [
+            "Do not send the reasoning_effort parameter.",
+            "OpenAI gpt-oss only. Fastest, lowest cost. For other models this is treated as 'low'.",
+            "Lowest reasoning budget.",
+            "Balanced reasoning budget.",
+            "Maximum reasoning budget."
+          ],
+          "markdownDescription": "Controls the OpenAI-style `reasoning_effort` additional-model-request field for non-Anthropic models that accept it (currently OpenAI gpt-oss). Leave unset to omit the parameter. Anthropic Claude models are unaffected and continue to use the `bedrock.thinking.*` settings.",
+          "scope": "resource"
+        },
         "bedrock.context1M.enabled": {
           "type": "boolean",
           "default": true,
@@ -142,38 +168,38 @@
     "vsce:package": "bunx @vscode/vsce package --no-dependencies -o dist/extension.vsix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.1036.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1036.0",
-    "@aws-sdk/client-ssm": "^3.1036.0",
-    "@aws-sdk/credential-providers": "^3.1036.0",
+    "@aws-sdk/client-bedrock": "^3.1045.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1045.0",
+    "@aws-sdk/client-ssm": "^3.1045.0",
+    "@aws-sdk/credential-providers": "^3.1045.0",
     "@aws-sdk/protocol-http": "^3.374.0",
-    "@smithy/shared-ini-file-loader": "^4.4.9",
-    "@smithy/util-retry": "^4.3.4",
+    "@smithy/shared-ini-file-loader": "^4.5.0",
+    "@smithy/util-retry": "^4.4.0",
     "smithy-node-native-fetch": "^1.2.1"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.1",
     "@eslint/js": "10.0.1",
     "@eslint/markdown": "8.0.1",
-    "@eslint/mcp": "0.3.4",
+    "@eslint/mcp": "0.3.5",
     "@homer0/prettier-plugin-jsdoc": "11.1.0",
     "@smithy/types": "4.14.1",
     "@stylistic/eslint-plugin": "5.10.0",
     "@types/mocha": "10.0.10",
-    "@types/node": "25.6.0",
-    "@types/vscode": "1.116.0",
-    "@typescript/native-preview": "7.0.0-dev.20260424.1",
+    "@types/node": "25.6.2",
+    "@types/vscode": "1.118.0",
+    "@typescript/native-preview": "7.0.0-dev.20260509.2",
     "@vscode/dts": "0.4.1",
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
-    "commitlint": "20.5.0",
-    "eslint": "10.2.1",
+    "commitlint": "21.0.0",
+    "eslint": "10.3.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
     "eslint-plugin-perfectionist": "5.9.0",
     "eslint-plugin-sonarjs": "4.0.3",
     "eslint-plugin-unicorn": "64.0.0",
-    "globals": "17.5.0",
+    "globals": "17.6.0",
     "lefthook": "2.1.6",
     "prettier": "3.8.3",
     "prettier-plugin-organize-imports": "4.3.0",
