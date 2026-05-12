@@ -14,9 +14,9 @@ jobs:
     # Metrics only; don't block the merge queue on tool failures.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-      - uses: ophidiarium/mehen@v0
+      - uses: ophidiarium/mehen@b9f81c3ee5223736d72f21fbf933724e86000945 # v0
         with:
           paths: src
