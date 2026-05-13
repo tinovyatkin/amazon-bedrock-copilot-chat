@@ -172,10 +172,10 @@ export function getModelProfile(modelId: string): ModelProfile {
       // Claude Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
       const supportsThinkingEffort =
-        modelId.includes("opus-4-7") ||
-        modelId.includes("opus-4-6") ||
-        modelId.includes("opus-4-5") ||
-        modelId.includes("sonnet-4-6");
+        normalizedId.includes("opus-4-7") ||
+        normalizedId.includes("opus-4-6") ||
+        normalizedId.includes("opus-4-5") ||
+        normalizedId.includes("sonnet-4-6");
 
       // CLI-verified: Opus 4.7 rejects `thinking.type="enabled"` and requires
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude

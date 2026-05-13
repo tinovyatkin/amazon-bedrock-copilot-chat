@@ -1,4 +1,5 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
+import type { ConverseStreamCommandInput } from "@aws-sdk/client-bedrock-runtime";
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
@@ -91,6 +92,37 @@ const callCalcThinkingConfig = (
     maxTokensForRequest,
     thinkingEnabled,
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
+};
+
+const callBuildRequestInput = (
+  modelId: string,
+  options: vscode.LanguageModelChatRequestOptions = {},
+  extendedThinkingEnabled = false,
+) => {
+  const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+  const modelProfile = getModelProfile(modelId);
+  return (provider as any).buildRequestInput(
+    {
+      capabilities: {},
+      family: "bedrock",
+      id: modelId,
+      maxInputTokens: 200_000,
+      maxOutputTokens: 64_000,
+      name: modelId,
+      version: "1.0.0",
+    } as unknown as vscode.LanguageModelChatInformation,
+    modelId,
+    { messages: [], system: [] },
+    options,
+    undefined,
+    extendedThinkingEnabled,
+    4096,
+    [],
+    undefined,
+    modelProfile.temperatureDeprecated,
+    modelProfile.requiresAdaptiveThinking,
+    undefined,
+  ) as ConverseStreamCommandInput;
 };
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
@@ -1180,6 +1212,31 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // budgetTokens = min(16000, 32000, 96000) = 16000
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
+    });
+  });
+
+  suite("buildRequestInput", () => {
+    test("omits temperature for Claude Opus 4.7", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-7-v1:0", {
+        modelOptions: { temperature: 0.2 },
+      });
+
+      assert.equal(requestInput.inferenceConfig?.temperature, undefined);
+      assert.equal(requestInput.inferenceConfig?.maxTokens, 64_000);
+    });
+
+    test("omits temperature for Claude Opus 4.7 extended thinking requests", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-7-v1:0", {}, true);
+
+      assert.equal(requestInput.inferenceConfig?.temperature, undefined);
+    });
+
+    test("preserves temperature for models that still support it", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-4-6-v1:0", {
+        modelOptions: { temperature: 0.2 },
+      });
+
+      assert.equal(requestInput.inferenceConfig?.temperature, 0.2);
     });
   });
 });
