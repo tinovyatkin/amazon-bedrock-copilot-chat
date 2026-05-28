@@ -439,9 +439,12 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID. Only
-      // cache definite misses; transient errors and cancellations should retry.
-      if (this.isResourceNotFoundError(error) && !this.isAbortError(error, abortSignal)) {
+      // If GetInferenceProfile fails, assume it's a regular model ID.
+      // Cache any permanent failure (AccessDenied, ResourceNotFound, ValidationException, etc.)
+      // so repeated calls (e.g. provideTokenCount called per-tool-per-turn by Copilot) don't
+      // keep hitting the API and trigger ThrottlingException.
+      // Only skip caching for AbortError (user cancellation) -- those should retry.
+      if (!this.isAbortError(error, abortSignal)) {
         this.inferenceProfileCache.set(modelId, modelId);
       }
       logger.trace(
