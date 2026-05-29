@@ -161,7 +161,9 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       // Interleaved thinking (beta header) is only for Claude 4 models
       const requiresInterleavedThinkingHeader =
-        (modelId.includes("opus-4") && !modelId.includes("opus-4-7")) ||
+        (modelId.includes("opus-4") &&
+          !modelId.includes("opus-4-7") &&
+          !modelId.includes("opus-4-8")) ||
         modelId.includes("sonnet-4");
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
@@ -181,14 +183,12 @@ export function getModelProfile(modelId: string): ModelProfile {
       // CLI-verified: Opus 4.7 and 4.8 reject `thinking.type="enabled"` and require
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
       // models still use enabled+budget.
-      const requiresAdaptiveThinking =
-        modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
+      const requiresAdaptiveThinking = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
 
       // CLI-verified: Opus 4.7 and 4.8 reject requests that include the `temperature`
       // inference parameter (Bedrock returns a ValidationException). All other
       // Claude models still accept temperature.
-      const temperatureDeprecated =
-        modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
+      const temperatureDeprecated = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
 
       return {
         requiresAdaptiveThinking,
