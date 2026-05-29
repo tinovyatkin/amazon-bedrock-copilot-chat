@@ -32,7 +32,7 @@ import {
   getRegionPrefix,
   supportsGlobalInferenceProfiles,
 } from "./aws-partition";
-import { getProfileSdkUaAppId } from "./aws-profiles";
+import { getProfileSdkUaAppId, isSsoProfile } from "./aws-profiles";
 import { logger } from "./logger";
 import type { AuthConfig, BedrockModelSummary } from "./types";
 
@@ -782,6 +782,7 @@ export class BedrockAPIClient {
     let provider: AwsCredentialIdentityProvider | undefined;
     const wrapped: AwsCredentialIdentityProvider = async () => {
       if (!provider) {
+        const useExplicitStsRegion = options?.stsRegion && !(await isSsoProfile(profile));
         const userAgentAppId = await getProfileSdkUaAppId(profile);
         if (userAgentAppId) {
           logger.debug(
@@ -791,7 +792,7 @@ export class BedrockAPIClient {
 
         provider = fromIni({
           clientConfig: {
-            ...(options?.stsRegion ? { region: options.stsRegion } : {}),
+            ...(useExplicitStsRegion ? { region: options.stsRegion } : {}),
             ...(userAgentAppId ? { userAgentAppId } : {}),
           },
           profile,

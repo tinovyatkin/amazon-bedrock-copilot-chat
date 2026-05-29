@@ -46,6 +46,35 @@ export async function getProfileSdkUaAppId(
 }
 
 /**
+ * Determine whether a profile uses AWS IAM Identity Center / SSO configuration.
+ * For SSO profiles, passing an explicit region into fromIni() can break token
+ * resolution. Assume-role and other profile types should continue to receive the
+ * selected Bedrock region as STS client config.
+ */
+export async function isSsoProfile(
+  profileName: string,
+  init?: SharedConfigInit,
+): Promise<boolean> {
+  try {
+    const { configFile, credentialsFile } = await loadSharedConfigFiles(init);
+    const profile = {
+      ...configFile?.[profileName],
+      ...credentialsFile?.[profileName],
+    };
+
+    return Boolean(
+      profile.sso_session ??
+        profile.sso_start_url ??
+        profile.sso_region ??
+        profile.sso_account_id ??
+        profile.sso_role_name,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * List all available AWS profile names from credentials and config files
  * @param logger Optional logger instance to log errors
  * @param init Optional shared config loader options (useful for tests)
