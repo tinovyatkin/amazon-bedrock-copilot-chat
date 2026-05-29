@@ -161,7 +161,9 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       // Interleaved thinking (beta header) is only for Claude 4 models
       const requiresInterleavedThinkingHeader =
-        (modelId.includes("opus-4") && !modelId.includes("opus-4-7")) ||
+        (modelId.includes("opus-4") &&
+          !modelId.includes("opus-4-7") &&
+          !modelId.includes("opus-4-8")) ||
         modelId.includes("sonnet-4");
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
@@ -169,23 +171,24 @@ export function getModelProfile(modelId: string): ModelProfile {
       const supportsCachingWithToolResults = !supportsThinking;
 
       // Adaptive thinking / thinking effort parameter is supported by
-      // Claude Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
+      // Claude Opus 4.8, Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
       // Allows controlling token expenditure with "high", "medium", or "low" effort levels
       const supportsThinkingEffort =
+        normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6") ||
         normalizedId.includes("opus-4-5") ||
         normalizedId.includes("sonnet-4-6");
 
-      // CLI-verified: Opus 4.7 rejects `thinking.type="enabled"` and requires
+      // CLI-verified: Opus 4.7 and 4.8 reject `thinking.type="enabled"` and require
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
       // models still use enabled+budget.
-      const requiresAdaptiveThinking = modelId.includes("opus-4-7");
+      const requiresAdaptiveThinking = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
 
-      // CLI-verified: Opus 4.7 rejects requests that include the `temperature`
+      // CLI-verified: Opus 4.7 and 4.8 reject requests that include the `temperature`
       // inference parameter (Bedrock returns a ValidationException). All other
       // Claude models still accept temperature.
-      const temperatureDeprecated = modelId.includes("opus-4-7");
+      const temperatureDeprecated = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
 
       return {
         requiresAdaptiveThinking,
@@ -331,6 +334,15 @@ function getClaudeTokenLimits(
   normalizedModelId: string,
   enable1MContext: boolean,
 ): ModelTokenLimits {
+  // Claude Opus 4.8: always 1M context, 128K max output.
+  // Same limits as Opus 4.7 -- 1M is the default, no beta header required.
+  if (normalizedModelId.includes("opus-4-8")) {
+    return {
+      maxInputTokens: 1_000_000 - 128_000,
+      maxOutputTokens: 128_000,
+    };
+  }
+
   // Claude Opus 4.7: always 1M context, 128K max output (per Anthropic docs).
   // Opus 4.7 does not require the context-1m-* beta header -- 1M is the default.
   if (normalizedModelId.includes("opus-4-7")) {
@@ -436,12 +448,16 @@ function normalizeModelId(modelId: string): string {
 
 /**
  * Check if a model supports 1M context window
- * Claude Opus 4.7 (always), Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support
+ * Claude Opus 4.7 and 4.8 (always), Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support
  * extended 1M context.
  */
 function supports1MContext(modelId: string): boolean {
   const normalizedModelId = normalizeModelId(modelId);
-  return normalizedModelId.includes("opus-4-7") || requires1MContextBetaHeader(normalizedModelId);
+  return (
+    normalizedModelId.includes("opus-4-7") ||
+    normalizedModelId.includes("opus-4-8") ||
+    requires1MContextBetaHeader(normalizedModelId)
+  );
 }
 
 /**
