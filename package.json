@@ -178,7 +178,7 @@
     "smithy-node-native-fetch": "^1.2.1"
   },
   "devDependencies": {
-    "@eslint-community/eslint-plugin-eslint-comments": "4.7.1",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
     "@eslint/js": "10.0.1",
     "@eslint/markdown": "8.0.2",
     "@eslint/mcp": "0.3.5",
