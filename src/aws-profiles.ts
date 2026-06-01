@@ -1,4 +1,5 @@
 import { loadSharedConfigFiles, type SharedConfigInit } from "@smithy/shared-ini-file-loader";
+import type { IniSection } from "@smithy/types";
 
 import type { logger as Logger } from "./logger";
 
@@ -42,6 +43,47 @@ export async function getProfileSdkUaAppId(
     return value?.trim() || undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Determine whether a profile uses AWS IAM Identity Center / SSO configuration,
+ * walking the `source_profile` chain so that assume-role profiles whose source
+ * resolves to an SSO/Identity Center profile are also detected.
+ *
+ * For SSO profiles, passing an explicit region into fromIni() can break token
+ * resolution -- and because `fromIni` propagates the same `clientConfig` while
+ * recursively resolving `source_profile`, chained profiles must be inspected as
+ * well. Assume-role and other non-SSO profile chains should continue to receive
+ * the selected Bedrock region as STS client config.
+ */
+export async function isSsoProfile(profileName: string, init?: SharedConfigInit): Promise<boolean> {
+  try {
+    const { configFile, credentialsFile } = await loadSharedConfigFiles(init);
+    const visited = new Set<string>();
+    let current: string | undefined = profileName;
+    while (typeof current === "string" && !visited.has(current)) {
+      visited.add(current);
+      const profile: IniSection = {
+        ...configFile?.[current],
+        ...credentialsFile?.[current],
+      };
+
+      if (
+        typeof profile.sso_session === "string" ||
+        typeof profile.sso_start_url === "string" ||
+        typeof profile.sso_region === "string" ||
+        typeof profile.sso_account_id === "string" ||
+        typeof profile.sso_role_name === "string"
+      ) {
+        return true;
+      }
+
+      current = profile.source_profile;
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 

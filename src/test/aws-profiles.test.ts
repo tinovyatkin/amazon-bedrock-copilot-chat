@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { getProfileSdkUaAppId, listAwsProfiles } from "../aws-profiles";
+import { getProfileSdkUaAppId, isSsoProfile, listAwsProfiles } from "../aws-profiles";
 
 suite("aws-profiles", () => {
   test("listAwsProfiles returns an array", async () => {
@@ -80,6 +80,144 @@ suite("aws-profiles", () => {
       });
 
       assert.strictEqual(appId, undefined);
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
+  test("isSsoProfile returns true for a directly configured SSO profile", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(
+        configFilepath,
+        [
+          "[profile sso-direct]",
+          "sso_session = my-session",
+          "sso_account_id = 111111111111",
+          "sso_role_name = ReadOnly",
+          "region = us-east-1",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(credentialsFilepath, "");
+
+      const result = await isSsoProfile("sso-direct", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(result, true);
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
+  test("isSsoProfile returns true when source_profile chain resolves to an SSO profile", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(
+        configFilepath,
+        [
+          "[profile sso-base]",
+          "sso_session = my-session",
+          "sso_account_id = 111111111111",
+          "sso_role_name = ReadOnly",
+          "region = us-east-1",
+          "",
+          "[profile assume-role]",
+          "role_arn = arn:aws:iam::222222222222:role/AssumedRole",
+          "source_profile = sso-base",
+          "region = us-east-1",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(credentialsFilepath, "");
+
+      const result = await isSsoProfile("assume-role", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(result, true);
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
+  test("isSsoProfile returns false for a non-SSO assume-role chain", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(
+        configFilepath,
+        [
+          "[profile assume-role]",
+          "role_arn = arn:aws:iam::222222222222:role/AssumedRole",
+          "source_profile = static-base",
+          "region = us-east-1",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        credentialsFilepath,
+        [
+          "[static-base]",
+          "aws_access_key_id = AKIAEXAMPLE",
+          "aws_secret_access_key = secret",
+          "",
+        ].join("\n"),
+      );
+
+      const result = await isSsoProfile("assume-role", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(result, false);
+    } finally {
+      await rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
+  test("isSsoProfile returns false when source_profile creates a cycle without SSO", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "bedrock-profiles-"));
+    try {
+      const configFilepath = path.join(tempDir, "config");
+      const credentialsFilepath = path.join(tempDir, "credentials");
+
+      await writeFile(
+        configFilepath,
+        [
+          "[profile a]",
+          "role_arn = arn:aws:iam::222222222222:role/A",
+          "source_profile = b",
+          "",
+          "[profile b]",
+          "role_arn = arn:aws:iam::222222222222:role/B",
+          "source_profile = a",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(credentialsFilepath, "");
+
+      const result = await isSsoProfile("a", {
+        configFilepath,
+        filepath: credentialsFilepath,
+        ignoreCache: true,
+      });
+
+      assert.strictEqual(result, false);
     } finally {
       await rm(tempDir, { force: true, recursive: true });
     }
