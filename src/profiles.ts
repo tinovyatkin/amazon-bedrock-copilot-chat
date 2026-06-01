@@ -164,7 +164,8 @@ export function getModelProfile(modelId: string): ModelProfile {
         (modelId.includes("opus-4") &&
           !modelId.includes("opus-4-7") &&
           !modelId.includes("opus-4-8")) ||
-        modelId.includes("sonnet-4");
+        modelId.includes("sonnet-4") ||
+        modelId.includes("haiku-4");
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult

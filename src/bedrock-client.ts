@@ -439,9 +439,17 @@ export class BedrockAPIClient {
 
       return baseModelId;
     } catch (error) {
-      // If GetInferenceProfile fails, assume it's a regular model ID. Only
-      // cache definite misses; transient errors and cancellations should retry.
-      if (this.isResourceNotFoundError(error) && !this.isAbortError(error, abortSignal)) {
+      // Cache permanent failures (AccessDenied, ResourceNotFound, ValidationException) so
+      // repeated calls — provideTokenCount is called per-tool-per-turn by Copilot — don't
+      // flood the API and trigger ThrottlingException. Transient errors (throttling, 5xx,
+      // network) are not cached so they can be retried on the next call.
+      const isPermanent =
+        !this.isAbortError(error, abortSignal) &&
+        (this.isResourceNotFoundError(error) ||
+          this.getErrorCode(error) === "AccessDeniedException" ||
+          this.getErrorCode(error) === "ValidationException");
+
+      if (isPermanent) {
         this.inferenceProfileCache.set(modelId, modelId);
       }
       logger.trace(
