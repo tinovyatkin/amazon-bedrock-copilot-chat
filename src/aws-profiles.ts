@@ -51,10 +51,7 @@ export async function getProfileSdkUaAppId(
  * resolution. Assume-role and other profile types should continue to receive the
  * selected Bedrock region as STS client config.
  */
-export async function isSsoProfile(
-  profileName: string,
-  init?: SharedConfigInit,
-): Promise<boolean> {
+export async function isSsoProfile(profileName: string, init?: SharedConfigInit): Promise<boolean> {
   try {
     const { configFile, credentialsFile } = await loadSharedConfigFiles(init);
     const profile = {
@@ -64,10 +61,10 @@ export async function isSsoProfile(
 
     return Boolean(
       profile.sso_session ??
-        profile.sso_start_url ??
-        profile.sso_region ??
-        profile.sso_account_id ??
-        profile.sso_role_name,
+      profile.sso_start_url ??
+      profile.sso_region ??
+      profile.sso_account_id ??
+      profile.sso_role_name,
     );
   } catch {
     return false;
