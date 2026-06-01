@@ -468,7 +468,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const trackingProgress: Progress<LanguageModelResponsePart2> = {
       report: (part) => {
         try {
-          progress.report(part as LanguageModelResponsePart);
+          progress.report(part);
         } catch (error) {
           logger.warn("[Bedrock Model Provider] Progress.report failed", {
             error:
@@ -1716,7 +1716,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             return { callId: part.callId, content: part.content, type: "toolResult" };
           }
           if (typeof part === "object" && part != null && "mimeType" in part && "data" in part) {
-            const dataPart = part as { data: Uint8Array; mimeType: string };
+            const dataPart = part;
             return {
               dataLength: dataPart.data.length,
               mimeType: dataPart.mimeType,

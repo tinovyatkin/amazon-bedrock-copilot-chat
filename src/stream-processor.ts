@@ -193,7 +193,7 @@ export class StreamProcessor {
       input: tool.input,
       name: tool.name,
     });
-    progress.report(new vscode.LanguageModelToolCallPart(tool.id, tool.name, tool.input as object));
+    progress.report(new vscode.LanguageModelToolCallPart(tool.id, tool.name, tool.input));
     state.toolBuffer.markEmitted(stop.contentBlockIndex!);
     state.hasEmittedContent = true;
   }
@@ -361,7 +361,7 @@ export class StreamProcessor {
     const thinkingData = (startData as { thinking?: unknown }).thinking;
     const signature =
       typeof thinkingData === "object" && thinkingData && "signature" in thinkingData
-        ? String((thinkingData as { signature: unknown }).signature)
+        ? String(thinkingData.signature)
         : undefined;
 
     state.capturedThinkingBlock = { signature, text: "" };

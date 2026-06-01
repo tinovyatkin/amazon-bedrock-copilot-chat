@@ -51,7 +51,7 @@ const mockGlobalState: vscode.Memento = {
   get: async () => {},
   keys: () => [],
   update: async () => {},
-} as unknown as vscode.Memento;
+};
 
 // Helper to cast non-standard content blocks that may appear from models with extended thinking
 const nonStandardBlock = (b: unknown) => b as any;
@@ -110,7 +110,7 @@ const callBuildRequestInput = (
       maxOutputTokens: 64_000,
       name: modelId,
       version: "1.0.0",
-    } as unknown as vscode.LanguageModelChatInformation,
+    },
     modelId,
     { messages: [], system: [] },
     options,
@@ -149,7 +149,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
           maxOutputTokens: 1000,
           name: "m",
           version: "1.0.0",
-        } as unknown as vscode.LanguageModelChatInformation,
+        },
         "hello world",
         new vscode.CancellationTokenSource().token,
       );
@@ -490,7 +490,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
         { content: [{ text: "Hello" }], role: "assistant" as const },
       ];
 
-      const result = stripThinkingContent(messages as any);
+      const result = stripThinkingContent(messages);
 
       // Message without content is removed (empty content array check)
       assert.equal(result.length, 1);
@@ -515,7 +515,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
               name: "do_something",
             },
           ],
-        } as vscode.LanguageModelChatRequestOptions,
+        },
         "test.model-id",
       );
 
@@ -548,7 +548,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
               name: "only_tool",
             },
           ],
-        } as vscode.LanguageModelChatRequestOptions,
+        },
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
@@ -568,7 +568,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
               name: "my_tool",
             },
           ],
-        } as vscode.LanguageModelChatRequestOptions,
+        },
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
@@ -581,7 +581,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const out = convertTools(
         {
           tools: [],
-        } as vscode.LanguageModelChatRequestOptions,
+        },
         "test.model-id",
       );
 
