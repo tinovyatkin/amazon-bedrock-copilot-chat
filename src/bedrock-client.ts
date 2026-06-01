@@ -782,7 +782,9 @@ export class BedrockAPIClient {
     let provider: AwsCredentialIdentityProvider | undefined;
     const wrapped: AwsCredentialIdentityProvider = async () => {
       if (!provider) {
-        const useExplicitStsRegion = options?.stsRegion && !(await isSsoProfile(profile));
+        const stsRegion = options?.stsRegion;
+        const useExplicitStsRegion =
+          typeof stsRegion === "string" && !(await isSsoProfile(profile));
         const userAgentAppId = await getProfileSdkUaAppId(profile);
         if (userAgentAppId) {
           logger.debug(
@@ -792,7 +794,7 @@ export class BedrockAPIClient {
 
         provider = fromIni({
           clientConfig: {
-            ...(useExplicitStsRegion ? { region: options.stsRegion } : {}),
+            ...(useExplicitStsRegion ? { region: stsRegion } : {}),
             ...(userAgentAppId ? { userAgentAppId } : {}),
           },
           profile,
