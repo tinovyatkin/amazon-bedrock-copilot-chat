@@ -24,7 +24,12 @@ import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-cli
 import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
-import { getModelProfile, getModelTokenLimits, requires1MContextBetaHeader } from "./profiles";
+import {
+  getModelProfile,
+  getModelTokenLimits,
+  normalizeModelId,
+  requires1MContextBetaHeader,
+} from "./profiles";
 import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary, ModelsDevMap } from "./types";
@@ -527,9 +532,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Configure client with authentication
       this.client.setAuthConfig(authConfig);
 
-      // Resolve model ID for application inference profiles (ARNs) to base model ID
-      // This is needed because internal logic (getModelProfile, getModelTokenLimits) expects base model IDs
-      // Note: For the actual API call, we still use the original model.id (ARN for app profiles)
+      // Resolve model ID for application inference profiles (ARNs) to base model ID.
+      // getModelProfile and resolveModelLimits expect base model IDs, not ARNs.
+      // For the actual API call we still use the original model.id (ARN for app profiles).
       const abortController = new AbortController();
       const cancellationListener = token.onCancellationRequested(() => {
         abortController.abort();
@@ -610,7 +615,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         });
       }
 
-      const modelLimits = getModelTokenLimits(baseModelId, context1MEnabled);
+      // Use the model's live limits (already resolved via resolveModelLimits at construction time).
+      // model.maxOutputTokens reflects models.dev data where available, with getModelTokenLimits
+      // as fallback — no need to call getModelTokenLimits again here.
+      const effectiveMaxOutputTokens = model.maxOutputTokens;
 
       // Calculate thinking configuration
       // Use model's maxOutputTokens as default when VSCode doesn't provide max_tokens.
@@ -619,11 +627,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const maxTokensForRequest =
         typeof options.modelOptions?.max_tokens === "number"
           ? options.modelOptions.max_tokens
-          : modelLimits.maxOutputTokens;
+          : effectiveMaxOutputTokens;
       const { budgetTokens, extendedThinkingEnabled: initialThinkingEnabled } =
         this.calculateThinkingConfig(
           modelProfile,
-          modelLimits,
+          effectiveMaxOutputTokens,
           maxTokensForRequest,
           settings.thinking.enabled,
         );
@@ -1000,21 +1008,24 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    * renders context-size and thinking/reasoning controls in the model-picker UI —
    * the same controls shown for built-in Copilot models.
    *
-   * **No values are hardcoded here.** All capability flags come from
-   * {@link getModelProfile} and all token counts from {@link getModelTokenLimits},
-   * both of which are already computed before this method is called:
+   * Capability flags come from two sources (both already computed before this call):
+   * 1. {@link getModelProfile} — Bedrock-specific flags like `supportsThinkingEffort`,
+   *    `requiresInterleavedThinkingHeader`, `supportsReasoningEffort`, etc.
+   * 2. `modelsDevMap` — live data from models.dev, used to auto-detect reasoning
+   *    support for new non-Anthropic models not yet in `profiles.ts`.
    *
    * - **contextSize** — shown only when the model has an *optional* 1M context
    *   window that requires an opt-in beta header (Opus 4.6, Sonnet 4.x).
-   *   Models where 1M is the default (Opus 4.7/4.8) don't get the picker.
-   *   The standard limit comes from `standardMaxInputTokens + maxOutputTokens`
-   *   (already computed by {@link getModelTokenLimits} with `enable1MContext=false`).
+   *   Models where 1M is always-on (Opus 4.7/4.8) don't get the picker.
+   *   The standard limit is `standardMaxInputTokens + maxOutputTokens` as
+   *   computed by {@link resolveModelLimits} with `context1MEnabled=false`.
    * - **thinkingEffort** — shown for models where `supportsThinkingEffort` is
    *   true (Claude Opus 4.5/4.6/4.8, Sonnet 4.6). Effort levels come from the
    *   profile; no hardcoding.
    * - **reasoningEffort** — shown for models where `supportsReasoningEffort` is
-   *   true (DeepSeek V3.2, Kimi K2, Qwen3, GLM, MiniMax, OpenAI gpt-oss). The
-   *   `minimal` level is only added for OpenAI models, detected via model ID.
+   *   true (DeepSeek V3.2, Kimi K2, Qwen3, GLM, MiniMax, OpenAI gpt-oss), OR
+   *   where models.dev reports `reasoning: true` for a non-Anthropic model not
+   *   yet in `profiles.ts`. The `minimal` level is only added for OpenAI models.
    *
    * The selected values are returned as `modelConfiguration` in
    * {@link LanguageModelChatRequestHandleOptions} and override the corresponding
@@ -1029,8 +1040,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   ): LanguageModelConfigurationSchema | undefined {
     const properties: Record<string, Record<string, unknown>> = {};
 
-    // Resolve the models.dev entry for live capability data
-    const normalizedId = modelId.replace(/^(us|eu|ap|au|jp|ca|sa|me|af|il|global)\./i, "");
+    // Resolve the models.dev entry for live capability data.
+    // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
+    // can match against the bare model IDs stored in models.dev.
+    const normalizedId = normalizeModelId(modelId);
     const devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
 
     // ── Context size picker ────────────────────────────────────────────────
@@ -1344,11 +1357,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
-   * Calculate thinking configuration parameters
+   * Calculate thinking configuration parameters.
+   * @param modelProfile - The model's capability profile
+   * @param maxOutputTokens - The model's maximum output tokens (from resolveModelLimits / model.maxOutputTokens)
+   * @param maxTokensForRequest - The effective max_tokens for this specific request
+   * @param thinkingEnabled - Whether thinking is enabled in settings
    */
   private calculateThinkingConfig(
     modelProfile: ReturnType<typeof getModelProfile>,
-    modelLimits: ReturnType<typeof getModelTokenLimits>,
+    maxOutputTokens: number,
     maxTokensForRequest: number,
     thinkingEnabled: boolean,
   ): { budgetTokens: number; extendedThinkingEnabled: boolean } {
@@ -1357,7 +1374,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // Reserve at least 25% of maxTokensForRequest (minimum 100 tokens) for visible
     // response content so that small explicit max_tokens values still produce output.
     const baseBudget = 16_000;
-    const maxBudgetFromOutput = Math.floor(modelLimits.maxOutputTokens * 0.25);
+    const maxBudgetFromOutput = Math.floor(maxOutputTokens * 0.25);
     const visibleReserve = Math.max(100, Math.floor(maxTokensForRequest * 0.25));
     const budgetTokens = Math.max(
       0,
@@ -2104,8 +2121,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    *
    * models.dev provides authoritative context/output limits for 91+ Bedrock models
    * and is updated as new models launch — meaning new models get correct limits
-   * automatically without code changes. The hardcoded fallback handles models not
-   * yet in models.dev and the 1M context opt-in logic for Claude models.
+   * automatically without code changes. The `getModelTokenLimits` fallback handles
+   * models not yet in models.dev and preserves the 1M context opt-in logic for
+   * Claude models that require a beta header.
    *
    * For models with `limit.context >= 1M` in models.dev AND where `requires1MContextBetaHeader`
    * is true (i.e. 1M is optional, not the default), we respect the user's `context1M.enabled`
@@ -2116,8 +2134,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     context1MEnabled: boolean,
     modelsDevMap: ModelsDevMap,
   ): { maxInputTokens: number; maxOutputTokens: number } {
-    // Try exact match, then strip regional prefix
-    const normalizedId = modelId.replace(/^(us|eu|ap|au|jp|ca|sa|me|af|il|global)\./i, "");
+    // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
+    // can match against the bare model IDs stored in models.dev.
+    const normalizedId = normalizeModelId(modelId);
     const devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
 
     if (devEntry) {

@@ -320,6 +320,24 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
 }
 
 /**
+ * Normalize a Bedrock model ID by stripping inference profile prefixes.
+ * Handles both regional prefixes (us., eu., ap., etc.) and global prefix (global.)
+ * @param modelId The full Bedrock model ID with optional prefix
+ * @returns Normalized model ID without prefix
+ * @example
+ * normalizeModelId("global.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("us.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ */
+export function normalizeModelId(modelId: string): string {
+  const parts = modelId.split(".");
+  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
+    return parts.slice(1).join(".");
+  }
+  return modelId;
+}
+
+/**
  * Check if a model needs the 1M context beta header when 1M context is enabled.
  * Claude Opus 4.7 is 1M-by-default and must not receive the beta header.
  */
@@ -427,24 +445,6 @@ function getClaudeTokenLimits(
 
   // Default for unknown Claude models
   return { maxInputTokens: 196_000, maxOutputTokens: 4096 };
-}
-
-/**
- * Normalize a Bedrock model ID by stripping inference profile prefixes.
- * Handles both regional prefixes (us., eu., ap., etc.) and global prefix (global.)
- * @param modelId The full Bedrock model ID with optional prefix
- * @returns Normalized model ID without prefix
- * @example
- * normalizeModelId("global.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
- * normalizeModelId("us.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
- * normalizeModelId("anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
- */
-function normalizeModelId(modelId: string): string {
-  const parts = modelId.split(".");
-  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
-    return parts.slice(1).join(".");
-  }
-  return modelId;
 }
 
 /**

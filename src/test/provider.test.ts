@@ -93,14 +93,14 @@ const createMockClientProvider = (baseModelAccessible: boolean) => {
 // Helper to call the private calculateThinkingConfig method
 const callCalcThinkingConfig = (
   modelProfile: { supportsThinking: boolean },
-  modelLimits: { maxOutputTokens: number },
+  maxOutputTokens: number,
   maxTokensForRequest: number,
   thinkingEnabled: boolean,
 ) => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
   return (provider as any).calculateThinkingConfig(
     modelProfile,
-    modelLimits,
+    maxOutputTokens,
     maxTokensForRequest,
     thinkingEnabled,
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
@@ -1142,12 +1142,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // baseBudget = 16000, maxBudgetFromOutput = 16000, visibleReserve = max(100, 16000) = 16000
       // maxTokensForRequest - visibleReserve = 64000 - 16000 = 48000
       // budgetTokens = min(16000, 16000, 48000) = 16000
-      const result = callCalcThinkingConfig(
-        thinkingProfile,
-        { maxOutputTokens: 64_000 },
-        64_000,
-        true,
-      );
+      const result = callCalcThinkingConfig(thinkingProfile, 64_000, 64_000, true);
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
     });
@@ -1156,12 +1151,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // max_tokens = 500 → visibleReserve = max(100, 125) = 125
       // maxTokensForRequest - visibleReserve = 500 - 125 = 375
       // budgetTokens = min(16000, 16000, 375) = 375 → < 1024 → thinking disabled
-      const result = callCalcThinkingConfig(
-        thinkingProfile,
-        { maxOutputTokens: 64_000 },
-        500,
-        true,
-      );
+      const result = callCalcThinkingConfig(thinkingProfile, 64_000, 500, true);
       assert.ok(
         result.budgetTokens < 1024,
         `Expected budgetTokens < 1024, got ${result.budgetTokens}`,
@@ -1173,30 +1163,20 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // max_tokens = 50 → visibleReserve = max(100, 12) = 100
       // maxTokensForRequest - visibleReserve = 50 - 100 = -50
       // budgetTokens = max(0, min(16000, 16000, -50)) = 0
-      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 64_000 }, 50, true);
+      const result = callCalcThinkingConfig(thinkingProfile, 64_000, 50, true);
       assert.equal(result.budgetTokens, 0);
       assert.equal(result.extendedThinkingEnabled, false);
     });
 
     test("thinking disabled when model does not support it", () => {
-      const result = callCalcThinkingConfig(
-        nonThinkingProfile,
-        { maxOutputTokens: 64_000 },
-        64_000,
-        true,
-      );
+      const result = callCalcThinkingConfig(nonThinkingProfile, 64_000, 64_000, true);
       assert.equal(result.extendedThinkingEnabled, false);
       // budgetTokens is still computed but thinking is disabled
       assert.equal(result.budgetTokens, 16_000);
     });
 
     test("thinking disabled when setting is off", () => {
-      const result = callCalcThinkingConfig(
-        thinkingProfile,
-        { maxOutputTokens: 64_000 },
-        64_000,
-        false,
-      );
+      const result = callCalcThinkingConfig(thinkingProfile, 64_000, 64_000, false);
       assert.equal(result.extendedThinkingEnabled, false);
     });
 
@@ -1205,12 +1185,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // maxTokensForRequest - visibleReserve = 2000 - 500 = 1500
       // budgetTokens = min(16000, 16000, 1500) = 1500
       // Remaining for visible output = 2000 - 1500 = 500 ≥ visibleReserve
-      const result = callCalcThinkingConfig(
-        thinkingProfile,
-        { maxOutputTokens: 64_000 },
-        2000,
-        true,
-      );
+      const result = callCalcThinkingConfig(thinkingProfile, 64_000, 2000, true);
       assert.equal(result.budgetTokens, 1500);
       assert.ok(
         2000 - result.budgetTokens >= 500,
@@ -1225,7 +1200,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // visibleReserve = max(100, floor(4096 * 0.25)) = 1024
       // maxTokensForRequest - visibleReserve = 4096 - 1024 = 3072
       // budgetTokens = min(16000, 1024, 3072) = 1024
-      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 4096 }, 4096, true);
+      const result = callCalcThinkingConfig(thinkingProfile, 4096, 4096, true);
       assert.equal(result.budgetTokens, 1024);
       assert.equal(result.extendedThinkingEnabled, true);
     });
@@ -1234,21 +1209,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // Model with maxOutputTokens = 2000
       // maxBudgetFromOutput = floor(2000 * 0.25) = 500
       // budgetTokens = min(16000, 500, ...) = at most 500 → < 1024
-      const result = callCalcThinkingConfig(thinkingProfile, { maxOutputTokens: 2000 }, 2000, true);
+      const result = callCalcThinkingConfig(thinkingProfile, 2000, 2000, true);
       assert.ok(result.budgetTokens < 1024);
       assert.equal(result.extendedThinkingEnabled, false);
     });
 
     test("budget math when maxTokensForRequest falls back to maxOutputTokens (no explicit max_tokens)", () => {
       // Simulates the case where VSCode doesn't provide max_tokens
-      // and maxTokensForRequest falls back to modelLimits.maxOutputTokens
+      // and maxTokensForRequest falls back to model.maxOutputTokens
       const maxOutput = 128_000; // Claude Opus 4.6
-      const result = callCalcThinkingConfig(
-        thinkingProfile,
-        { maxOutputTokens: maxOutput },
-        maxOutput,
-        true,
-      );
+      const result = callCalcThinkingConfig(thinkingProfile, maxOutput, maxOutput, true);
       // baseBudget = 16000, maxBudgetFromOutput = 32000, visibleReserve = 32000
       // maxTokensForRequest - visibleReserve = 128000 - 32000 = 96000
       // budgetTokens = min(16000, 32000, 96000) = 16000
