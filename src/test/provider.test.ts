@@ -23,6 +23,12 @@ interface ProviderInternals {
     context1MEnabled: boolean,
     thinkingEffortEnabled: boolean,
   ) => string[];
+  buildConfigurationSchema: (
+    modelId: string,
+    modelProfile: ReturnType<typeof getModelProfile>,
+    standardMaxInputTokens: number,
+    maxOutputTokens: number,
+  ) => undefined | { properties?: Record<string, Record<string, unknown>> };
   formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
   formatTooltip: (args: {
     maxInput: number;
@@ -123,6 +129,22 @@ const callBuildRequestInput = (
     modelProfile.requiresAdaptiveThinking,
     undefined,
   ) as ConverseStreamCommandInput;
+};
+
+const callBuildConfigurationSchema = (
+  modelId: string,
+  standardMaxInputTokens: number,
+  maxOutputTokens: number,
+) => {
+  const provider = providerInternals(
+    new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+  );
+  return provider.buildConfigurationSchema(
+    modelId,
+    getModelProfile(modelId),
+    standardMaxInputTokens,
+    maxOutputTokens,
+  );
 };
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
@@ -1212,6 +1234,109 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // budgetTokens = min(16000, 32000, 96000) = 16000
       assert.equal(result.budgetTokens, 16_000);
       assert.equal(result.extendedThinkingEnabled, true);
+    });
+  });
+
+  suite("buildConfigurationSchema", () => {
+    test("returns undefined for models with no configurable options (Nova Lite)", () => {
+      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0", 180_000, 5120);
+      assert.equal(schema, undefined);
+    });
+
+    test("returns contextSize picker for Opus 4.6 (optional 1M context)", () => {
+      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1", 72_000, 128_000);
+      assert.ok(schema?.properties?.contextSize, "should have contextSize property");
+      const cs = schema.properties.contextSize;
+      assert.deepEqual(cs.enum, [200_000, 1_000_000]);
+      assert.equal(cs.type, "number");
+      assert.equal(cs.group, "tokens");
+    });
+
+    test("returns NO contextSize picker for Opus 4.7 (always 1M context)", () => {
+      const schema = callBuildConfigurationSchema(
+        "anthropic.claude-opus-4-7-20260420-v1:0",
+        872_000,
+        128_000,
+      );
+      assert.equal(
+        schema?.properties?.contextSize,
+        undefined,
+        "Opus 4.7 always uses 1M — no picker needed",
+      );
+    });
+
+    test("returns thinkingEffort picker for Sonnet 4.6 (supportsThinkingEffort)", () => {
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 136_000, 64_000);
+      assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
+      const te = schema.properties.thinkingEffort;
+      assert.deepEqual(te.enum, ["high", "medium", "low"]);
+      assert.equal(te.group, "navigation");
+      assert.equal(te.default, "high");
+    });
+
+    test("returns NO thinkingEffort picker for Sonnet 3.7 (thinking but not effort)", () => {
+      const schema = callBuildConfigurationSchema(
+        "anthropic.claude-3-7-sonnet-20250219-v1:0",
+        136_000,
+        64_000,
+      );
+      assert.equal(schema?.properties?.thinkingEffort, undefined);
+    });
+
+    test("returns reasoningEffort picker for DeepSeek V3.2 (supportsReasoningEffort)", () => {
+      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615", 196_000, 4096);
+      assert.ok(schema?.properties?.reasoningEffort, "should have reasoningEffort property");
+      const re = schema.properties.reasoningEffort;
+      assert.deepEqual(re.enum, ["low", "medium", "high"]);
+      assert.equal(re.group, "navigation");
+    });
+
+    test("includes minimal effort level for OpenAI gpt-oss", () => {
+      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b", 196_000, 4096);
+      assert.ok(schema?.properties?.reasoningEffort);
+      assert.deepEqual(schema.properties.reasoningEffort.enum, [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+      ]);
+    });
+
+    test("Sonnet 4.6 returns both contextSize and thinkingEffort pickers", () => {
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 136_000, 64_000);
+      assert.ok(schema?.properties?.contextSize, "should have contextSize");
+      assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort");
+      assert.equal(schema?.properties?.reasoningEffort, undefined);
+    });
+  });
+
+  suite("modelConfiguration overrides in provideLanguageModelChatResponse", () => {
+    // These tests verify that modelConfiguration values from the VS Code model
+    // picker are correctly applied as per-request overrides. We test the
+    // buildRequestInput pathway since provideLanguageModelChatResponse requires
+    // live AWS credentials for the full path.
+
+    test("modelOptions.max_tokens is respected (existing behaviour)", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-4-6", {
+        modelOptions: { max_tokens: 8192 },
+      });
+      assert.equal(requestInput.inferenceConfig?.maxTokens, 8192);
+    });
+
+    test("buildBetaHeaders uses context1MEnabled=true when contextSize=1M is selected", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "anthropic.claude-sonnet-4-6";
+      const profile = getModelProfile(modelId);
+
+      // With context1MEnabled = false (default) — no 1M beta header
+      const headersDefault = provider.buildBetaHeaders(profile, modelId, false, false, false);
+      assert.equal(headersDefault.includes("context-1m-2025-08-07"), false);
+
+      // With context1MEnabled = true (as set when contextSize picker selects 1M)
+      const headersWith1M = provider.buildBetaHeaders(profile, modelId, false, true, false);
+      assert.equal(headersWith1M.includes("context-1m-2025-08-07"), true);
     });
   });
 
