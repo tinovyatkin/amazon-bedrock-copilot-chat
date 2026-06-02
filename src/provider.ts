@@ -12,6 +12,7 @@ import type {
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatProvider,
+  LanguageModelConfigurationSchema,
   LanguageModelResponsePart,
   LanguageModelResponsePart2,
   Progress,
@@ -24,7 +25,7 @@ import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { getModelProfile, getModelTokenLimits, requires1MContextBetaHeader } from "./profiles";
-import { getBedrockSettings, type ReasoningEffort } from "./settings";
+import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type { AuthConfig, AuthMethod, BedrockModelSummary } from "./types";
 import { validateBedrockMessages } from "./validation";
@@ -235,12 +236,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               route = "Local/regional inference profile";
             }
 
+            const modelProfile = getModelProfile(modelIdToUse);
             const modelInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
                 toolCalling: true,
               },
+              configurationSchema: this.buildConfigurationSchema(
+                modelIdToUse,
+                modelProfile,
+                maxInput,
+                maxOutput,
+              ),
               detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
               family: "bedrock",
               id: modelIdToUse,
@@ -285,12 +293,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const maxOutput = limits.maxOutputTokens;
             const vision = profile.inputModalities.includes(ModelModality.IMAGE);
 
+            const appProfileModelProfile = getModelProfile(modelIdForLimits);
             const profileInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
                 toolCalling: true,
               },
+              configurationSchema: this.buildConfigurationSchema(
+                modelIdForLimits,
+                appProfileModelProfile,
+                maxInput,
+                maxOutput,
+              ),
               detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
               family: "bedrock",
               id: profile.modelArn,
@@ -524,7 +539,58 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Get settings and model configuration
       const settings = await getBedrockSettings(this.globalState);
       const modelProfile = getModelProfile(baseModelId);
-      const modelLimits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
+
+      // Apply per-request overrides from the VS Code model-picker UI.
+      // When the user selects a context size, thinking effort, or reasoning
+      // effort in the model picker, VS Code passes those choices back as
+      // `options.modelConfiguration` (proposed `chatProvider` API).  We merge
+      // them on top of the workspace/user settings so the UI controls take
+      // precedence for this specific request without permanently changing the
+      // saved settings.
+      const mc = (options as { modelConfiguration?: Record<string, unknown> }).modelConfiguration;
+
+      // context1M override: if the user picked the 1M context size in the picker,
+      // treat it as if context1M.enabled were true for this request.
+      const context1MEnabled =
+        typeof mc?.contextSize === "number" && mc.contextSize >= 1_000_000
+          ? true
+          : settings.context1M.enabled;
+
+      // thinkingEffort override: picker value wins over workspace setting.
+      const validThinkingEfforts: readonly ThinkingEffort[] = ["high", "medium", "low"];
+      const thinkingEffortOverride =
+        typeof mc?.thinkingEffort === "string" &&
+        validThinkingEfforts.includes(mc.thinkingEffort as ThinkingEffort)
+          ? (mc.thinkingEffort as ThinkingEffort)
+          : undefined;
+      const effectiveThinkingEffort: ThinkingEffort =
+        thinkingEffortOverride ?? settings.thinking.effort;
+
+      // reasoningEffort override: picker value wins over workspace setting.
+      const validReasoningEfforts: readonly ReasoningEffort[] = [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+      ];
+      const reasoningEffortOverride =
+        typeof mc?.reasoningEffort === "string" &&
+        validReasoningEfforts.includes(mc.reasoningEffort as ReasoningEffort)
+          ? (mc.reasoningEffort as ReasoningEffort)
+          : undefined;
+      const effectiveReasoningEffort: ReasoningEffort | undefined =
+        reasoningEffortOverride ?? settings.reasoningEffort;
+
+      if (mc && Object.keys(mc).length > 0) {
+        logger.debug("[Bedrock Model Provider] Applying modelConfiguration overrides", {
+          context1MEnabled,
+          modelConfiguration: mc,
+          reasoningEffort: effectiveReasoningEffort,
+          thinkingEffort: effectiveThinkingEffort,
+        });
+      }
+
+      const modelLimits = getModelTokenLimits(baseModelId, context1MEnabled);
 
       // Calculate thinking configuration
       // Use model's maxOutputTokens as default when VSCode doesn't provide max_tokens.
@@ -603,16 +669,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Determine if thinking effort should be applied (only for Opus 4.5 and Sonnet 4.6)
       const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
 
-      // Build beta headers
+      // Build beta headers — use the effective context1M flag (may be overridden by
+      // the model-picker contextSize selection via modelConfiguration)
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
         baseModelId,
         extendedThinkingEnabled,
-        settings.context1M.enabled,
+        context1MEnabled,
         thinkingEffortEnabled,
       );
 
-      // Build request input
+      // Build request input — use effective effort values (model-picker overrides win)
       const requestInput = this.buildRequestInput(
         model,
         baseModelId,
@@ -622,10 +689,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         extendedThinkingEnabled,
         budgetTokens,
         betaHeaders,
-        thinkingEffortEnabled ? settings.thinking.effort : undefined,
+        thinkingEffortEnabled ? effectiveThinkingEffort : undefined,
         modelProfile.temperatureDeprecated,
         modelProfile.requiresAdaptiveThinking,
-        modelProfile.supportsReasoningEffort ? settings.reasoningEffort : undefined,
+        modelProfile.supportsReasoningEffort ? effectiveReasoningEffort : undefined,
       );
 
       // Log request details
@@ -909,6 +976,120 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Build a {@link LanguageModelConfigurationSchema} for a model so that VS Code
+   * renders context-size and thinking/reasoning controls in the model-picker UI —
+   * the same controls shown for built-in Copilot models.
+   *
+   * **No values are hardcoded here.** All capability flags come from
+   * {@link getModelProfile} and all token counts from {@link getModelTokenLimits},
+   * both of which are already computed before this method is called:
+   *
+   * - **contextSize** — shown only when the model has an *optional* 1M context
+   *   window that requires an opt-in beta header (Opus 4.6, Sonnet 4.x).
+   *   Models where 1M is the default (Opus 4.7/4.8) don't get the picker.
+   *   The standard limit comes from `standardMaxInputTokens + maxOutputTokens`
+   *   (already computed by {@link getModelTokenLimits} with `enable1MContext=false`).
+   * - **thinkingEffort** — shown for models where `supportsThinkingEffort` is
+   *   true (Claude Opus 4.5/4.6/4.8, Sonnet 4.6). Effort levels come from the
+   *   profile; no hardcoding.
+   * - **reasoningEffort** — shown for models where `supportsReasoningEffort` is
+   *   true (DeepSeek V3.2, Kimi K2, Qwen3, GLM, MiniMax, OpenAI gpt-oss). The
+   *   `minimal` level is only added for OpenAI models, detected via model ID.
+   *
+   * The selected values are returned as `modelConfiguration` in
+   * {@link LanguageModelChatRequestHandleOptions} and override the corresponding
+   * workspace/user settings for that individual request.
+   */
+  private buildConfigurationSchema(
+    modelId: string,
+    modelProfile: ReturnType<typeof getModelProfile>,
+    standardMaxInputTokens: number,
+    maxOutputTokens: number,
+  ): LanguageModelConfigurationSchema | undefined {
+    const properties: Record<string, Record<string, unknown>> = {};
+
+    // ── Context size picker ────────────────────────────────────────────────
+    // `requires1MContextBetaHeader` is true only for models that have a
+    // standard context window AND an optional 1M extension (Opus 4.6, Sonnet 4.x).
+    // Opus 4.7/4.8 always use 1M so no picker is needed for them.
+    if (requires1MContextBetaHeader(modelId)) {
+      const standardTotal = standardMaxInputTokens + maxOutputTokens;
+      const extended1MTotal = 1_000_000;
+      const fmt = (n: number) => {
+        const k = Math.round(n / 1000);
+        return k >= 1000 ? `${Math.round(k / 1000)}M` : `${k}K`;
+      };
+      properties.contextSize = {
+        default: standardTotal,
+        description: "Context window size for this request",
+        enum: [standardTotal, extended1MTotal],
+        enumDescriptions: [
+          "Default context window (standard pricing)",
+          "Extended 1M context window (may increase cost)",
+        ],
+        enumItemLabels: [fmt(standardTotal), fmt(extended1MTotal)],
+        group: "tokens",
+        title: "Context Size",
+        type: "number",
+      };
+    }
+
+    // ── Thinking effort ────────────────────────────────────────────────────
+    // `supportsThinkingEffort` is set in `profiles.ts` for models that accept
+    // Claude's `output_config.effort` field (Opus 4.5/4.6/4.8, Sonnet 4.6).
+    if (modelProfile.supportsThinkingEffort) {
+      properties.thinkingEffort = {
+        default: "high",
+        description:
+          "Controls how many tokens Claude spends thinking before responding. Higher effort produces better results but uses more tokens.",
+        enum: ["high", "medium", "low"],
+        enumDescriptions: [
+          "Maximum capability — Claude uses as many tokens as needed. Best for complex reasoning.",
+          "Balanced approach with moderate token savings. Good for most tasks.",
+          "Most efficient — significant token savings. Best for simpler tasks.",
+        ],
+        enumItemLabels: ["High", "Medium", "Low"],
+        group: "navigation",
+        title: "Thinking Amount",
+        type: "string",
+      };
+    }
+
+    // ── Reasoning effort ──────────────────────────────────────────────────
+    // `supportsReasoningEffort` is set in `profiles.ts` for non-Anthropic models
+    // that accept the OpenAI-style `reasoning_effort` field. The `minimal` level
+    // is OpenAI gpt-oss only — detected via model ID, same logic as
+    // `applyReasoningEffort`.
+    if (modelProfile.supportsReasoningEffort) {
+      const isOpenAI = modelId.toLowerCase().includes("openai.");
+      const effortLevels = isOpenAI
+        ? (["minimal", "low", "medium", "high"] as const)
+        : (["low", "medium", "high"] as const);
+      properties.reasoningEffort = {
+        default: "medium",
+        description: "Controls how much reasoning the model performs before responding.",
+        enum: effortLevels,
+        enumDescriptions: isOpenAI
+          ? [
+              "Fastest, lowest cost (OpenAI gpt-oss only).",
+              "Lowest reasoning budget.",
+              "Balanced reasoning budget.",
+              "Maximum reasoning budget.",
+            ]
+          : ["Lowest reasoning budget.", "Balanced reasoning budget.", "Maximum reasoning budget."],
+        enumItemLabels: isOpenAI ? ["Minimal", "Low", "Medium", "High"] : ["Low", "Medium", "High"],
+        group: "navigation",
+        title: "Reasoning Effort",
+        type: "string",
+      };
+    }
+
+    return Object.keys(properties).length > 0
+      ? ({ properties } as LanguageModelConfigurationSchema)
+      : undefined;
+  }
+
+  /**
    * Allow users with restricted permissions to manually supply a model or inference profile ID.
    */
   private async buildManualModelInformation(
@@ -934,6 +1115,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       const limits = getModelTokenLimits(baseModelId, settings.context1M.enabled);
+      const manualModelProfile = getModelProfile(baseModelId);
       const likelyVisionCapable = /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
       return {
@@ -941,6 +1123,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           imageInput: likelyVisionCapable,
           toolCalling: true,
         },
+        configurationSchema: this.buildConfigurationSchema(
+          baseModelId,
+          manualModelProfile,
+          limits.maxInputTokens,
+          limits.maxOutputTokens,
+        ),
         detail: this.formatDetail(
           baseModelId,
           limits.maxInputTokens,

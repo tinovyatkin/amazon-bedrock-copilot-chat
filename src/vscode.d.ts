@@ -20036,6 +20036,33 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * A JSON Schema describing configuration options for a language model.
+	 * Each property in `properties` defines a configurable option using standard JSON Schema fields
+	 * plus additional display hints.
+	 * When set, users can configure per-model options in the model picker UI (e.g. context size, thinking budget).
+	 * The configured values are passed back as `modelConfiguration` in the request options.
+	 *
+	 * @see {@link ProvideLanguageModelChatResponseOptions.modelConfiguration}
+	 */
+	export type LanguageModelConfigurationSchema = {
+		readonly properties?: {
+			readonly [key: string]: Record<string, any> & {
+				/**
+				 * Human-readable labels for enum values, shown instead of the raw values.
+				 * Must have the same length and order as `enum`.
+				 */
+				readonly enumItemLabels?: string[];
+				/**
+				 * The group this property belongs to. When set to `'navigation'`, the property
+				 * is shown as a primary action in the model picker.
+				 * When set to `'tokens'`, the property is shown in the tokens section.
+				 */
+				readonly group?: string;
+			};
+		};
+	};
+
+	/**
 	 * All the information representing a single language model contributed by a {@linkcode LanguageModelChatProvider}.
 	 */
 	export interface LanguageModelChatInformation {
@@ -20101,6 +20128,20 @@ declare module 'vscode' {
 		 * An example is how GPT 4o has multiple versions like 2024-11-20 and 2024-08-06
 		 */
 		readonly version: string;
+
+		/**
+		 * An optional JSON schema describing the configuration options for this model.
+		 * When set, users can specify per-model configuration in the model picker UI.
+		 * The configured values are passed back as `modelConfiguration` in the request options.
+		 *
+		 * @see {@link LanguageModelConfigurationSchema}
+		 */
+		readonly configurationSchema?: LanguageModelConfigurationSchema;
+
+		/**
+		 * Whether or not the model will show up in the model picker.
+		 */
+		readonly isUserSelectable?: boolean;
 	}
 
 	/**
@@ -20153,6 +20194,18 @@ declare module 'vscode' {
 		 * and need to be looked up in the respective documentation.
 		 */
 		readonly modelOptions?: { readonly [name: string]: any };
+
+		/**
+		 * Per-model configuration provided by the user. Contains resolved values based on the model's
+		 * {@linkcode LanguageModelChatInformation.configurationSchema configurationSchema},
+		 * with user overrides applied on top of schema defaults.
+		 *
+		 * For example, a `contextSize` property here means the user has selected a specific context window size.
+		 * A `reasoningEffort` property means the user has selected a thinking/reasoning effort level.
+		 */
+		readonly modelConfiguration?: {
+			readonly [key: string]: any;
+		};
 
 		/**
 		 * 	The tool-selecting mode to use. {@link LanguageModelChatToolMode.Auto} by default.
