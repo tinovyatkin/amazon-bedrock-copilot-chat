@@ -27,7 +27,6 @@ interface ProviderInternals {
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
     standardMaxInputTokens: number,
-    maxOutputTokens: number,
     modelsDevMap?: ModelsDevMap,
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
   formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
@@ -140,7 +139,6 @@ const callBuildRequestInput = (
 const callBuildConfigurationSchema = (
   modelId: string,
   standardMaxInputTokens: number,
-  maxOutputTokens: number,
   modelsDevMap: ModelsDevMap = new Map(),
 ) => {
   const provider = providerInternals(
@@ -150,7 +148,6 @@ const callBuildConfigurationSchema = (
     modelId,
     getModelProfile(modelId),
     standardMaxInputTokens,
-    maxOutputTokens,
     modelsDevMap,
   );
 };
@@ -1229,12 +1226,14 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
   suite("buildConfigurationSchema", () => {
     test("returns undefined for models with no configurable options (Nova Lite)", () => {
-      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0", 180_000, 5120);
+      // Nova Lite: 300K context, 8192 output — no thinking, no reasoning, no 1M opt-in
+      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0", 300_000);
       assert.equal(schema, undefined);
     });
 
     test("returns contextSize picker for Opus 4.6 (optional 1M context)", () => {
-      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1", 72_000, 128_000);
+      // Opus 4.6 default: 200K context window (full, not context-output)
+      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1", 200_000);
       assert.ok(schema?.properties?.contextSize, "should have contextSize property");
       const cs = schema.properties.contextSize;
       assert.deepEqual(cs.enum, [200_000, 1_000_000]);
@@ -1243,10 +1242,10 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("returns NO contextSize picker for Opus 4.7 (always 1M context)", () => {
+      // Opus 4.7: 1M context is always-on — no picker needed
       const schema = callBuildConfigurationSchema(
         "anthropic.claude-opus-4-7-20260420-v1:0",
-        872_000,
-        128_000,
+        1_000_000,
       );
       assert.equal(
         schema?.properties?.contextSize,
@@ -1256,7 +1255,8 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("returns thinkingEffort picker for Sonnet 4.6 (supportsThinkingEffort)", () => {
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 136_000, 64_000);
+      // Sonnet 4.6 default: 200K context window
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000);
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
       const te = schema.properties.thinkingEffort;
       assert.deepEqual(te.enum, ["high", "medium", "low"]);
@@ -1267,14 +1267,13 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("returns NO thinkingEffort picker for Sonnet 3.7 (thinking but not effort)", () => {
       const schema = callBuildConfigurationSchema(
         "anthropic.claude-3-7-sonnet-20250219-v1:0",
-        136_000,
-        64_000,
+        200_000,
       );
       assert.equal(schema?.properties?.thinkingEffort, undefined);
     });
 
     test("returns reasoningEffort picker for DeepSeek V3.2 (supportsReasoningEffort)", () => {
-      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615", 196_000, 4096);
+      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615", 200_000);
       assert.ok(schema?.properties?.reasoningEffort, "should have reasoningEffort property");
       const re = schema.properties.reasoningEffort;
       assert.deepEqual(re.enum, ["low", "medium", "high"]);
@@ -1282,7 +1281,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("includes minimal effort level for OpenAI gpt-oss", () => {
-      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b", 196_000, 4096);
+      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b", 200_000);
       assert.ok(schema?.properties?.reasoningEffort);
       assert.deepEqual(schema.properties.reasoningEffort.enum, [
         "minimal",
@@ -1293,7 +1292,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("Sonnet 4.6 returns both contextSize and thinkingEffort pickers", () => {
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 136_000, 64_000);
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000);
       assert.ok(schema?.properties?.contextSize, "should have contextSize");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort");
       assert.equal(schema?.properties?.reasoningEffort, undefined);
@@ -1357,48 +1356,48 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
   suite("resolveModelLimits", () => {
     test("uses models.dev limits when available (exact match)", () => {
-      // models.dev says Sonnet 4.6 has 1M context / 64K output
+      // models.dev says Sonnet 4.6 has 1M context / 64K output.
+      // maxInputTokens = full context window (not context - output).
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
-      // With context1M disabled, should still use 1M because it's the only value in models.dev
-      // BUT requires1MContextBetaHeader is true → respect the setting
+      // With context1M disabled: requires1MContextBetaHeader → cap at 200K context
       const withoutExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, map);
       assert.equal(withoutExtended.maxOutputTokens, 64_000);
-      assert.equal(withoutExtended.maxInputTokens, 200_000 - 64_000); // capped at 200K
+      assert.equal(withoutExtended.maxInputTokens, 200_000); // full 200K context window
 
       const withExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", true, map);
       assert.equal(withExtended.maxOutputTokens, 64_000);
-      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000);
+      assert.equal(withExtended.maxInputTokens, 1_000_000); // full 1M context window
     });
 
     test("uses models.dev limits for always-1M models (Opus 4.7)", () => {
-      // Opus 4.7 doesn't require beta header — 1M is always-on
+      // Opus 4.7 doesn't require beta header — 1M is always-on.
+      // maxInputTokens = 1_000_000 (full context, not 1M - 128K).
       const map = makeDevMapEntry("anthropic.claude-opus-4-7", 1_000_000, 128_000);
       const result = callResolveModelLimits("anthropic.claude-opus-4-7", false, map);
-      // Should use full 1M regardless of context1MEnabled
       assert.equal(result.maxOutputTokens, 128_000);
-      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000); // full 1M context window
     });
 
     test("uses models.dev limits for non-Claude models (Nova Pro)", () => {
+      // Nova Pro: 300K context window, 8192 output.
       const map = makeDevMapEntry("amazon.nova-pro-v1:0", 300_000, 8192);
       const result = callResolveModelLimits("amazon.nova-pro-v1:0", false, map);
       assert.equal(result.maxOutputTokens, 8192);
-      assert.equal(result.maxInputTokens, 300_000 - 8192);
+      assert.equal(result.maxInputTokens, 300_000); // full 300K context window
     });
 
     test("falls back to getModelTokenLimits for unknown models", () => {
-      const emptyMap: ModelsDevMap = new Map();
-      const result = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, emptyMap);
-      // Should use hardcoded fallback: 200K - 64K = 136K
+      const result = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, new Map());
+      // Hardcoded fallback: Sonnet 4.6 → 200K context window
       assert.equal(result.maxOutputTokens, 64_000);
-      assert.equal(result.maxInputTokens, 200_000 - 64_000);
+      assert.equal(result.maxInputTokens, 200_000); // full 200K context window
     });
 
     test("strips regional prefix when looking up models.dev entry", () => {
       // models.dev has bare ID; model ID has regional prefix
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       const result = callResolveModelLimits("us.anthropic.claude-sonnet-4-6", true, map);
-      assert.equal(result.maxInputTokens, 1_000_000 - 64_000);
+      assert.equal(result.maxInputTokens, 1_000_000); // full 1M context window
     });
   });
 
@@ -1413,14 +1412,10 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const schema = callBuildConfigurationSchema(
         "newprovider.new-reasoning-model",
-        92_000,
-        8000,
+        100_000,
         devMap,
       );
-      assert.ok(
-        schema?.properties?.reasoningEffort,
-        "Should show reasoningEffort picker for new reasoning model from models.dev",
-      );
+      assert.ok(schema?.properties?.reasoningEffort);
     });
 
     test("reasoningEffort picker does NOT appear for Anthropic models via models.dev reasoning flag", () => {
@@ -1431,12 +1426,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
           { limit: { context: 1_000_000, output: 64_000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigurationSchema(
-        "anthropic.claude-sonnet-4-6",
-        136_000,
-        64_000,
-        devMap,
-      );
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000, devMap);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
   });

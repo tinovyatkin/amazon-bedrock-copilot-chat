@@ -263,7 +263,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 modelIdToUse,
                 modelProfile,
                 maxInput,
-                maxOutput,
                 modelsDevMap,
               ),
               detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
@@ -328,7 +327,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 modelIdForLimits,
                 appProfileModelProfile,
                 maxInput,
-                maxOutput,
                 modelsDevMap,
               ),
               detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
@@ -390,7 +388,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           this.chatEndpoints = infos.map((info) => ({
             model: info.id,
-            modelMaxPromptTokens: info.maxInputTokens + info.maxOutputTokens,
+            modelMaxPromptTokens: info.maxInputTokens,
           }));
 
           // Mark initial fetch as complete to allow onDidChangeChatModels handling
@@ -442,7 +440,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               this.chatEndpoints = [
                 {
                   model: manualInfo.id,
-                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
+                  modelMaxPromptTokens: manualInfo.maxInputTokens,
                 },
               ];
               return [manualInfo];
@@ -470,7 +468,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               this.chatEndpoints = [
                 {
                   model: manualInfo.id,
-                  modelMaxPromptTokens: manualInfo.maxInputTokens + manualInfo.maxOutputTokens,
+                  modelMaxPromptTokens: manualInfo.maxInputTokens,
                 },
               ];
               return [manualInfo];
@@ -1035,7 +1033,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
     standardMaxInputTokens: number,
-    maxOutputTokens: number,
     modelsDevMap: ModelsDevMap = new Map(),
   ): LanguageModelConfigurationSchema | undefined {
     const properties: Record<string, Record<string, unknown>> = {};
@@ -1050,8 +1047,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // `requires1MContextBetaHeader` is true only for models that have a
     // standard context window AND an optional 1M extension (Opus 4.6, Sonnet 4.x).
     // Opus 4.7/4.8 always use 1M so no picker is needed for them.
+    // standardMaxInputTokens is now the full context window (e.g. 200_000 for Sonnet 4.6 default).
     if (requires1MContextBetaHeader(modelId)) {
-      const standardTotal = standardMaxInputTokens + maxOutputTokens;
+      const standardTotal = standardMaxInputTokens; // full context window
       const extended1MTotal = 1_000_000;
       const fmt = (n: number) => {
         const k = Math.round(n / 1000);
@@ -1175,7 +1173,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           baseModelId,
           manualModelProfile,
           limits.maxInputTokens,
-          limits.maxOutputTokens,
           manualModelsDevMap,
         ),
         detail: this.formatDetail(
@@ -2143,18 +2140,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const devOutput = devEntry.limit.output;
       const devContext = devEntry.limit.context;
 
-      // For models with optional 1M context (requires beta header opt-in), respect the setting
+      // For models with optional 1M context (requires beta header opt-in), respect the setting.
+      // maxInputTokens = full context window (what VS Code shows as the context meter denominator).
       if (devContext >= 1_000_000 && requires1MContextBetaHeader(modelId)) {
         const effectiveContext = context1MEnabled ? devContext : 200_000;
         return {
-          maxInputTokens: effectiveContext - devOutput,
+          maxInputTokens: effectiveContext,
           maxOutputTokens: devOutput,
         };
       }
 
-      // For all other models (including always-1M like Opus 4.7/4.8), use live limits directly
+      // For all other models (including always-1M like Opus 4.7/4.8), use live limits directly.
       return {
-        maxInputTokens: devContext - devOutput,
+        maxInputTokens: devContext,
         maxOutputTokens: devOutput,
       };
     }
