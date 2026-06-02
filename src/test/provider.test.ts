@@ -7,7 +7,7 @@ import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
 import { getModelProfile } from "../profiles";
 import { BedrockChatModelProvider } from "../provider";
-import type { BedrockModelSummary } from "../types";
+import type { BedrockModelSummary, ModelsDevMap } from "../types";
 
 interface ProviderInternals {
   applyReasoningEffort: (
@@ -28,6 +28,7 @@ interface ProviderInternals {
     modelProfile: ReturnType<typeof getModelProfile>,
     standardMaxInputTokens: number,
     maxOutputTokens: number,
+    modelsDevMap?: ModelsDevMap,
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
   formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
   formatTooltip: (args: {
@@ -38,6 +39,11 @@ interface ProviderInternals {
     route: string;
     vision: boolean;
   }) => string;
+  resolveModelLimits: (
+    modelId: string,
+    context1MEnabled: boolean,
+    modelsDevMap: ModelsDevMap,
+  ) => { maxInputTokens: number; maxOutputTokens: number };
 }
 
 function providerInternals(provider: BedrockChatModelProvider): ProviderInternals {
@@ -135,6 +141,7 @@ const callBuildConfigurationSchema = (
   modelId: string,
   standardMaxInputTokens: number,
   maxOutputTokens: number,
+  modelsDevMap: ModelsDevMap = new Map(),
 ) => {
   const provider = providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
@@ -144,8 +151,21 @@ const callBuildConfigurationSchema = (
     getModelProfile(modelId),
     standardMaxInputTokens,
     maxOutputTokens,
+    modelsDevMap,
   );
 };
+
+const callResolveModelLimits = (
+  modelId: string,
+  context1MEnabled: boolean,
+  modelsDevMap: ModelsDevMap,
+) =>
+  providerInternals(
+    new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+  ).resolveModelLimits(modelId, context1MEnabled, modelsDevMap);
+
+const makeDevMapEntry = (modelId: string, context: number, output: number): ModelsDevMap =>
+  new Map([[modelId, { limit: { context, output } }]]);
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
@@ -1362,6 +1382,92 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       });
 
       assert.equal(requestInput.inferenceConfig?.temperature, 0.2);
+    });
+  });
+
+  suite("resolveModelLimits", () => {
+    test("uses models.dev limits when available (exact match)", () => {
+      // models.dev says Sonnet 4.6 has 1M context / 64K output
+      const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
+      // With context1M disabled, should still use 1M because it's the only value in models.dev
+      // BUT requires1MContextBetaHeader is true → respect the setting
+      const withoutExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, map);
+      assert.equal(withoutExtended.maxOutputTokens, 64_000);
+      assert.equal(withoutExtended.maxInputTokens, 200_000 - 64_000); // capped at 200K
+
+      const withExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", true, map);
+      assert.equal(withExtended.maxOutputTokens, 64_000);
+      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000);
+    });
+
+    test("uses models.dev limits for always-1M models (Opus 4.7)", () => {
+      // Opus 4.7 doesn't require beta header — 1M is always-on
+      const map = makeDevMapEntry("anthropic.claude-opus-4-7", 1_000_000, 128_000);
+      const result = callResolveModelLimits("anthropic.claude-opus-4-7", false, map);
+      // Should use full 1M regardless of context1MEnabled
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+    });
+
+    test("uses models.dev limits for non-Claude models (Nova Pro)", () => {
+      const map = makeDevMapEntry("amazon.nova-pro-v1:0", 300_000, 8192);
+      const result = callResolveModelLimits("amazon.nova-pro-v1:0", false, map);
+      assert.equal(result.maxOutputTokens, 8192);
+      assert.equal(result.maxInputTokens, 300_000 - 8192);
+    });
+
+    test("falls back to getModelTokenLimits for unknown models", () => {
+      const emptyMap: ModelsDevMap = new Map();
+      const result = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, emptyMap);
+      // Should use hardcoded fallback: 200K - 64K = 136K
+      assert.equal(result.maxOutputTokens, 64_000);
+      assert.equal(result.maxInputTokens, 200_000 - 64_000);
+    });
+
+    test("strips regional prefix when looking up models.dev entry", () => {
+      // models.dev has bare ID; model ID has regional prefix
+      const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
+      const result = callResolveModelLimits("us.anthropic.claude-sonnet-4-6", true, map);
+      assert.equal(result.maxInputTokens, 1_000_000 - 64_000);
+    });
+  });
+
+  suite("buildConfigurationSchema with models.dev data", () => {
+    test("reasoningEffort picker appears for new non-Anthropic reasoning model via models.dev", () => {
+      // Simulate a brand-new model not in profiles.ts but present in models.dev
+      const devMap: ModelsDevMap = new Map([
+        [
+          "newprovider.new-reasoning-model",
+          { limit: { context: 100_000, output: 8000 }, reasoning: true },
+        ],
+      ]);
+      const schema = callBuildConfigurationSchema(
+        "newprovider.new-reasoning-model",
+        92_000,
+        8000,
+        devMap,
+      );
+      assert.ok(
+        schema?.properties?.reasoningEffort,
+        "Should show reasoningEffort picker for new reasoning model from models.dev",
+      );
+    });
+
+    test("reasoningEffort picker does NOT appear for Anthropic models via models.dev reasoning flag", () => {
+      // Anthropic models use thinkingEffort, not reasoningEffort
+      const devMap: ModelsDevMap = new Map([
+        [
+          "anthropic.claude-sonnet-4-6",
+          { limit: { context: 1_000_000, output: 64_000 }, reasoning: true },
+        ],
+      ]);
+      const schema = callBuildConfigurationSchema(
+        "anthropic.claude-sonnet-4-6",
+        136_000,
+        64_000,
+        devMap,
+      );
+      assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
   });
 });

@@ -37,3 +37,49 @@ export interface BedrockModelSummary {
   /** For inference profiles, when the profile was last updated */
   updatedAt?: Date;
 }
+
+/**
+ * A single model entry from https://models.dev/api.json (amazon-bedrock provider).
+ * Used to supplement and override hardcoded values in profiles.ts / getModelTokenLimits.
+ */
+export interface ModelsDevEntry {
+  /** Whether the model supports file attachments / vision input */
+  attachment?: boolean;
+  /** Family name (e.g. "claude-sonnet", "nova-pro") */
+  family?: string;
+  /**
+   * Whether the model interleaves reasoning content with text output.
+   * `true` = reasoning_content field; `{ field: "reasoning_content" }` = same but explicit.
+   * Relevant for non-Claude models (Kimi K2, GLM). Claude uses a different beta header mechanism.
+   */
+  interleaved?: boolean | { field: string };
+  /** Token limits */
+  limit: {
+    /** Total context window in tokens */
+    context: number;
+    /** Maximum output tokens */
+    output: number;
+  };
+  /** Input/output modalities */
+  modalities?: {
+    input?: string[];
+    output?: string[];
+  };
+  /** Display name */
+  name?: string;
+  /** Whether the model supports extended thinking / reasoning */
+  reasoning?: boolean;
+  /** Whether the model supports structured output */
+  structured_output?: boolean;
+  /** Whether the model accepts the temperature parameter (false = temperatureDeprecated) */
+  temperature?: boolean;
+  /** Whether the model supports tool/function calling */
+  tool_call?: boolean;
+}
+
+/**
+ * Map of Bedrock model ID → models.dev entry.
+ * Keys match the exact model IDs returned by Bedrock (including regional prefixes).
+ * Fetched once at startup from https://models.dev/api.json, fails silently.
+ */
+export type ModelsDevMap = Map<string, ModelsDevEntry>;
