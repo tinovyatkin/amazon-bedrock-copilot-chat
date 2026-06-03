@@ -69,15 +69,18 @@ export interface ModelProfile {
 
 export interface ModelTokenLimits {
   /**
-   * Total context window size in tokens.
-   * This is the full context window the model accepts as input — it is what VS Code
-   * displays as the denominator in the context window meter (e.g. "50.9K / 400K tokens").
-   * Note: this is NOT context minus maxOutputTokens; it is the full context window.
+   * Maximum tokens available for user input — equal to (context window - maxOutputTokens).
+   *
+   * VS Code's model picker renders the visible context size as
+   * `maxInputTokens + maxOutputTokens`, so this value must be the *remaining* input
+   * budget after reserving space for the model's output, NOT the raw context window.
+   *
+   * Example: Claude Haiku 4.5 has a 200K context window and 64K max output, so
+   * `maxInputTokens = 200_000 - 64_000 = 136_000`, and the picker shows `136K + 64K = 200K`.
    */
   maxInputTokens: number;
   /**
    * Maximum number of output tokens the model can generate in a single response.
-   * Independent of maxInputTokens — both limits are enforced separately by Bedrock.
    */
   maxOutputTokens: number;
 }
@@ -318,7 +321,7 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
 
   // Default for unknown models
   return {
-    maxInputTokens: 200_000, // full context window
+    maxInputTokens: 200_000 - 4096, // context window minus reserved output
     maxOutputTokens: 4096,
   };
 }
@@ -359,19 +362,19 @@ function getClaudeTokenLimits(
 ): ModelTokenLimits {
   // Claude Opus 4.8: always 1M context, 128K max output.
   if (normalizedModelId.includes("opus-4-8")) {
-    return { maxInputTokens: 1_000_000, maxOutputTokens: 128_000 };
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
   // Claude Opus 4.7: always 1M context, 128K max output.
   // Does not require the context-1m-* beta header — 1M is the default.
   if (normalizedModelId.includes("opus-4-7")) {
-    return { maxInputTokens: 1_000_000, maxOutputTokens: 128_000 };
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
   // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output.
   if (normalizedModelId.includes("opus-4-6")) {
     return {
-      maxInputTokens: enable1MContext ? 1_000_000 : 200_000,
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 128_000,
       maxOutputTokens: 128_000,
     };
   }
@@ -379,7 +382,7 @@ function getClaudeTokenLimits(
   // Claude Sonnet 4.6: 200K context (or 1M with setting enabled), 64K output.
   if (normalizedModelId.includes("sonnet-4-6")) {
     return {
-      maxInputTokens: enable1MContext ? 1_000_000 : 200_000,
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
       maxOutputTokens: 64_000,
     };
   }
@@ -387,58 +390,58 @@ function getClaudeTokenLimits(
   // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output.
   if (normalizedModelId.includes("sonnet-4")) {
     return {
-      maxInputTokens: enable1MContext ? 1_000_000 : 200_000,
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
       maxOutputTokens: 64_000,
     };
   }
 
   // Claude Sonnet 3.7: 200K context, 64K output.
   if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 64_000 };
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
   // Claude Opus 4.5: 200K context, 64K output.
   if (normalizedModelId.includes("opus-4-5")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 64_000 };
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
   // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32768).
   if (normalizedModelId.includes("opus-4-1")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 32_768 };
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
   }
 
   // Claude Opus 4: 200K context, 32K output (AWS-verified limit: 32768).
   if (normalizedModelId.includes("opus-4")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 32_768 };
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
   }
 
   // Claude Haiku 4.5: 200K context, 64K output.
   if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 64_000 };
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
   // Claude Haiku 3.5: 200K context, 8,192 output.
   if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 8192 };
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
   }
 
   // Claude Haiku 3: 200K context, 4,096 output.
   if (normalizedModelId.includes("haiku-3")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 4096 };
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
   }
 
   // Claude 3.5 Sonnet (older): 200K context, 8,192 output.
   if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 8192 };
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
   }
 
   // Claude Opus 3: 200K context, 4,096 output.
   if (normalizedModelId.includes("opus-3")) {
-    return { maxInputTokens: 200_000, maxOutputTokens: 4096 };
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
   }
 
   // Default for unknown Claude models.
-  return { maxInputTokens: 200_000, maxOutputTokens: 4096 };
+  return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
 }
 
 /**

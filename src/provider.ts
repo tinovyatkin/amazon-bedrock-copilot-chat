@@ -1730,6 +1730,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    * Format: "<context> ctx · <output>K out · <thinking-mode> · <vision>".
    * The model ID is used only to consult getModelProfile for capability flags;
    * display-side values (context and output) are the effective numeric limits.
+   * Note: maxInput is the input budget (context - output); total context = maxInput + maxOutput.
    */
   private formatDetail(
     modelId: string,
@@ -1738,7 +1739,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     vision: boolean,
   ): string {
     const profile = getModelProfile(modelId);
-    const ctxK = Math.round((maxInput + maxOutput) / 1000);
+    // Total context window = input budget + output limit (mirrors VS Code picker rendering)
+    const totalContext = maxInput + maxOutput;
+    const ctxK = Math.round(totalContext / 1000);
     const outK = Math.round(maxOutput / 1000);
     const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M` : `${ctxK}K`;
 
@@ -1775,7 +1778,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     vision: boolean;
   }): string {
     const profile = getModelProfile(args.modelId);
-    const ctxK = Math.round((args.maxInput + args.maxOutput) / 1000);
+    // Total context window = input budget + output limit (mirrors VS Code picker rendering)
+    const totalContext = args.maxInput + args.maxOutput;
+    const ctxK = Math.round(totalContext / 1000);
     const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M tokens` : `${ctxK}K tokens`;
 
     let thinkingLine: string | undefined;
@@ -2140,19 +2145,22 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const devOutput = devEntry.limit.output;
       const devContext = devEntry.limit.context;
 
+      // VS Code renders the context window size in the model picker as
+      // `maxInputTokens + maxOutputTokens`, so maxInputTokens must be the input
+      // budget (context - output), not the raw context window.
+      //
       // For models with optional 1M context (requires beta header opt-in), respect the setting.
-      // maxInputTokens = full context window (what VS Code shows as the context meter denominator).
       if (devContext >= 1_000_000 && requires1MContextBetaHeader(modelId)) {
         const effectiveContext = context1MEnabled ? devContext : 200_000;
         return {
-          maxInputTokens: effectiveContext,
+          maxInputTokens: effectiveContext - devOutput,
           maxOutputTokens: devOutput,
         };
       }
 
       // For all other models (including always-1M like Opus 4.7/4.8), use live limits directly.
       return {
-        maxInputTokens: devContext,
+        maxInputTokens: devContext - devOutput,
         maxOutputTokens: devOutput,
       };
     }

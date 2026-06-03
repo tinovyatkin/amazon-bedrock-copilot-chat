@@ -302,6 +302,32 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.match(tooltip, /enabled\+budget_tokens/);
       assert.doesNotMatch(tooltip, /adaptive/);
     });
+
+    test("formats context display from maxInput+maxOutput total", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const modelId = "minimax.minimax-m2.5";
+      // maxInput = 196608 - 98304 = 98304 (input budget), maxOutput = 98304
+      // total context = 98304 + 98304 = 196608 ≈ 197K
+      const inputBudget = 196_608 - 98_304; // 98304
+
+      const detail = provider.formatDetail(modelId, inputBudget, 98_304, false);
+      const tooltip = provider.formatTooltip({
+        maxInput: inputBudget,
+        maxOutput: 98_304,
+        modelId,
+        providerName: "MiniMax",
+        route: "Direct foundation model",
+        vision: false,
+      });
+
+      // detail should show total context (197K) and output (98K)
+      assert.match(detail, /^197K ctx · 98K out/);
+      // tooltip should show total context 197K, not the inflated 295K
+      assert.match(tooltip, /Context: 197K tokens \| Max output: 98K tokens/);
+      assert.doesNotMatch(tooltip, /295K tokens/);
+    });
   });
 
   suite("utils/convertMessages", () => {
@@ -1357,25 +1383,25 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("resolveModelLimits", () => {
     test("uses models.dev limits when available (exact match)", () => {
       // models.dev says Sonnet 4.6 has 1M context / 64K output.
-      // maxInputTokens = full context window (not context - output).
+      // maxInputTokens = context - output (VS Code picker shows maxInput + maxOutput = total context).
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       // With context1M disabled: requires1MContextBetaHeader → cap at 200K context
       const withoutExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, map);
       assert.equal(withoutExtended.maxOutputTokens, 64_000);
-      assert.equal(withoutExtended.maxInputTokens, 200_000); // full 200K context window
+      assert.equal(withoutExtended.maxInputTokens, 200_000 - 64_000); // input budget = 200K - 64K
 
       const withExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", true, map);
       assert.equal(withExtended.maxOutputTokens, 64_000);
-      assert.equal(withExtended.maxInputTokens, 1_000_000); // full 1M context window
+      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000); // input budget = 1M - 64K
     });
 
     test("uses models.dev limits for always-1M models (Opus 4.7)", () => {
       // Opus 4.7 doesn't require beta header — 1M is always-on.
-      // maxInputTokens = 1_000_000 (full context, not 1M - 128K).
+      // maxInputTokens = 1M - 128K (input budget; picker shows 1M total).
       const map = makeDevMapEntry("anthropic.claude-opus-4-7", 1_000_000, 128_000);
       const result = callResolveModelLimits("anthropic.claude-opus-4-7", false, map);
       assert.equal(result.maxOutputTokens, 128_000);
-      assert.equal(result.maxInputTokens, 1_000_000); // full 1M context window
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000); // input budget = 1M - 128K
     });
 
     test("uses models.dev limits for non-Claude models (Nova Pro)", () => {
@@ -1383,21 +1409,21 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const map = makeDevMapEntry("amazon.nova-pro-v1:0", 300_000, 8192);
       const result = callResolveModelLimits("amazon.nova-pro-v1:0", false, map);
       assert.equal(result.maxOutputTokens, 8192);
-      assert.equal(result.maxInputTokens, 300_000); // full 300K context window
+      assert.equal(result.maxInputTokens, 300_000 - 8192); // input budget = 300K - 8K
     });
 
     test("falls back to getModelTokenLimits for unknown models", () => {
       const result = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, new Map());
-      // Hardcoded fallback: Sonnet 4.6 → 200K context window
+      // Hardcoded fallback: Sonnet 4.6 → 200K context, 64K output
       assert.equal(result.maxOutputTokens, 64_000);
-      assert.equal(result.maxInputTokens, 200_000); // full 200K context window
+      assert.equal(result.maxInputTokens, 200_000 - 64_000); // input budget = 200K - 64K
     });
 
     test("strips regional prefix when looking up models.dev entry", () => {
       // models.dev has bare ID; model ID has regional prefix
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       const result = callResolveModelLimits("us.anthropic.claude-sonnet-4-6", true, map);
-      assert.equal(result.maxInputTokens, 1_000_000); // full 1M context window
+      assert.equal(result.maxInputTokens, 1_000_000 - 64_000); // input budget = 1M - 64K
     });
   });
 
