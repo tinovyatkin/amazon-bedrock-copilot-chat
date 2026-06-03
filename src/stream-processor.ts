@@ -214,7 +214,7 @@ export class StreamProcessor {
     } else if (event.messageStop) {
       this.handleMessageStop(event.messageStop, state);
     } else if (event.metadata) {
-      this.handleMetadata(event.metadata);
+      this.handleMetadata(event.metadata, progress);
     } else {
       logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
     }
@@ -246,8 +246,31 @@ export class StreamProcessor {
     });
   }
 
-  private handleMetadata(metadata: NonNullable<ConverseStreamOutput["metadata"]>): void {
+  private handleMetadata(
+    metadata: NonNullable<ConverseStreamOutput["metadata"]>,
+    progress: Progress<LanguageModelResponsePart2>,
+  ): void {
     logger.info("[Stream Processor] Metadata received:", metadata);
+
+    // Report token usage to VS Code so the context window meter updates.
+    // VS Code reads inputTokens + outputTokens from this part and displays
+    // "X / YK tokens" in the chat input bar.
+    const usage = metadata?.usage;
+    if (typeof usage?.inputTokens === "number" && typeof usage?.outputTokens === "number") {
+      try {
+        progress.report(new vscode.LanguageModelUsagePart(usage.inputTokens, usage.outputTokens));
+        logger.debug("[Stream Processor] Reported token usage", {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        });
+      } catch (error) {
+        // LanguageModelUsagePart may not be available in older VS Code builds — fail silently.
+        logger.debug(
+          "[Stream Processor] LanguageModelUsagePart not available, skipping usage report",
+          error,
+        );
+      }
+    }
 
     const guardrailData = metadata?.trace?.guardrail;
     if (!guardrailData) {

@@ -504,7 +504,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const trackingProgress: Progress<LanguageModelResponsePart2> = {
       report: (part) => {
         try {
-          progress.report(part);
+          // Cast to the stable type: VS Code's runtime accepts LanguageModelUsagePart
+          // and LanguageModelThinkingPart even though the stable typedef doesn't list them.
+          progress.report(part as LanguageModelResponsePart);
         } catch (error) {
           logger.warn("[Bedrock Model Provider] Progress.report failed", {
             error:

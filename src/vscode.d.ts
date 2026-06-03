@@ -20378,7 +20378,23 @@ declare module 'vscode' {
 	 * Extended response part type that includes proposed API types (e.g. thinking parts).
 	 * Used by the stream processor to emit reasoning content to the collapsible thinking UI.
 	 */
-	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart;
+	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart | LanguageModelUsagePart;
+
+	/**
+	 * A language model response part reporting token usage for this turn.
+	 * Emitting this part causes VS Code to update the context window meter
+	 * ("X / YK tokens") in the chat input bar.
+	 *
+	 * VS Code reads `inputTokens` + `outputTokens` from this part and maps them
+	 * to `promptTokens` / `completionTokens` internally.
+	 */
+	export class LanguageModelUsagePart {
+		/** Number of input (prompt) tokens consumed by this request. */
+		readonly inputTokens: number;
+		/** Number of output (completion) tokens generated in this response. */
+		readonly outputTokens: number;
+		constructor(inputTokens: number, outputTokens: number);
+	}
 
 	/**
 	 * Definitions that describe different types of Model Context Protocol servers,
