@@ -26,7 +26,6 @@ interface ProviderInternals {
   buildConfigurationSchema: (
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
-    standardMaxInputTokens: number,
     modelsDevMap?: ModelsDevMap,
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
   formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
@@ -136,20 +135,11 @@ const callBuildRequestInput = (
   ) as ConverseStreamCommandInput;
 };
 
-const callBuildConfigurationSchema = (
-  modelId: string,
-  standardMaxInputTokens: number,
-  modelsDevMap: ModelsDevMap = new Map(),
-) => {
+const callBuildConfigurationSchema = (modelId: string, modelsDevMap: ModelsDevMap = new Map()) => {
   const provider = providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
   );
-  return provider.buildConfigurationSchema(
-    modelId,
-    getModelProfile(modelId),
-    standardMaxInputTokens,
-    modelsDevMap,
-  );
+  return provider.buildConfigurationSchema(modelId, getModelProfile(modelId), modelsDevMap);
 };
 
 const callResolveModelLimits = (
@@ -1253,13 +1243,13 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("buildConfigurationSchema", () => {
     test("returns undefined for models with no configurable options (Nova Lite)", () => {
       // Nova Lite: 300K context, 8192 output — no thinking, no reasoning, no 1M opt-in
-      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0", 300_000);
+      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0");
       assert.equal(schema, undefined);
     });
 
     test("returns contextSize picker for Opus 4.6 (optional 1M context)", () => {
       // Opus 4.6 default: 200K context window (full, not context-output)
-      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1", 200_000);
+      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1");
       assert.ok(schema?.properties?.contextSize, "should have contextSize property");
       const cs = schema.properties.contextSize;
       assert.deepEqual(cs.enum, [200_000, 1_000_000]);
@@ -1269,10 +1259,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("returns NO contextSize picker for Opus 4.7 (always 1M context)", () => {
       // Opus 4.7: 1M context is always-on — no picker needed
-      const schema = callBuildConfigurationSchema(
-        "anthropic.claude-opus-4-7-20260420-v1:0",
-        1_000_000,
-      );
+      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-7-20260420-v1:0");
       assert.equal(
         schema?.properties?.contextSize,
         undefined,
@@ -1282,7 +1269,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("returns thinkingEffort picker for Sonnet 4.6 (supportsThinkingEffort)", () => {
       // Sonnet 4.6 default: 200K context window
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000);
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
       const te = schema.properties.thinkingEffort;
       assert.deepEqual(te.enum, ["high", "medium", "low"]);
@@ -1291,15 +1278,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("returns NO thinkingEffort picker for Sonnet 3.7 (thinking but not effort)", () => {
-      const schema = callBuildConfigurationSchema(
-        "anthropic.claude-3-7-sonnet-20250219-v1:0",
-        200_000,
-      );
+      const schema = callBuildConfigurationSchema("anthropic.claude-3-7-sonnet-20250219-v1:0");
       assert.equal(schema?.properties?.thinkingEffort, undefined);
     });
 
     test("returns reasoningEffort picker for DeepSeek V3.2 (supportsReasoningEffort)", () => {
-      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615", 200_000);
+      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615");
       assert.ok(schema?.properties?.reasoningEffort, "should have reasoningEffort property");
       const re = schema.properties.reasoningEffort;
       assert.deepEqual(re.enum, ["low", "medium", "high"]);
@@ -1307,7 +1291,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
 
     test("includes minimal effort level for OpenAI gpt-oss", () => {
-      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b", 200_000);
+      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b");
       assert.ok(schema?.properties?.reasoningEffort);
       assert.deepEqual(schema.properties.reasoningEffort.enum, [
         "minimal",
@@ -1317,10 +1301,21 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
     });
 
-    test("Sonnet 4.6 returns both contextSize and thinkingEffort pickers", () => {
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000);
-      assert.ok(schema?.properties?.contextSize, "should have contextSize");
+    test("Sonnet 4.6 has no contextSize picker (always-1M) but has thinkingEffort picker", () => {
+      // Sonnet 4.6 is always-1M — no optional context extension, so no picker.
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6");
+      assert.equal(schema?.properties?.contextSize, undefined, "should NOT have contextSize");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort");
+      assert.equal(schema?.properties?.reasoningEffort, undefined);
+    });
+
+    test("Sonnet 4.5 returns contextSize picker and thinkingEffort picker", () => {
+      // Sonnet 4.5 has optional 1M via beta header, and supports extended thinking.
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-5-20250929-v1:0");
+      assert.ok(schema?.properties?.contextSize, "should have contextSize");
+      // Sonnet 4.5 supports thinking (supportsThinking) but not thinkingEffort
+      // (effort control is only on Opus 4.5/4.6/4.8 and Sonnet 4.6)
+      assert.equal(schema?.properties?.thinkingEffort, undefined);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
   });
@@ -1342,7 +1337,8 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
       );
-      const modelId = "anthropic.claude-sonnet-4-6";
+      // Use Sonnet 4.5 — it has optional 1M (requires beta header) unlike Sonnet 4.6 (always-1M).
+      const modelId = "anthropic.claude-sonnet-4-5-20250929-v1:0";
       const profile = getModelProfile(modelId);
 
       // With context1MEnabled = false (default) — no 1M beta header
@@ -1381,18 +1377,37 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   });
 
   suite("resolveModelLimits", () => {
-    test("uses models.dev limits when available (exact match)", () => {
-      // models.dev says Sonnet 4.6 has 1M context / 64K output.
-      // maxInputTokens = context - output (VS Code picker shows maxInput + maxOutput = total context).
+    test("uses models.dev limits when available — Sonnet 4.6 is always-1M", () => {
+      // models.dev says Sonnet 4.6 has 1M context / 64K output (always-on, no beta header).
+      // context1M.enabled flag has no effect — 1M is the default.
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
-      // With context1M disabled: requires1MContextBetaHeader → cap at 200K context
       const withoutExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, map);
       assert.equal(withoutExtended.maxOutputTokens, 64_000);
-      assert.equal(withoutExtended.maxInputTokens, 200_000 - 64_000); // input budget = 200K - 64K
+      assert.equal(withoutExtended.maxInputTokens, 1_000_000 - 64_000); // always 1M - 64K
 
       const withExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", true, map);
       assert.equal(withExtended.maxOutputTokens, 64_000);
-      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000); // input budget = 1M - 64K
+      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000); // same — always 1M
+    });
+
+    test("uses models.dev limits — Sonnet 4.5 is optional-1M (capped at 200K when disabled)", () => {
+      // Sonnet 4.5 has optional 1M via beta header.
+      const map = makeDevMapEntry("anthropic.claude-sonnet-4-5-20250929-v1:0", 1_000_000, 64_000);
+      const withoutExtended = callResolveModelLimits(
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        false,
+        map,
+      );
+      assert.equal(withoutExtended.maxOutputTokens, 64_000);
+      assert.equal(withoutExtended.maxInputTokens, 200_000 - 64_000); // capped at 200K
+
+      const withExtended = callResolveModelLimits(
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        true,
+        map,
+      );
+      assert.equal(withExtended.maxOutputTokens, 64_000);
+      assert.equal(withExtended.maxInputTokens, 1_000_000 - 64_000); // 1M when enabled
     });
 
     test("uses models.dev limits for always-1M models (Opus 4.7)", () => {
@@ -1414,16 +1429,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("falls back to getModelTokenLimits for unknown models", () => {
       const result = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, new Map());
-      // Hardcoded fallback: Sonnet 4.6 → 200K context, 64K output
+      // Hardcoded fallback: Sonnet 4.6 → always-1M, 64K output
       assert.equal(result.maxOutputTokens, 64_000);
-      assert.equal(result.maxInputTokens, 200_000 - 64_000); // input budget = 200K - 64K
+      assert.equal(result.maxInputTokens, 1_000_000 - 64_000); // always 1M - 64K
     });
 
     test("strips regional prefix when looking up models.dev entry", () => {
       // models.dev has bare ID; model ID has regional prefix
       const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       const result = callResolveModelLimits("us.anthropic.claude-sonnet-4-6", true, map);
-      assert.equal(result.maxInputTokens, 1_000_000 - 64_000); // input budget = 1M - 64K
+      assert.equal(result.maxInputTokens, 1_000_000 - 64_000); // always 1M - 64K
     });
   });
 
@@ -1436,11 +1451,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
           { limit: { context: 100_000, output: 8000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigurationSchema(
-        "newprovider.new-reasoning-model",
-        100_000,
-        devMap,
-      );
+      const schema = callBuildConfigurationSchema("newprovider.new-reasoning-model", devMap);
       assert.ok(schema?.properties?.reasoningEffort);
     });
 
@@ -1452,7 +1463,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
           { limit: { context: 1_000_000, output: 64_000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", 200_000, devMap);
+      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", devMap);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
   });

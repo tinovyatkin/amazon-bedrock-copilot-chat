@@ -262,7 +262,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               configurationSchema: this.buildConfigurationSchema(
                 modelIdToUse,
                 modelProfile,
-                maxInput,
                 modelsDevMap,
               ),
               detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
@@ -326,7 +325,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               configurationSchema: this.buildConfigurationSchema(
                 modelIdForLimits,
                 appProfileModelProfile,
-                maxInput,
                 modelsDevMap,
               ),
               detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
@@ -1032,7 +1030,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private buildConfigurationSchema(
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
-    standardMaxInputTokens: number,
     modelsDevMap: ModelsDevMap = new Map(),
   ): LanguageModelConfigurationSchema | undefined {
     const properties: Record<string, Record<string, unknown>> = {};
@@ -1044,26 +1041,28 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
 
     // ── Context size picker ────────────────────────────────────────────────
-    // `requires1MContextBetaHeader` is true only for models that have a
-    // standard context window AND an optional 1M extension (Opus 4.6, Sonnet 4.x).
-    // Opus 4.7/4.8 always use 1M so no picker is needed for them.
-    // standardMaxInputTokens is now the full context window (e.g. 200_000 for Sonnet 4.6 default).
+    // Only shown for models where 1M context is an *optional* beta-header opt-in
+    // (Opus 4.6, Sonnet 4.5). Always-1M models (Opus 4.7/4.8, Sonnet 4.6) and
+    // models with no 1M support get no picker.
+    // Enum values are the full context window sizes (200_000 / 1_000_000) so that
+    // the contextSize override check in provideLanguageModelChatResponse can simply
+    // test `contextSize >= 1_000_000`. The picker is skipped if both options are equal.
     if (requires1MContextBetaHeader(modelId)) {
-      const standardTotal = standardMaxInputTokens; // full context window
+      const standardContextTotal = 200_000;
       const extended1MTotal = 1_000_000;
       const fmt = (n: number) => {
         const k = Math.round(n / 1000);
         return k >= 1000 ? `${Math.round(k / 1000)}M` : `${k}K`;
       };
       properties.contextSize = {
-        default: standardTotal,
+        default: standardContextTotal,
         description: "Context window size for this request",
-        enum: [standardTotal, extended1MTotal],
+        enum: [standardContextTotal, extended1MTotal],
         enumDescriptions: [
           "Default context window (standard pricing)",
           "Extended 1M context window (may increase cost)",
         ],
-        enumItemLabels: [fmt(standardTotal), fmt(extended1MTotal)],
+        enumItemLabels: [fmt(standardContextTotal), fmt(extended1MTotal)],
         group: "tokens",
         title: "Context Size",
         type: "number",
@@ -1172,7 +1171,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         configurationSchema: this.buildConfigurationSchema(
           baseModelId,
           manualModelProfile,
-          limits.maxInputTokens,
           manualModelsDevMap,
         ),
         detail: this.formatDetail(
@@ -2128,8 +2126,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    * Claude models that require a beta header.
    *
    * For models with `limit.context >= 1M` in models.dev AND where `requires1MContextBetaHeader`
-   * is true (i.e. 1M is optional, not the default), we respect the user's `context1M.enabled`
-   * setting. For models where 1M is always-on (Opus 4.7/4.8), we use the live limit directly.
+   * is true (i.e. 1M is optional, not the default — Opus 4.6, Sonnet 4.5), we respect the
+   * user's `context1M.enabled` setting and cap at 200K when disabled.
+   * For always-1M models (Opus 4.7/4.8, Sonnet 4.6), we use the live limit directly.
    */
   private resolveModelLimits(
     modelId: string,

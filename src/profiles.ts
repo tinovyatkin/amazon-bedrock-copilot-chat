@@ -346,11 +346,18 @@ export function normalizeModelId(modelId: string): string {
 
 /**
  * Check if a model needs the 1M context beta header when 1M context is enabled.
- * Claude Opus 4.7 is 1M-by-default and must not receive the beta header.
+ * Returns true only for models where 1M is *optional* (opt-in via beta header):
+ * - Claude Opus 4.6 (200K default, 1M optional)
+ * - Claude Sonnet 4.5 and earlier sonnet-4.x (200K default, 1M optional)
+ * Models where 1M is the default (Opus 4.7, Opus 4.8, Sonnet 4.6) return false.
  */
 export function requires1MContextBetaHeader(modelId: string): boolean {
   const normalizedModelId = normalizeModelId(modelId);
-  return normalizedModelId.includes("opus-4-6") || normalizedModelId.includes("sonnet-4");
+  if (normalizedModelId.includes("opus-4-6")) return true;
+  // sonnet-4.x with optional 1M: 4.5 and earlier, but NOT 4.6 (which is always-1M)
+  if (normalizedModelId.includes("sonnet-4") && !normalizedModelId.includes("sonnet-4-6"))
+    return true;
+  return false;
 }
 
 /**
@@ -379,12 +386,10 @@ function getClaudeTokenLimits(
     };
   }
 
-  // Claude Sonnet 4.6: 200K context (or 1M with setting enabled), 64K output.
+  // Claude Sonnet 4.6: always 1M context (default), 64K output.
+  // 1M is the standard context window for this model — no beta header needed.
   if (normalizedModelId.includes("sonnet-4-6")) {
-    return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
-      maxOutputTokens: 64_000,
-    };
+    return { maxInputTokens: 1_000_000 - 64_000, maxOutputTokens: 64_000 };
   }
 
   // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output.
