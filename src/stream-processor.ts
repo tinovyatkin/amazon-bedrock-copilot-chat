@@ -253,22 +253,28 @@ export class StreamProcessor {
     logger.info("[Stream Processor] Metadata received:", metadata);
 
     // Report token usage to VS Code so the context window meter updates.
-    // VS Code reads inputTokens + outputTokens from this part and displays
-    // "X / YK tokens" in the chat input bar.
+    // VS Code's BYOK providers use LanguageModelDataPart with mimeType 'usage'
+    // and an OpenAI-format JSON payload { prompt_tokens, completion_tokens, total_tokens }.
+    // VS Code's extChatEndpoint reads this via isApiUsage() and updates the
+    // "X / YK tokens" display in the chat input bar.
     const usage = metadata?.usage;
     if (typeof usage?.inputTokens === "number" && typeof usage?.outputTokens === "number") {
       try {
-        progress.report(new vscode.LanguageModelUsagePart(usage.inputTokens, usage.outputTokens));
-        logger.debug("[Stream Processor] Reported token usage", {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-        });
-      } catch (error) {
-        // LanguageModelUsagePart may not be available in older VS Code builds — fail silently.
-        logger.debug(
-          "[Stream Processor] LanguageModelUsagePart not available, skipping usage report",
-          error,
+        const usagePayload = {
+          completion_tokens: usage.outputTokens,
+          prompt_tokens: usage.inputTokens,
+          total_tokens: usage.totalTokens ?? usage.inputTokens + usage.outputTokens,
+        };
+        progress.report(
+          new vscode.LanguageModelDataPart(
+            new TextEncoder().encode(JSON.stringify(usagePayload)),
+            "usage",
+          ),
         );
+        logger.debug("[Stream Processor] Reported token usage", usagePayload);
+      } catch (error) {
+        // LanguageModelDataPart may not be available in older VS Code builds — fail silently.
+        logger.debug("[Stream Processor] Could not report token usage", error);
       }
     }
 

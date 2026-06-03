@@ -20378,22 +20378,24 @@ declare module 'vscode' {
 	 * Extended response part type that includes proposed API types (e.g. thinking parts).
 	 * Used by the stream processor to emit reasoning content to the collapsible thinking UI.
 	 */
-	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart | LanguageModelUsagePart;
+	export type LanguageModelResponsePart2 = LanguageModelResponsePart | LanguageModelThinkingPart | LanguageModelDataPart;
 
 	/**
-	 * A language model response part reporting token usage for this turn.
-	 * Emitting this part causes VS Code to update the context window meter
-	 * ("X / YK tokens") in the chat input bar.
+	 * A language model response part carrying arbitrary binary data with a MIME type.
+	 * Used by providers to report structured data such as token usage back to VS Code.
 	 *
-	 * VS Code reads `inputTokens` + `outputTokens` from this part and maps them
-	 * to `promptTokens` / `completionTokens` internally.
+	 * Usage reporting: emit with mimeType `'usage'` and JSON body
+	 * `{ prompt_tokens, completion_tokens, total_tokens }` to populate the
+	 * context window meter in the chat input bar.
+	 *
+	 * This is a real VS Code class available at runtime via `vscode.LanguageModelDataPart`.
 	 */
-	export class LanguageModelUsagePart {
-		/** Number of input (prompt) tokens consumed by this request. */
-		readonly inputTokens: number;
-		/** Number of output (completion) tokens generated in this response. */
-		readonly outputTokens: number;
-		constructor(inputTokens: number, outputTokens: number);
+	export class LanguageModelDataPart {
+		/** Raw binary payload. */
+		readonly data: Uint8Array;
+		/** MIME type identifying the payload format (e.g. `'usage'`). */
+		readonly mimeType: string;
+		constructor(data: Uint8Array, mimeType: string);
 	}
 
 	/**
