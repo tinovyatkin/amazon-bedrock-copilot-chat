@@ -257,7 +257,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
-                toolCalling: true,
+                toolCalling: modelProfile.supportsToolChoice,
               },
               configurationSchema: this.buildConfigurationSchema(
                 modelIdToUse,
@@ -320,7 +320,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
-                toolCalling: true,
+                toolCalling: appProfileModelProfile.supportsToolChoice,
               },
               configurationSchema: this.buildConfigurationSchema(
                 modelIdForLimits,
@@ -1172,7 +1172,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return {
         capabilities: {
           imageInput: likelyVisionCapable,
-          toolCalling: true,
+          toolCalling: manualModelProfile.supportsToolChoice,
         },
         configurationSchema: this.buildConfigurationSchema(
           baseModelId,
@@ -2143,8 +2143,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   ): { maxInputTokens: number; maxOutputTokens: number } {
     // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
     // can match against the bare model IDs stored in models.dev.
+    // models.dev keys use various regional prefixes (us., eu., au., jp., global.)
+    // so a direct + normalized lookup may still miss entries stored under a
+    // different prefix variant. Fall back to a full-map scan by normalized ID.
     const normalizedId = normalizeModelId(modelId);
-    const devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
+    let devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
+    if (!devEntry) {
+      for (const [key, entry] of modelsDevMap) {
+        if (normalizeModelId(key) === normalizedId) {
+          devEntry = entry;
+          break;
+        }
+      }
+    }
 
     if (devEntry) {
       const devOutput = devEntry.limit.output;
