@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
-import { getModelProfile } from "../profiles";
+import { getModelProfile, normalizeModelId } from "../profiles";
 import { BedrockChatModelProvider } from "../provider";
 import type { BedrockModelSummary, ModelsDevMap } from "../types";
 
@@ -1465,6 +1465,65 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
       const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", devMap);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
+    });
+  });
+
+  suite("normalizeModelId", () => {
+    test("strips 2-char ISO region prefix", () => {
+      assert.equal(
+        normalizeModelId("us.anthropic.claude-sonnet-4-6"),
+        "anthropic.claude-sonnet-4-6",
+      );
+      assert.equal(normalizeModelId("eu.anthropic.claude-opus-4-7"), "anthropic.claude-opus-4-7");
+      assert.equal(
+        normalizeModelId("ap.anthropic.claude-haiku-4-5-20251001-v1:0"),
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+      );
+    });
+
+    test("strips global prefix", () => {
+      assert.equal(
+        normalizeModelId("global.anthropic.claude-opus-4-6-v1"),
+        "anthropic.claude-opus-4-6-v1",
+      );
+    });
+
+    test("strips GovCloud prefixes (us-gov-east, us-gov-west)", () => {
+      assert.equal(
+        normalizeModelId("us-gov-east.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+      );
+      assert.equal(
+        normalizeModelId("us-gov-west.anthropic.claude-haiku-4-5-20251001-v1:0"),
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+      );
+    });
+
+    test("strips China region prefixes (cn-north, cn-northwest)", () => {
+      assert.equal(
+        normalizeModelId("cn-north.anthropic.claude-sonnet-4-6"),
+        "anthropic.claude-sonnet-4-6",
+      );
+      assert.equal(
+        normalizeModelId("cn-northwest.anthropic.claude-opus-4-7"),
+        "anthropic.claude-opus-4-7",
+      );
+    });
+
+    test("strips apac alias prefix", () => {
+      assert.equal(
+        normalizeModelId("apac.anthropic.claude-sonnet-4-6"),
+        "anthropic.claude-sonnet-4-6",
+      );
+    });
+
+    test("leaves bare model IDs unchanged", () => {
+      assert.equal(normalizeModelId("anthropic.claude-sonnet-4-6"), "anthropic.claude-sonnet-4-6");
+      assert.equal(normalizeModelId("amazon.nova-pro-v1:0"), "amazon.nova-pro-v1:0");
+    });
+
+    test("leaves short IDs with only two segments unchanged", () => {
+      assert.equal(normalizeModelId("amazon.titan"), "amazon.titan");
     });
   });
 });

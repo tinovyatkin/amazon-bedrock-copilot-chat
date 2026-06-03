@@ -334,14 +334,27 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
  * @example
  * normalizeModelId("global.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  * normalizeModelId("us.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("cn-north.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("us-gov-east.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  * normalizeModelId("anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  */
 export function normalizeModelId(modelId: string): string {
   const parts = modelId.split(".");
-  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
-    return parts.slice(1).join(".");
-  }
-  return modelId;
+  if (parts.length <= 2) return modelId;
+  const prefix = parts[0];
+  // Strip known inference-profile region prefixes:
+  //   - 2-char ISO region codes: us, eu, ap, jp, au, ca, sa, me, af, il
+  //   - "global" cross-region prefix
+  //   - AWS GovCloud: us-gov-east, us-gov-west
+  //   - China regions: cn-north, cn-northwest
+  //   - Legacy APAC alias used by some profiles
+  const isRegionPrefix =
+    prefix.length === 2 ||
+    prefix === "global" ||
+    prefix === "apac" ||
+    prefix.startsWith("us-gov-") ||
+    prefix.startsWith("cn-");
+  return isRegionPrefix ? parts.slice(1).join(".") : modelId;
 }
 
 /**

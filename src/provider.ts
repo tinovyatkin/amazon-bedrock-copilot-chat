@@ -504,9 +504,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const trackingProgress: Progress<LanguageModelResponsePart2> = {
       report: (part) => {
         try {
-          // Cast to the stable type: VS Code's runtime accepts LanguageModelUsagePart
-          // and LanguageModelThinkingPart even though the stable typedef doesn't list them.
-          progress.report(part as LanguageModelResponsePart);
+          // progress is typed as Progress<LanguageModelResponsePart> (stable API surface)
+          // but VS Code's runtime accepts the full LanguageModelResponsePart2 union
+          // (including LanguageModelDataPart and LanguageModelThinkingPart). Cast the
+          // progress object once so we can pass extended parts without per-call assertions.
+          (progress as Progress<LanguageModelResponsePart2>).report(part);
         } catch (error) {
           logger.warn("[Bedrock Model Provider] Progress.report failed", {
             error:
@@ -1034,6 +1036,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelProfile: ReturnType<typeof getModelProfile>,
     modelsDevMap: ModelsDevMap = new Map(),
   ): LanguageModelConfigurationSchema | undefined {
+    // Mutable during construction; returned as LanguageModelConfigurationSchema.
     const properties: Record<string, Record<string, unknown>> = {};
 
     // Resolve the models.dev entry for live capability data.
@@ -1122,9 +1125,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       };
     }
 
-    return Object.keys(properties).length > 0
-      ? ({ properties } as LanguageModelConfigurationSchema)
-      : undefined;
+    // Return without an explicit cast: TypeScript infers { properties } satisfies
+    // LanguageModelConfigurationSchema because Record<string, Record<string, unknown>>
+    // is assignable to the schema's properties index signature.
+    return Object.keys(properties).length > 0 ? { properties } : undefined;
   }
 
   /**
