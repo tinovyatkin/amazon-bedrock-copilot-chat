@@ -34,7 +34,8 @@ import {
 } from "./aws-partition";
 import { getProfileSdkUaAppId, isSsoProfile } from "./aws-profiles";
 import { logger } from "./logger";
-import type { AuthConfig, BedrockModelSummary, ModelsDevEntry, ModelsDevMap } from "./types";
+import { loadModelsDevData } from "./models-dev";
+import type { AuthConfig, BedrockModelSummary, ModelsDevMap } from "./types";
 
 export class BedrockAPIClient {
   private authConfig?: AuthConfig;
@@ -317,61 +318,14 @@ export class BedrockAPIClient {
   }
 
   /**
-   * Fetch model metadata from https://models.dev/api.json for the amazon-bedrock provider.
+   * Load model metadata from the bundled models.dev cache.
+   * Delegates to `src/models-dev.ts` — see that module for details.
    *
-   * models.dev is a community-maintained, publicly accessible registry (same source used by
-   * Kilo Code, OpenCode, and other AI tools). It provides authoritative per-model data:
-   * - `limit.context` / `limit.output` — token limits (replaces hardcoded getModelTokenLimits)
-   * - `reasoning` — whether the model supports extended thinking
-   * - `temperature` — false means the temperature parameter is deprecated (Opus 4.7/4.8)
-   * - `tool_call` — whether the model supports tool/function calling
-   * - `attachment` — whether the model accepts image/file inputs
-   * - `modalities` — input/output modality list
-   * - `interleaved` — whether reasoning content is interleaved (Kimi K2, GLM)
-   * - `cost` — USD/1M token pricing (used by the pricing branch)
-   *
-   * Covers 91+ Bedrock models including all Claude 4.x, Nova, DeepSeek, Llama, Qwen,
-   * MiniMax, Kimi, GLM, Mistral, OpenAI gpt-oss, with per-region pricing variants.
-   *
-   * Fails silently — returns empty map if offline or on any error. 5-second timeout.
-   *
-   * @param abortSignal Optional AbortSignal to cancel the request
-   * @returns Map of Bedrock model ID → models.dev entry
+   * The `_abortSignal` parameter is kept for API compatibility but is unused
+   * since the data comes from a bundled file, not a network call.
    */
-  async fetchModelsDevData(abortSignal?: AbortSignal): Promise<ModelsDevMap> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const signal = abortSignal
-        ? AbortSignal.any([abortSignal, controller.signal])
-        : controller.signal;
-
-      let response: Response;
-      try {
-        response = await fetch("https://models.dev/api.json", { signal });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      if (!response.ok) {
-        logger.warn("[Bedrock API Client] models.dev fetch failed", { status: response.status });
-        return new Map();
-      }
-
-      const data = (await response.json()) as Record<string, unknown>;
-      const result = this.parseModelsDevData(data);
-      logger.debug(`[Bedrock API Client] Loaded models.dev data for ${result.size} models`);
-      return result;
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        logger.debug("[Bedrock API Client] models.dev fetch cancelled or timed out");
-      } else {
-        logger.warn("[Bedrock API Client] Failed to fetch models.dev data", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return new Map();
-    }
+  async fetchModelsDevData(_abortSignal?: AbortSignal): Promise<ModelsDevMap> {
+    return loadModelsDevData();
   }
 
   /**
@@ -903,26 +857,6 @@ export class BedrockAPIClient {
         message,
       )
     );
-  }
-
-  /** Parse models.dev JSON into a ModelsDevMap. Extracted to keep fetchModelsDevData below cognitive-complexity limit. */
-  private parseModelsDevData(data: Record<string, unknown>): ModelsDevMap {
-    const result: ModelsDevMap = new Map();
-    const bedrockProvider = data["amazon-bedrock"] as
-      | undefined
-      | { models?: Record<string, ModelsDevEntry> };
-
-    if (!bedrockProvider?.models) {
-      logger.warn("[Bedrock API Client] models.dev missing amazon-bedrock provider");
-      return result;
-    }
-
-    for (const [modelId, model] of Object.entries(bedrockProvider.models)) {
-      if (typeof model.limit?.context === "number" && typeof model.limit.output === "number") {
-        result.set(modelId, model);
-      }
-    }
-    return result;
   }
 
   private recreateClients(): void {

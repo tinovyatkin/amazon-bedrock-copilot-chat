@@ -24,6 +24,7 @@ import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-cli
 import { convertMessages, stripThinkingContent } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
+import { loadModelsDevData } from "./models-dev";
 import {
   getModelProfile,
   getModelTokenLimits,
@@ -257,7 +258,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
-                toolCalling: modelProfile.supportsToolChoice,
+                // Advertise tool calling for all models: profiles.ts correctly gates
+                // tool use at request time via supportsToolChoice, but advertising
+                // false here would break agent mode for any model not yet enumerated.
+                toolCalling: true,
               },
               configurationSchema: this.buildConfigurationSchema(
                 modelIdToUse,
@@ -320,7 +324,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               capabilities: {
                 agentMode: true,
                 imageInput: vision,
-                toolCalling: appProfileModelProfile.supportsToolChoice,
+                toolCalling: true,
               },
               configurationSchema: this.buildConfigurationSchema(
                 modelIdForLimits,
@@ -1157,8 +1161,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       const manualModelProfile = getModelProfile(baseModelId);
-      // Fetch live models.dev data for the manual model — best-effort, fails silently
-      const manualModelsDevMap = await this.client.fetchModelsDevData(abortController.signal);
+      // Load bundled models.dev data for the manual model.
+      const manualModelsDevMap = loadModelsDevData();
       const limits = this.resolveModelLimits(
         baseModelId,
         settings.context1M.enabled,
@@ -1172,7 +1176,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return {
         capabilities: {
           imageInput: likelyVisionCapable,
-          toolCalling: manualModelProfile.supportsToolChoice,
+          toolCalling: true,
         },
         configurationSchema: this.buildConfigurationSchema(
           baseModelId,

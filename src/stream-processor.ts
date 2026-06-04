@@ -260,10 +260,18 @@ export class StreamProcessor {
     const usage = metadata?.usage;
     if (typeof usage?.inputTokens === "number" && typeof usage?.outputTokens === "number") {
       try {
+        // On prompt-cached turns Bedrock reports only the freshly-processed slice in
+        // inputTokens; the cached bulk is in cacheReadInputTokens / cacheWriteInputTokens.
+        // Sum all three so the VS Code context meter reflects the real prompt size,
+        // matching what the existing ContextTracker does on the Bedrock side.
+        const promptTokens =
+          usage.inputTokens +
+          (usage.cacheReadInputTokens ?? 0) +
+          (usage.cacheWriteInputTokens ?? 0);
         const usagePayload = {
           completion_tokens: usage.outputTokens,
-          prompt_tokens: usage.inputTokens,
-          total_tokens: usage.totalTokens ?? usage.inputTokens + usage.outputTokens,
+          prompt_tokens: promptTokens,
+          total_tokens: promptTokens + usage.outputTokens,
         };
         progress.report(
           new vscode.LanguageModelDataPart(
