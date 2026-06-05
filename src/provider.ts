@@ -569,6 +569,32 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const settings = await getBedrockSettings(this.globalState);
       const modelProfile = getModelProfile(baseModelId);
 
+      // Look up the bundled models.dev entry for this model. Used as a fallback
+      // for capability flags that profiles.ts may not yet enumerate for newly-added
+      // models (temperatureDeprecated, tool_call support).
+      const modelsDevMap = loadModelsDevData();
+      const normalizedBaseId = normalizeModelId(baseModelId);
+      const chatDevEntry =
+        modelsDevMap.get(baseModelId) ??
+        modelsDevMap.get(normalizedBaseId) ??
+        (() => {
+          // Full-scan fallback: strip version suffix and match by normalized prefix
+          for (const [key, entry] of modelsDevMap) {
+            if (normalizeModelId(key) === normalizedBaseId) return entry;
+          }
+        })();
+
+      // temperatureDeprecated: profiles.ts is authoritative; fall back to
+      // models.dev `temperature: false` for models not yet enumerated.
+      const effectiveTemperatureDeprecated =
+        modelProfile.temperatureDeprecated || chatDevEntry?.temperature === false;
+
+      // tool_call: profiles.ts is authoritative; fall back to models.dev
+      // `tool_call: false` to suppress tool configs for unknown models that
+      // reject them (avoids ValidationException on new text-only additions).
+      const effectiveToolCallSupported =
+        modelProfile.supportsToolChoice || chatDevEntry?.tool_call !== false;
+
       // Apply per-request overrides from the VS Code model-picker UI.
       // When the user selects a context size, thinking effort, or reasoning
       // effort in the model picker, VS Code passes those choices back as
@@ -698,6 +724,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         baseModelId,
         extendedThinkingEnabled,
         settings.promptCaching.enabled,
+        effectiveToolCallSupported,
       );
 
       if (options.tools && options.tools.length > 128) {
@@ -728,7 +755,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         budgetTokens,
         betaHeaders,
         thinkingEffortEnabled ? effectiveThinkingEffort : undefined,
-        modelProfile.temperatureDeprecated,
+        effectiveTemperatureDeprecated,
         modelProfile.requiresAdaptiveThinking,
         modelProfile.supportsReasoningEffort ? effectiveReasoningEffort : undefined,
       );

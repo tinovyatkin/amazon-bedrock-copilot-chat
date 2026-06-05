@@ -15,8 +15,18 @@ export function convertTools(
   modelId: string,
   extendedThinkingEnabled?: boolean,
   promptCachingEnabled?: boolean,
+  toolCallSupported?: boolean,
 ): bedrockRuntime.ToolConfiguration | undefined {
   if (!options.tools || options.tools.length === 0) {
+    return undefined;
+  }
+
+  // If the caller explicitly signals that this model does not support tool
+  // calls (e.g. derived from models.dev `tool_call: false` for a model not
+  // yet enumerated in profiles.ts), skip the entire tool config so the
+  // Bedrock API doesn't return a ValidationException.
+  if (toolCallSupported === false) {
+    logger.debug(`[Tool Converter] Skipping tools — model ${modelId} does not support tool calls`);
     return undefined;
   }
 
