@@ -604,11 +604,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // saved settings.
       const mc = (options as { modelConfiguration?: Record<string, unknown> }).modelConfiguration;
 
-      // context1M override: if the user picked the 1M context size in the picker,
-      // treat it as if context1M.enabled were true for this request.
+      // context1M override: the picker value fully overrides settings.context1M.enabled
+      // for this request — so the user can turn 1M *off* for a single request even when
+      // the workspace setting has it enabled.
       const context1MEnabled =
-        typeof mc?.contextSize === "number" && mc.contextSize >= 1_000_000
-          ? true
+        typeof mc?.contextSize === "number"
+          ? mc.contextSize >= 1_000_000
           : settings.context1M.enabled;
 
       // thinkingEffort override: picker value wins over workspace setting.
@@ -626,6 +627,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           : undefined;
       const effectiveThinkingEffort: ThinkingEffort =
         thinkingEffortOverride ?? settings.thinking.effort;
+
+      // reasoningEffort: profiles.ts is authoritative; also enable for models
+      // discovered only via models.dev (devEntry.reasoning=true) so the picker
+      // and the request path stay in sync.
+      const isAnthropicBaseModel = baseModelId.toLowerCase().includes("anthropic.");
+      const effectiveSupportsReasoningEffort =
+        modelProfile.supportsReasoningEffort ||
+        (chatDevEntry?.reasoning === true && !isAnthropicBaseModel);
 
       // reasoningEffort override: picker value wins over workspace setting.
       const validReasoningEfforts: readonly ReasoningEffort[] = [
@@ -757,7 +766,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         thinkingEffortEnabled ? effectiveThinkingEffort : undefined,
         effectiveTemperatureDeprecated,
         modelProfile.requiresAdaptiveThinking,
-        modelProfile.supportsReasoningEffort ? effectiveReasoningEffort : undefined,
+        effectiveSupportsReasoningEffort ? effectiveReasoningEffort : undefined,
       );
 
       // Log request details
