@@ -34,7 +34,8 @@ import {
 } from "./aws-partition";
 import { getProfileSdkUaAppId, isSsoProfile } from "./aws-profiles";
 import { logger } from "./logger";
-import type { AuthConfig, BedrockModelSummary } from "./types";
+import { loadModelsDevData } from "./models-dev";
+import type { AuthConfig, BedrockModelSummary, ModelsDevMap } from "./types";
 
 export class BedrockAPIClient {
   private authConfig?: AuthConfig;
@@ -314,6 +315,18 @@ export class BedrockAPIClient {
       logger.error("[Bedrock API Client] Failed to fetch Bedrock models", error);
       throw error;
     }
+  }
+
+  /**
+   * Load model metadata from the bundled models.dev cache.
+   * Delegates to `src/models-dev.ts` — see that module for details.
+   *
+   * The `_abortSignal` parameter is retained for call-site compatibility
+   * (callers pass a signal they already have) but is unused because the
+   * data comes from a local bundled file rather than a network request.
+   */
+  async fetchModelsDevData(_abortSignal?: AbortSignal): Promise<ModelsDevMap> {
+    return loadModelsDevData();
   }
 
   /**

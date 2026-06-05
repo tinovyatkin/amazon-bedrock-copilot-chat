@@ -214,7 +214,7 @@ export class StreamProcessor {
     } else if (event.messageStop) {
       this.handleMessageStop(event.messageStop, state);
     } else if (event.metadata) {
-      this.handleMetadata(event.metadata);
+      this.handleMetadata(event.metadata, progress);
     } else {
       logger.info("[Stream Processor] Unknown event type:", Object.keys(event));
     }
@@ -246,8 +246,45 @@ export class StreamProcessor {
     });
   }
 
-  private handleMetadata(metadata: NonNullable<ConverseStreamOutput["metadata"]>): void {
+  private handleMetadata(
+    metadata: NonNullable<ConverseStreamOutput["metadata"]>,
+    progress: Progress<LanguageModelResponsePart2>,
+  ): void {
     logger.info("[Stream Processor] Metadata received:", metadata);
+
+    // Report token usage to VS Code so the context window meter updates.
+    // VS Code's BYOK providers use LanguageModelDataPart with mimeType 'usage'
+    // and an OpenAI-format JSON payload { prompt_tokens, completion_tokens, total_tokens }.
+    // VS Code's extChatEndpoint reads this via isApiUsage() and updates the
+    // "X / YK tokens" display in the chat input bar.
+    const usage = metadata?.usage;
+    if (typeof usage?.inputTokens === "number" && typeof usage?.outputTokens === "number") {
+      try {
+        // On prompt-cached turns Bedrock reports only the freshly-processed slice in
+        // inputTokens; the cached bulk is in cacheReadInputTokens / cacheWriteInputTokens.
+        // Sum all three so the VS Code context meter reflects the real prompt size,
+        // matching what the existing ContextTracker does on the Bedrock side.
+        const promptTokens =
+          usage.inputTokens +
+          (usage.cacheReadInputTokens ?? 0) +
+          (usage.cacheWriteInputTokens ?? 0);
+        const usagePayload = {
+          completion_tokens: usage.outputTokens,
+          prompt_tokens: promptTokens,
+          total_tokens: promptTokens + usage.outputTokens,
+        };
+        progress.report(
+          new vscode.LanguageModelDataPart(
+            new TextEncoder().encode(JSON.stringify(usagePayload)),
+            "usage",
+          ),
+        );
+        logger.debug("[Stream Processor] Reported token usage", usagePayload);
+      } catch (error) {
+        // LanguageModelDataPart may not be available in older VS Code builds — fail silently.
+        logger.debug("[Stream Processor] Could not report token usage", error);
+      }
+    }
 
     const guardrailData = metadata?.trace?.guardrail;
     if (!guardrailData) {

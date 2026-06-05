@@ -6,7 +6,10 @@ export interface ModelProfile {
   /**
    * Whether the model requires adaptive thinking (thinking.type="adaptive") instead of
    * the usual thinking.type="enabled" with budget_tokens.
-   * CLI-verified: only Claude Opus 4.7 requires this.
+   * Claude Opus 4.7 and 4.8 require adaptive thinking; manual extended thinking
+   * (thinking.type="enabled" with budget_tokens) is not supported on these models
+   * and returns a 400 error.
+   * Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
    */
   requiresAdaptiveThinking: boolean;
   /**
@@ -23,6 +26,15 @@ export interface ModelProfile {
    * Reference: Amazon Nova models don't support cachePoint after toolResult
    */
   supportsCachingWithToolResults: boolean;
+  /**
+   * Whether the model supports the "max" effort level (and Opus 4.7/4.8 also support "xhigh").
+   * - Opus 4.8 / 4.7: low / medium / high / xhigh / max (requiresAdaptiveThinking models)
+   * - Opus 4.6: low / medium / high / max
+   * - Sonnet 4.6 / Opus 4.5: low / medium / high only
+   * AWS Bedrock docs state that "max" on non-Opus-4.6 adaptive-thinking models returns an error.
+   * Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
+   */
+  supportsMaxEffort: boolean;
   /**
    * Whether the model supports prompt caching via cache points
    */
@@ -42,8 +54,10 @@ export interface ModelProfile {
    */
   supportsThinking: boolean;
   /**
-   * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5, Sonnet 4.6)
-   * Allows controlling token expenditure with "high", "medium", or "low" effort levels
+   * Whether the model supports the output_config.effort parameter
+   * (Claude Opus 4.8, 4.7, 4.6, 4.5, and Sonnet 4.6).
+   * The set of valid effort levels varies by model — see supportsMaxEffort
+   * and requiresAdaptiveThinking for the full breakdown.
    */
   supportsThinkingEffort: boolean;
   /**
@@ -69,11 +83,18 @@ export interface ModelProfile {
 
 export interface ModelTokenLimits {
   /**
-   * Maximum number of input tokens (context window)
+   * Maximum tokens available for user input — equal to (context window - maxOutputTokens).
+   *
+   * VS Code's model picker renders the visible context size as
+   * `maxInputTokens + maxOutputTokens`, so this value must be the *remaining* input
+   * budget after reserving space for the model's output, NOT the raw context window.
+   *
+   * Example: Claude Haiku 4.5 has a 200K context window and 64K max output, so
+   * `maxInputTokens = 200_000 - 64_000 = 136_000`, and the picker shows `136K + 64K = 200K`.
    */
   maxInputTokens: number;
   /**
-   * Maximum number of output tokens
+   * Maximum number of output tokens the model can generate in a single response.
    */
   maxOutputTokens: number;
 }
@@ -84,6 +105,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     requiresInterleavedThinkingHeader: false,
     supports1MContext: false,
     supportsCachingWithToolResults: false,
+    supportsMaxEffort: false,
     supportsPromptCaching: false,
     supportsReasoningEffort: false,
     supportsThinking: false,
@@ -134,6 +156,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           requiresInterleavedThinkingHeader: false,
           supports1MContext: false,
           supportsCachingWithToolResults: false,
+          supportsMaxEffort: false,
           supportsPromptCaching: true,
           supportsReasoningEffort: false,
           supportsThinking: false,
@@ -171,15 +194,24 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Adaptive thinking / thinking effort parameter is supported by
-      // Claude Opus 4.8, Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
-      // Allows controlling token expenditure with "high", "medium", or "low" effort levels
+      // output_config.effort is supported on Claude Opus 4.8, 4.7, 4.6, 4.5, and Sonnet 4.6.
+      // The available levels vary by model (see supportsMaxEffort for the full breakdown).
+      // Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
       const supportsThinkingEffort =
         normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6") ||
         normalizedId.includes("opus-4-5") ||
         normalizedId.includes("sonnet-4-6");
+
+      // "max" effort level is available on Opus 4.8, 4.7, and 4.6.
+      // "xhigh" is additionally available on Opus 4.8 and 4.7 (covered by requiresAdaptiveThinking).
+      // Sonnet 4.6 only gets low/medium/high — AWS Bedrock docs confirm that "max"
+      // is restricted to Opus 4.6 in the adaptive thinking context and returns an error on other models.
+      const supportsMaxEffort =
+        normalizedId.includes("opus-4-8") ||
+        normalizedId.includes("opus-4-7") ||
+        normalizedId.includes("opus-4-6");
 
       // CLI-verified: Opus 4.7 and 4.8 reject `thinking.type="enabled"` and require
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
@@ -196,6 +228,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
+        supportsMaxEffort,
         supportsPromptCaching: true,
         supportsReasoningEffort: false, // Anthropic uses thinking.* / output_config.effort, not reasoning_effort
         supportsThinking,
@@ -251,6 +284,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
+        supportsMaxEffort: false,
         supportsPromptCaching: false,
         supportsReasoningEffort: false,
         supportsThinking: false,
@@ -271,6 +305,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
+        supportsMaxEffort: false,
         supportsPromptCaching: false,
         supportsReasoningEffort: true,
         supportsThinking: false,
@@ -314,119 +349,9 @@ export function getModelTokenLimits(modelId: string, enable1MContext = false): M
 
   // Default for unknown models
   return {
-    maxInputTokens: 196_000, // 200K context - 4K output
+    maxInputTokens: 200_000 - 4096, // context window minus reserved output
     maxOutputTokens: 4096,
   };
-}
-
-/**
- * Check if a model needs the 1M context beta header when 1M context is enabled.
- * Claude Opus 4.7 is 1M-by-default and must not receive the beta header.
- */
-export function requires1MContextBetaHeader(modelId: string): boolean {
-  const normalizedModelId = normalizeModelId(modelId);
-  return normalizedModelId.includes("opus-4-6") || normalizedModelId.includes("sonnet-4");
-}
-
-/**
- * Get token limits for a Claude model based on its normalized model ID
- */
-function getClaudeTokenLimits(
-  normalizedModelId: string,
-  enable1MContext: boolean,
-): ModelTokenLimits {
-  // Claude Opus 4.8: always 1M context, 128K max output.
-  // Same limits as Opus 4.7 -- 1M is the default, no beta header required.
-  if (normalizedModelId.includes("opus-4-8")) {
-    return {
-      maxInputTokens: 1_000_000 - 128_000,
-      maxOutputTokens: 128_000,
-    };
-  }
-
-  // Claude Opus 4.7: always 1M context, 128K max output (per Anthropic docs).
-  // Opus 4.7 does not require the context-1m-* beta header -- 1M is the default.
-  if (normalizedModelId.includes("opus-4-7")) {
-    return {
-      maxInputTokens: 1_000_000 - 128_000,
-      maxOutputTokens: 128_000,
-    };
-  }
-
-  // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output
-  // https://platform.claude.com - Opus 4.6 supports 128K output and optional 1M context
-  if (normalizedModelId.includes("opus-4-6")) {
-    return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 128_000,
-      maxOutputTokens: 128_000,
-    };
-  }
-
-  // Claude Sonnet 4.6: 200K context (or 1M with setting enabled), 64K output
-  if (normalizedModelId.includes("sonnet-4-6")) {
-    return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
-      maxOutputTokens: 64_000,
-    };
-  }
-
-  // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output
-  if (normalizedModelId.includes("sonnet-4")) {
-    return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
-      maxOutputTokens: 64_000,
-    };
-  }
-
-  // Claude Sonnet 3.7: 200K context, 64K output
-  if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
-    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
-  }
-
-  // Claude Opus 4.5: 200K context, 64K output (per Anthropic docs)
-  if (normalizedModelId.includes("opus-4-5")) {
-    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
-  }
-
-  // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32768)
-  // Upstream previously used 64K output; Anthropic's published limit is 32K.
-  if (normalizedModelId.includes("opus-4-1")) {
-    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
-  }
-
-  // Claude Opus 4: 200K context, 32K output (AWS-verified limit: 32768)
-  // Upstream previously used 64K output; Anthropic's published limit is 32K.
-  if (normalizedModelId.includes("opus-4")) {
-    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
-  }
-
-  // Claude Haiku 4.5: 200K context, 64K output
-  if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
-    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
-  }
-
-  // Claude Haiku 3.5: 200K context, 8,192 output
-  if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
-    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
-  }
-
-  // Claude Haiku 3: 200K context, 4,096 output
-  if (normalizedModelId.includes("haiku-3")) {
-    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
-  }
-
-  // Claude 3.5 Sonnet (older): 200K context, 8,192 output
-  if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
-    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
-  }
-
-  // Claude Opus 3: 200K context, 4,096 output
-  if (normalizedModelId.includes("opus-3")) {
-    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
-  }
-
-  // Default for unknown Claude models
-  return { maxInputTokens: 196_000, maxOutputTokens: 4096 };
 }
 
 /**
@@ -437,14 +362,132 @@ function getClaudeTokenLimits(
  * @example
  * normalizeModelId("global.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  * normalizeModelId("us.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("cn-north.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
+ * normalizeModelId("us-gov-east.anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  * normalizeModelId("anthropic.claude-opus-4-5") → "anthropic.claude-opus-4-5"
  */
-function normalizeModelId(modelId: string): string {
+export function normalizeModelId(modelId: string): string {
   const parts = modelId.split(".");
-  if (parts.length > 2 && (parts[0].length === 2 || parts[0] === "global")) {
-    return parts.slice(1).join(".");
+  if (parts.length <= 2) return modelId;
+  const prefix = parts[0];
+  // Strip known inference-profile region prefixes:
+  //   - 2-char ISO region codes: us, eu, ap, jp, au, ca, sa, me, af, il
+  //   - "global" cross-region prefix
+  //   - AWS GovCloud: us-gov-east, us-gov-west
+  //   - China regions: cn-north, cn-northwest
+  //   - Legacy APAC alias used by some profiles
+  const isRegionPrefix =
+    prefix.length === 2 ||
+    prefix === "global" ||
+    prefix === "apac" ||
+    prefix.startsWith("us-gov-") ||
+    prefix.startsWith("cn-");
+  return isRegionPrefix ? parts.slice(1).join(".") : modelId;
+}
+
+/**
+ * Check if a model needs the 1M context beta header when 1M context is enabled.
+ * Returns true only for models where 1M is *optional* (opt-in via beta header):
+ * - Claude Opus 4.6 (200K default, 1M optional)
+ * - Claude Sonnet 4.5 and earlier sonnet-4.x (200K default, 1M optional)
+ * Models where 1M is the default (Opus 4.7, Opus 4.8, Sonnet 4.6) return false.
+ */
+export function requires1MContextBetaHeader(modelId: string): boolean {
+  const normalizedModelId = normalizeModelId(modelId);
+  if (normalizedModelId.includes("opus-4-6")) return true;
+  // sonnet-4.x with optional 1M: 4.5 and earlier, but NOT 4.6 (which is always-1M)
+  if (normalizedModelId.includes("sonnet-4") && !normalizedModelId.includes("sonnet-4-6"))
+    return true;
+  return false;
+}
+
+/**
+ * Get token limits for a Claude model based on its normalized model ID
+ */
+function getClaudeTokenLimits(
+  normalizedModelId: string,
+  enable1MContext: boolean,
+): ModelTokenLimits {
+  // Claude Opus 4.8: always 1M context, 128K max output.
+  if (normalizedModelId.includes("opus-4-8")) {
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
-  return modelId;
+
+  // Claude Opus 4.7: always 1M context, 128K max output.
+  // Does not require the context-1m-* beta header — 1M is the default.
+  if (normalizedModelId.includes("opus-4-7")) {
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
+  }
+
+  // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output.
+  if (normalizedModelId.includes("opus-4-6")) {
+    return {
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 128_000,
+      maxOutputTokens: 128_000,
+    };
+  }
+
+  // Claude Sonnet 4.6: always 1M context (default), 64K output.
+  // 1M is the standard context window for this model — no beta header needed.
+  if (normalizedModelId.includes("sonnet-4-6")) {
+    return { maxInputTokens: 1_000_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output.
+  if (normalizedModelId.includes("sonnet-4")) {
+    return {
+      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
+      maxOutputTokens: 64_000,
+    };
+  }
+
+  // Claude Sonnet 3.7: 200K context, 64K output.
+  if (normalizedModelId.includes("sonnet-3-7") || normalizedModelId.includes("sonnet-3.7")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Opus 4.5: 200K context, 64K output.
+  if (normalizedModelId.includes("opus-4-5")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Opus 4.1: 200K context, 32K output (AWS-verified limit: 32768).
+  if (normalizedModelId.includes("opus-4-1")) {
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
+  }
+
+  // Claude Opus 4: 200K context, 32K output (AWS-verified limit: 32768).
+  if (normalizedModelId.includes("opus-4")) {
+    return { maxInputTokens: 200_000 - 32_768, maxOutputTokens: 32_768 };
+  }
+
+  // Claude Haiku 4.5: 200K context, 64K output.
+  if (normalizedModelId.includes("haiku-4-5") || normalizedModelId.includes("haiku-4.5")) {
+    return { maxInputTokens: 200_000 - 64_000, maxOutputTokens: 64_000 };
+  }
+
+  // Claude Haiku 3.5: 200K context, 8,192 output.
+  if (normalizedModelId.includes("haiku-3-5") || normalizedModelId.includes("haiku-3.5")) {
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
+  }
+
+  // Claude Haiku 3: 200K context, 4,096 output.
+  if (normalizedModelId.includes("haiku-3")) {
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
+  }
+
+  // Claude 3.5 Sonnet (older): 200K context, 8,192 output.
+  if (normalizedModelId.includes("sonnet-3-5") || normalizedModelId.includes("sonnet-3.5")) {
+    return { maxInputTokens: 200_000 - 8192, maxOutputTokens: 8192 };
+  }
+
+  // Claude Opus 3: 200K context, 4,096 output.
+  if (normalizedModelId.includes("opus-3")) {
+    return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
+  }
+
+  // Default for unknown Claude models.
+  return { maxInputTokens: 200_000 - 4096, maxOutputTokens: 4096 };
 }
 
 /**
