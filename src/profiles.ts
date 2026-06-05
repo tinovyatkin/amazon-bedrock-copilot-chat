@@ -6,7 +6,10 @@ export interface ModelProfile {
   /**
    * Whether the model requires adaptive thinking (thinking.type="adaptive") instead of
    * the usual thinking.type="enabled" with budget_tokens.
-   * CLI-verified: only Claude Opus 4.7 requires this.
+   * Claude Opus 4.7 and 4.8 require adaptive thinking; manual extended thinking
+   * (thinking.type="enabled" with budget_tokens) is not supported on these models
+   * and returns a 400 error.
+   * Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
    */
   requiresAdaptiveThinking: boolean;
   /**
@@ -23,6 +26,15 @@ export interface ModelProfile {
    * Reference: Amazon Nova models don't support cachePoint after toolResult
    */
   supportsCachingWithToolResults: boolean;
+  /**
+   * Whether the model supports the "max" effort level (and Opus 4.7/4.8 also support "xhigh").
+   * - Opus 4.8 / 4.7: low / medium / high / xhigh / max (requiresAdaptiveThinking models)
+   * - Opus 4.6: low / medium / high / max
+   * - Sonnet 4.6 / Opus 4.5: low / medium / high only
+   * AWS Bedrock docs state that "max" on non-Opus-4.6 adaptive-thinking models returns an error.
+   * Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
+   */
+  supportsMaxEffort: boolean;
   /**
    * Whether the model supports prompt caching via cache points
    */
@@ -42,8 +54,10 @@ export interface ModelProfile {
    */
   supportsThinking: boolean;
   /**
-   * Whether the model supports the adaptive thinking / thinking effort parameter (Claude Opus 4.6, Opus 4.5, Sonnet 4.6)
-   * Allows controlling token expenditure with "high", "medium", or "low" effort levels
+   * Whether the model supports the output_config.effort parameter
+   * (Claude Opus 4.8, 4.7, 4.6, 4.5, and Sonnet 4.6).
+   * The set of valid effort levels varies by model — see supportsMaxEffort
+   * and requiresAdaptiveThinking for the full breakdown.
    */
   supportsThinkingEffort: boolean;
   /**
@@ -91,6 +105,7 @@ export function getModelProfile(modelId: string): ModelProfile {
     requiresInterleavedThinkingHeader: false,
     supports1MContext: false,
     supportsCachingWithToolResults: false,
+    supportsMaxEffort: false,
     supportsPromptCaching: false,
     supportsReasoningEffort: false,
     supportsThinking: false,
@@ -141,6 +156,7 @@ export function getModelProfile(modelId: string): ModelProfile {
           requiresInterleavedThinkingHeader: false,
           supports1MContext: false,
           supportsCachingWithToolResults: false,
+          supportsMaxEffort: false,
           supportsPromptCaching: true,
           supportsReasoningEffort: false,
           supportsThinking: false,
@@ -178,15 +194,24 @@ export function getModelProfile(modelId: string): ModelProfile {
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
       const supportsCachingWithToolResults = !supportsThinking;
 
-      // Adaptive thinking / thinking effort parameter is supported by
-      // Claude Opus 4.8, Opus 4.7, Opus 4.6, Opus 4.5, and Sonnet 4.6
-      // Allows controlling token expenditure with "high", "medium", or "low" effort levels
+      // output_config.effort is supported on Claude Opus 4.8, 4.7, 4.6, 4.5, and Sonnet 4.6.
+      // The available levels vary by model (see supportsMaxEffort for the full breakdown).
+      // Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
       const supportsThinkingEffort =
         normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6") ||
         normalizedId.includes("opus-4-5") ||
         normalizedId.includes("sonnet-4-6");
+
+      // "max" effort level is available on Opus 4.8, 4.7, and 4.6.
+      // "xhigh" is additionally available on Opus 4.8 and 4.7 (covered by requiresAdaptiveThinking).
+      // Sonnet 4.6 only gets low/medium/high — AWS Bedrock docs confirm that "max"
+      // is restricted to Opus 4.6 in the adaptive thinking context and returns an error on other models.
+      const supportsMaxEffort =
+        normalizedId.includes("opus-4-8") ||
+        normalizedId.includes("opus-4-7") ||
+        normalizedId.includes("opus-4-6");
 
       // CLI-verified: Opus 4.7 and 4.8 reject `thinking.type="enabled"` and require
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
@@ -203,6 +228,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader,
         supports1MContext: supports1MContext(modelId),
         supportsCachingWithToolResults,
+        supportsMaxEffort,
         supportsPromptCaching: true,
         supportsReasoningEffort: false, // Anthropic uses thinking.* / output_config.effort, not reasoning_effort
         supportsThinking,
@@ -258,6 +284,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
+        supportsMaxEffort: false,
         supportsPromptCaching: false,
         supportsReasoningEffort: false,
         supportsThinking: false,
@@ -278,6 +305,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
+        supportsMaxEffort: false,
         supportsPromptCaching: false,
         supportsReasoningEffort: true,
         supportsThinking: false,

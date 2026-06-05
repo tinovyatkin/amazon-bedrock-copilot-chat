@@ -1272,7 +1272,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
       const te = schema.properties.thinkingEffort;
-      assert.deepEqual(te.enum, ["high", "medium", "low"]);
+      assert.deepEqual(te.enum, ["low", "medium", "high"]);
       assert.equal(te.group, "navigation");
       assert.equal(te.default, "high");
     });

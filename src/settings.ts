@@ -45,13 +45,20 @@ export interface BedrockSettings {
 export type ReasoningEffort = "high" | "low" | "medium" | "minimal";
 
 /**
- * Thinking effort level for Claude Opus 4.5 and Sonnet 4.6.
- * Controls how eager Claude is about spending tokens when responding.
- * - "high": Maximum capability—Claude uses as many tokens as needed for the best possible outcome
- * - "medium": Balanced approach with moderate token savings
- * - "low": Most efficient—significant token savings with some capability reduction
+ * Effort level for Claude models that accept output_config.effort.
+ * Not all levels are valid on every model — the picker in buildConfigurationSchema
+ * only exposes the levels each model supports (gated by supportsMaxEffort /
+ * requiresAdaptiveThinking in profiles.ts):
+ *
+ * - "max"   — Absolute maximum. Opus 4.8 / 4.7 / 4.6 on Bedrock.
+ * - "xhigh" — Extended capability for long-horizon agentic work. Opus 4.8 / 4.7 only.
+ * - "high"  — Default. Equivalent to omitting the parameter.
+ * - "medium"— Balanced: moderate token savings with good performance.
+ * - "low"   — Most efficient: significant token savings, some capability reduction.
+ *
+ * Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
  */
-export type ThinkingEffort = "high" | "low" | "medium";
+export type ThinkingEffort = "high" | "low" | "max" | "medium" | "xhigh";
 
 /**
  * Get Bedrock settings with priority order

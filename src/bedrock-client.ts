@@ -321,8 +321,9 @@ export class BedrockAPIClient {
    * Load model metadata from the bundled models.dev cache.
    * Delegates to `src/models-dev.ts` — see that module for details.
    *
-   * The `_abortSignal` parameter is kept for API compatibility but is unused
-   * since the data comes from a bundled file, not a network call.
+   * The `_abortSignal` parameter is retained for call-site compatibility
+   * (callers pass a signal they already have) but is unused because the
+   * data comes from a local bundled file rather than a network request.
    */
   async fetchModelsDevData(_abortSignal?: AbortSignal): Promise<ModelsDevMap> {
     return loadModelsDevData();

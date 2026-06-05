@@ -586,7 +586,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           : settings.context1M.enabled;
 
       // thinkingEffort override: picker value wins over workspace setting.
-      const validThinkingEfforts: readonly ThinkingEffort[] = ["high", "medium", "low"];
+      const validThinkingEfforts: readonly ThinkingEffort[] = [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh",
+      ];
       const thinkingEffortOverride =
         typeof mc?.thinkingEffort === "string" &&
         validThinkingEfforts.includes(mc.thinkingEffort as ThinkingEffort)
@@ -899,7 +905,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort: "high" | "low" | "medium" | undefined,
+    thinkingEffort: ThinkingEffort | undefined,
     temperatureDeprecated: boolean | undefined,
     requiresAdaptiveThinking: boolean | undefined,
   ): void {
@@ -1081,22 +1087,68 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // ── Thinking effort ────────────────────────────────────────────────────
     // `supportsThinkingEffort` is set in `profiles.ts` for models that accept
     // Claude's `output_config.effort` field (Opus 4.5/4.6/4.8, Sonnet 4.6).
+    // Three tiers based on model capability flags from profiles.ts:
+    //   - Extended  (Opus 4.7/4.8, requiresAdaptiveThinking): low/medium/high/xhigh/max
+    //   - Max-capable (Opus 4.6, supportsMaxEffort):           low/medium/high/max
+    //   - Basic     (Opus 4.5, Sonnet 4.6):                    low/medium/high
+    // AWS Bedrock docs confirm "max" is Opus 4.6 only; "xhigh" is Opus 4.7/4.8 only.
+    // Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
     if (modelProfile.supportsThinkingEffort) {
-      properties.thinkingEffort = {
-        default: "high",
-        description:
-          "Controls how many tokens Claude spends thinking before responding. Higher effort produces better results but uses more tokens.",
-        enum: ["high", "medium", "low"],
-        enumDescriptions: [
-          "Maximum capability — Claude uses as many tokens as needed. Best for complex reasoning.",
-          "Balanced approach with moderate token savings. Good for most tasks.",
-          "Most efficient — significant token savings. Best for simpler tasks.",
-        ],
-        enumItemLabels: ["High", "Medium", "Low"],
-        group: "navigation",
-        title: "Thinking Amount",
-        type: "string",
-      };
+      if (modelProfile.requiresAdaptiveThinking) {
+        // Opus 4.7 / 4.8: full 5-level picker
+        properties.thinkingEffort = {
+          default: "high",
+          description:
+            "Controls how many tokens Claude spends thinking before responding. Higher effort produces better results but uses more tokens.",
+          enum: ["low", "medium", "high", "xhigh", "max"],
+          enumDescriptions: [
+            "Most efficient — significant token savings. Best for simpler tasks.",
+            "Balanced approach with moderate token savings. Good for most tasks.",
+            "High capability — Claude uses as many tokens as needed. Best for complex reasoning.",
+            "Extended capability for long-horizon agentic and coding tasks.",
+            "Absolute maximum — no constraints on thinking depth.",
+          ],
+          enumItemLabels: ["Low", "Medium", "High", "Extra High", "Maximum"],
+          group: "navigation",
+          title: "Thinking Amount",
+          type: "string",
+        };
+      } else if (modelProfile.supportsMaxEffort) {
+        // Opus 4.6: 4-level picker (max but no xhigh)
+        properties.thinkingEffort = {
+          default: "high",
+          description:
+            "Controls how many tokens Claude spends thinking before responding. Higher effort produces better results but uses more tokens.",
+          enum: ["low", "medium", "high", "max"],
+          enumDescriptions: [
+            "Most efficient — significant token savings. Best for simpler tasks.",
+            "Balanced approach with moderate token savings. Good for most tasks.",
+            "High capability — Claude uses as many tokens as needed. Best for complex reasoning.",
+            "Absolute maximum — no constraints on thinking depth.",
+          ],
+          enumItemLabels: ["Low", "Medium", "High", "Maximum"],
+          group: "navigation",
+          title: "Thinking Amount",
+          type: "string",
+        };
+      } else {
+        // Opus 4.5 / Sonnet 4.6: basic 3-level picker
+        properties.thinkingEffort = {
+          default: "high",
+          description:
+            "Controls how many tokens Claude spends thinking before responding. Higher effort produces better results but uses more tokens.",
+          enum: ["low", "medium", "high"],
+          enumDescriptions: [
+            "Most efficient — significant token savings. Best for simpler tasks.",
+            "Balanced approach with moderate token savings. Good for most tasks.",
+            "Maximum capability — Claude uses as many tokens as needed. Best for complex reasoning.",
+          ],
+          enumItemLabels: ["Low", "Medium", "High"],
+          group: "navigation",
+          title: "Thinking Amount",
+          type: "string",
+        };
+      }
     }
 
     // ── Reasoning effort ──────────────────────────────────────────────────
@@ -1298,7 +1350,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
     temperatureDeprecated?: boolean,
     requiresAdaptiveThinking?: boolean,
     reasoningEffort?: ReasoningEffort,
@@ -1401,7 +1453,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     extendedThinkingEnabled: boolean,
     budgetTokens: number,
     betaHeaders: string[],
-    thinkingEffort?: "high" | "low" | "medium",
+    thinkingEffort?: ThinkingEffort,
     temperatureDeprecated?: boolean,
     requiresAdaptiveThinking?: boolean,
     reasoningEffort?: ReasoningEffort,
