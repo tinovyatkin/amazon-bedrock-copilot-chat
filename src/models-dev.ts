@@ -24,7 +24,7 @@ import type { ModelsDevEntry, ModelsDevMap } from "./types";
  * To refresh: run `scripts/update-models-cache.sh` and commit the result.
  */
 export function loadModelsDevData(): ModelsDevMap {
-  const result = parseModelsDevData(modelsDevCache as Record<string, unknown>);
+  const result = parseModelsDevData(modelsDevCache);
   logger.debug(`[models.dev] Loaded ${result.size} models from bundled cache`);
   return result;
 }
