@@ -1575,8 +1575,8 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(result.inputCost, 300);
       assert.equal(result.outputCost, 1500);
       assert.equal(result.cacheCost, 30);
-      assert.equal(result.pricing, "300 credits in · 1500 credits out / 1M tokens");
-      assert.equal(result.priceCategory, "high"); // avg = (300+1500)/2 = 900
+      assert.equal(result.pricing, "$3.00 in · $15.00 out / 1M tokens");
+      assert.equal(result.priceCategory, "high"); // avg = (3+15)/2 = 9
     });
 
     test("falls back via normalizeModelId scan when exact match missing", () => {
@@ -1587,20 +1587,20 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(callBuildPricingFields("eu.anthropic.claude-sonnet-4-6", map)?.inputCost, 300);
     });
 
-    test("priceCategory low for cheap models (avg ≤50 credits/1M)", () => {
-      // Nova Micro: $0.035 in / $0.14 out → 3.5/14 credits, avg=8.75 → low
+    test("priceCategory low for cheap models (avg ≤$0.50/1M)", () => {
+      // Nova Micro: $0.035 in / $0.14 out → avg=$0.0875 → low
       const map = makeDevMapWithCost([["amazon.nova-micro-v1:0", { input: 0.035, output: 0.14 }]]);
       assert.equal(callBuildPricingFields("amazon.nova-micro-v1:0", map).priceCategory, "low");
     });
 
-    test("priceCategory medium for mid-range models (avg ≤500 credits/1M)", () => {
-      // $1/1M in, $3/1M out → 100/300 credits, avg=200 → medium
+    test("priceCategory medium for mid-range models (avg ≤$5/1M)", () => {
+      // $1/1M in, $3/1M out → avg=$2 → medium
       const map = makeDevMapWithCost([["amazon.nova-pro-v1:0", { input: 1, output: 3 }]]);
       assert.equal(callBuildPricingFields("amazon.nova-pro-v1:0", map).priceCategory, "medium");
     });
 
-    test("priceCategory very_high for expensive models (avg >2000 credits/1M)", () => {
-      // Opus: $15 in / $75 out → 1500/7500 credits, avg=4500 → very_high
+    test("priceCategory very_high for expensive models (avg >$20/1M)", () => {
+      // Opus: $15 in / $75 out → avg=$45 → very_high
       const map = makeDevMapWithCost([["anthropic.claude-opus-4", { input: 15, output: 75 }]]);
       assert.equal(
         callBuildPricingFields("anthropic.claude-opus-4", map).priceCategory,
@@ -1608,13 +1608,13 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
     });
 
-    test("formats fractional credits with one decimal place", () => {
-      // $0.035/1M → 3.5 credits
+    test("formats small USD prices with 4 decimal places", () => {
+      // $0.035/1M → "$0.0350" (4dp for sub-$0.10 prices)
       const map = makeDevMapWithCost([["amazon.nova-micro-v1:0", { input: 0.035, output: 0.14 }]]);
       const result = callBuildPricingFields("amazon.nova-micro-v1:0", map);
       assert.ok(
-        result.pricing?.includes("3.5 credits"),
-        `Expected '3.5 credits', got: ${result.pricing}`,
+        result.pricing?.includes("$0.0350"),
+        `Expected '$0.0350' in pricing, got: ${result.pricing}`,
       );
     });
 

@@ -20145,25 +20145,24 @@ declare module 'vscode' {
 
                 /**
                  * Optional pricing label for this model shown in the model picker UI,
-                 * e.g. "300 credits in · 1500 credits out / 1M tokens".
-                 * Credits are GitHub Copilot billing units where 1 credit = $0.01 USD.
+                 * e.g. "$3.00 in · $15.00 out / 1M tokens" (USD).
                  */
                 readonly pricing?: string;
 
                 /**
-                 * Optional input cost in credits per million tokens.
+                 * Optional input cost in credits per million tokens (VS Code renders this directly).
                  * 1 credit = $0.01 USD.
                  */
                 readonly inputCost?: number;
 
                 /**
-                 * Optional output cost in credits per million tokens.
+                 * Optional output cost in credits per million tokens (VS Code renders this directly).
                  * 1 credit = $0.01 USD.
                  */
                 readonly outputCost?: number;
 
                 /**
-                 * Optional cache read cost in credits per million tokens.
+                 * Optional cache read cost in credits per million tokens (VS Code renders this directly).
                  * Present only when prompt caching is supported.
                  * 1 credit = $0.01 USD.
                  */

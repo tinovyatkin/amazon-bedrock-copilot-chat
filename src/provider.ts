@@ -1419,24 +1419,27 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const cost = devEntry?.cost;
     if (!cost || typeof cost.input !== "number" || typeof cost.output !== "number") return {};
 
-    // Convert USD/1M → credits/1M (1 credit = $0.01 USD)
-    const USD_TO_CREDITS = 100;
-    const inputCredits = cost.input * USD_TO_CREDITS;
-    const outputCredits = cost.output * USD_TO_CREDITS;
+    // inputCost/outputCost/cacheCost must be in credits (VS Code renders these directly
+    // with a "credits" suffix in the hover tooltip). 1 credit = $0.01 USD.
+    // Round to 1dp to avoid floating-point noise (e.g. 0.07 * 100 = 7.000000000000001).
+    const inputCredits = Number((cost.input * 100).toFixed(1));
+    const outputCredits = Number((cost.output * 100).toFixed(1));
     const cacheCredits =
-      typeof cost.cache_read === "number" ? cost.cache_read * USD_TO_CREDITS : undefined;
+      typeof cost.cache_read === "number" ? Number((cost.cache_read * 100).toFixed(1)) : undefined;
 
-    const pricingLabel = `${fmtCreditsPerMillion(inputCredits)} in · ${fmtCreditsPerMillion(outputCredits)} out / 1M tokens`;
+    // The pricing string is shown in the model picker tooltip — use USD since
+    // that's the unit models.dev publishes and what users expect to see.
+    const pricingLabel = `${fmtUsd(cost.input)} in · ${fmtUsd(cost.output)} out / 1M tokens`;
 
-    // Classify relative cost tier based on average of input+output (credits/1M)
-    // Thresholds: low ≤50cr (~$0.50), medium ≤500cr (~$5), high ≤2000cr (~$20)
-    const avg = (inputCredits + outputCredits) / 2;
+    // Classify relative cost tier based on average of input+output (USD/1M)
+    // Thresholds: low ≤$0.50, medium ≤$5, high ≤$20, very_high above that
+    const avg = (cost.input + cost.output) / 2;
     let priceCategory: string;
-    if (avg <= 50) {
+    if (avg <= 0.5) {
       priceCategory = "low";
-    } else if (avg <= 500) {
+    } else if (avg <= 5) {
       priceCategory = "medium";
-    } else if (avg <= 2000) {
+    } else if (avg <= 20) {
       priceCategory = "high";
     } else {
       priceCategory = "very_high";
@@ -2390,14 +2393,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 }
 
-/**
- * Format a credits/1M price for display in the model picker.
- * 1 credit = $0.01 USD (GitHub Copilot billing unit).
- */
-function fmtCreditsPerMillion(n: number): string {
-  if (n === 0) return "0 credits";
-  // Show one decimal place for fractional credits, whole number otherwise
-  return n % 1 === 0 ? `${n} credits` : `${n.toFixed(1)} credits`;
+/** Format a USD/1M price for display in the model picker pricing string. */
+function fmtUsd(usd: number): string {
+  if (usd === 0) return "$0";
+  if (usd < 0.1) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
 }
 
 /**
