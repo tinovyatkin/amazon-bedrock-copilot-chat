@@ -254,6 +254,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             }
 
             const modelProfile = getModelProfile(modelIdToUse);
+            const pricingFields = this.buildPricingFields(modelIdToUse, modelsDevMap);
             const modelInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
@@ -284,6 +285,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 vision,
               }),
               version: "1.0.0",
+              ...pricingFields,
             };
             infos.push(modelInfo);
           }
@@ -320,6 +322,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               : profile.inputModalities.includes(ModelModality.IMAGE);
 
             const appProfileModelProfile = getModelProfile(modelIdForLimits);
+            const appProfilePricingFields = this.buildPricingFields(modelIdForLimits, modelsDevMap);
             const profileInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
@@ -347,6 +350,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 vision,
               }),
               version: "1.0.0",
+              ...appProfilePricingFields,
             };
             infos.push(profileInfo);
           }
@@ -1260,6 +1264,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const likelyVisionCapable = devEntry
         ? (devEntry.modalities?.input?.includes("image") ?? false)
         : /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
+      const manualPricingFields = this.buildPricingFields(baseModelId, manualModelsDevMap);
 
       return {
         capabilities: {
@@ -1291,6 +1296,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           vision: likelyVisionCapable,
         }),
         version: "1.0.0",
+        ...manualPricingFields,
       };
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
@@ -1372,6 +1378,77 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     return candidates;
+  }
+
+  /**
+   * Build VS Code pricing fields for a model from the models.dev pricing map.
+   *
+   * Costs are expressed in **GitHub Copilot credits per million tokens**,
+   * where 1 credit = $0.01 USD. The `pricing` label is formatted for display
+   * in the model picker (e.g. "300 credits in · 1500 credits out / 1M tokens").
+   *
+   * Returns an empty object if no pricing data is found, so spread syntax works
+   * cleanly at every call site.
+   */
+  private buildPricingFields(
+    modelId: string,
+    modelsDevMap: ModelsDevMap,
+  ): {
+    cacheCost?: number;
+    inputCost?: number;
+    outputCost?: number;
+    priceCategory?: string;
+    pricing?: string;
+  } {
+    // Strip any regional prefix (us., eu., global., etc.) to get the bare model ID
+    const normalizedId = normalizeModelId(modelId);
+    // Try exact match, bare ID, then scan all entries whose bare ID matches.
+    // models.dev keys can carry any regional prefix (us., eu., au., jp., global.)
+    // so a simple us./global. fallback misses entries stored under other prefixes.
+    let devEntry: ReturnType<ModelsDevMap["get"]> =
+      modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
+    if (!devEntry?.cost) {
+      for (const [key, entry] of modelsDevMap) {
+        if (normalizeModelId(key) === normalizedId && entry.cost) {
+          devEntry = entry;
+          break;
+        }
+      }
+    }
+
+    const cost = devEntry?.cost;
+    if (!cost || typeof cost.input !== "number" || typeof cost.output !== "number") return {};
+
+    // Convert USD/1M → credits/1M (1 credit = $0.01 USD)
+    const USD_TO_CREDITS = 100;
+    const inputCredits = cost.input * USD_TO_CREDITS;
+    const outputCredits = cost.output * USD_TO_CREDITS;
+    const cacheCredits =
+      typeof cost.cache_read === "number" ? cost.cache_read * USD_TO_CREDITS : undefined;
+
+    const pricingLabel = `${fmtCreditsPerMillion(inputCredits)} in · ${fmtCreditsPerMillion(outputCredits)} out / 1M tokens`;
+
+    // Classify relative cost tier based on average of input+output (credits/1M)
+    // Thresholds: low ≤50cr (~$0.50), medium ≤500cr (~$5), high ≤2000cr (~$20)
+    const avg = (inputCredits + outputCredits) / 2;
+    let priceCategory: string;
+    if (avg <= 50) {
+      priceCategory = "low";
+    } else if (avg <= 500) {
+      priceCategory = "medium";
+    } else if (avg <= 2000) {
+      priceCategory = "high";
+    } else {
+      priceCategory = "very_high";
+    }
+
+    return {
+      ...(cacheCredits !== undefined && { cacheCost: cacheCredits }),
+      inputCost: inputCredits,
+      outputCost: outputCredits,
+      priceCategory,
+      pricing: pricingLabel,
+    };
   }
 
   /**
@@ -2311,6 +2388,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       tokenLimit,
     });
   }
+}
+
+/**
+ * Format a credits/1M price for display in the model picker.
+ * 1 credit = $0.01 USD (GitHub Copilot billing unit).
+ */
+function fmtCreditsPerMillion(n: number): string {
+  if (n === 0) return "0 credits";
+  // Show one decimal place for fractional credits, whole number otherwise
+  return n % 1 === 0 ? `${n} credits` : `${n.toFixed(1)} credits`;
 }
 
 /**

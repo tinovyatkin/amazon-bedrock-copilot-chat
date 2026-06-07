@@ -20142,18 +20142,45 @@ declare module 'vscode' {
 		 * Whether or not the model will show up in the model picker.
 		 */
 		readonly isUserSelectable?: boolean;
-	}
 
-	/**
-	 * Represents a Language model chat provider. This provider provides multiple models in a 1 provider to many model relationship
-	 * An example of this would be how an OpenAI provider would provide models like gpt-5, o3, etc.
-	 */
-	export interface LanguageModelChatProvider<T extends LanguageModelChatInformation = LanguageModelChatInformation> {
+                /**
+                 * Optional pricing label for this model shown in the model picker UI,
+                 * e.g. "300 credits in · 1500 credits out / 1M tokens".
+                 * Credits are GitHub Copilot billing units where 1 credit = $0.01 USD.
+                 */
+                readonly pricing?: string;
 
-		/**
-		 * Signals a change from the provider to the editor so that {@linkcode prepareLanguageModelChatInformation} is called again
-		 */
-		readonly onDidChangeLanguageModelInformation?: Event<void>;
+                /**
+                 * Optional input cost in credits per million tokens.
+                 * 1 credit = $0.01 USD.
+                 */
+                readonly inputCost?: number;
+
+                /**
+                 * Optional output cost in credits per million tokens.
+                 * 1 credit = $0.01 USD.
+                 */
+                readonly outputCost?: number;
+
+                /**
+                 * Optional cache read cost in credits per million tokens.
+                 * Present only when prompt caching is supported.
+                 * 1 credit = $0.01 USD.
+                 */
+                readonly cacheCost?: number;
+
+                /**
+                 * Optional relative pricing category for this model.
+                 * Values: "low", "medium", "high", "very_high".
+                 */
+                readonly priceCategory?: string;
+        }
+
+        /**
+         * Represents a Language model chat provider.
+         * An example of this would be how an OpenAI provider would provide models like gpt-5, o3, etc.
+         */
+        export interface LanguageModelChatProvider<T extends LanguageModelChatInformation = LanguageModelChatInformation> {
 
 		/**
 		 * Get the list of available language models contributed by this provider

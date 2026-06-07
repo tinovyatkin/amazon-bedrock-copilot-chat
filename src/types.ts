@@ -45,6 +45,17 @@ export interface BedrockModelSummary {
 export interface ModelsDevEntry {
   /** Whether the model supports file attachments / vision input */
   attachment?: boolean;
+  /** USD/1M token pricing (from models.dev cost field) */
+  cost?: {
+    /** Cache read cost in USD per million tokens */
+    cache_read?: number;
+    /** Cache write cost in USD per million tokens */
+    cache_write?: number;
+    /** Input token cost in USD per million tokens */
+    input?: number;
+    /** Output token cost in USD per million tokens */
+    output?: number;
+  };
   /** Family name (e.g. "claude-sonnet", "nova-pro") */
   family?: string;
   /**

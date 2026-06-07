@@ -28,6 +28,16 @@ interface ProviderInternals {
     modelProfile: ReturnType<typeof getModelProfile>,
     modelsDevMap?: ModelsDevMap,
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
+  buildPricingFields: (
+    modelId: string,
+    modelsDevMap: ModelsDevMap,
+  ) => {
+    cacheCost?: number;
+    inputCost?: number;
+    outputCost?: number;
+    priceCategory?: string;
+    pricing?: string;
+  };
   formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
   formatTooltip: (args: {
     maxInput: number;
@@ -153,6 +163,25 @@ const callResolveModelLimits = (
 
 const makeDevMapEntry = (modelId: string, context: number, output: number): ModelsDevMap =>
   new Map([[modelId, { limit: { context, output } }]]);
+
+/** Build a ModelsDevMap with USD pricing cost data for testing buildPricingFields */
+const makeDevMapWithCost = (
+  entries: [string, { cacheRead?: number; input: number; output: number }][],
+): ModelsDevMap =>
+  new Map(
+    entries.map(([id, p]) => [
+      id,
+      {
+        cost: { cache_read: p.cacheRead, input: p.input, output: p.output },
+        limit: { context: 200_000, output: 4096 },
+      },
+    ]),
+  );
+
+const callBuildPricingFields = (modelId: string, modelsDevMap: ModelsDevMap) =>
+  providerInternals(
+    new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+  ).buildPricingFields(modelId, modelsDevMap);
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("provider", () => {
@@ -1524,6 +1553,74 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("leaves short IDs with only two segments unchanged", () => {
       assert.equal(normalizeModelId("amazon.titan"), "amazon.titan");
+    });
+  });
+
+  suite("buildPricingFields", () => {
+    test("returns empty object when model not in map", () => {
+      assert.deepEqual(callBuildPricingFields("anthropic.claude-sonnet-4-6", new Map()), {});
+    });
+
+    test("returns empty object when cost field missing", () => {
+      const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 200_000, 4096);
+      assert.deepEqual(callBuildPricingFields("anthropic.claude-sonnet-4-6", map), {});
+    });
+
+    test("converts USD to credits (×100) for exact model ID match", () => {
+      // $3.00/1M input, $15.00/1M output in USD → 300/1500 credits
+      const map = makeDevMapWithCost([
+        ["anthropic.claude-sonnet-4-6", { cacheRead: 0.3, input: 3, output: 15 }],
+      ]);
+      const result = callBuildPricingFields("anthropic.claude-sonnet-4-6", map);
+      assert.equal(result.inputCost, 300);
+      assert.equal(result.outputCost, 1500);
+      assert.equal(result.cacheCost, 30);
+      assert.equal(result.pricing, "300 credits in · 1500 credits out / 1M tokens");
+      assert.equal(result.priceCategory, "high"); // avg = (300+1500)/2 = 900
+    });
+
+    test("falls back via normalizeModelId scan when exact match missing", () => {
+      // stored under us. prefix, looked up with eu. prefix
+      const map = makeDevMapWithCost([
+        ["us.anthropic.claude-sonnet-4-6", { input: 3, output: 15 }],
+      ]);
+      assert.equal(callBuildPricingFields("eu.anthropic.claude-sonnet-4-6", map)?.inputCost, 300);
+    });
+
+    test("priceCategory low for cheap models (avg ≤50 credits/1M)", () => {
+      // Nova Micro: $0.035 in / $0.14 out → 3.5/14 credits, avg=8.75 → low
+      const map = makeDevMapWithCost([["amazon.nova-micro-v1:0", { input: 0.035, output: 0.14 }]]);
+      assert.equal(callBuildPricingFields("amazon.nova-micro-v1:0", map).priceCategory, "low");
+    });
+
+    test("priceCategory medium for mid-range models (avg ≤500 credits/1M)", () => {
+      // $1/1M in, $3/1M out → 100/300 credits, avg=200 → medium
+      const map = makeDevMapWithCost([["amazon.nova-pro-v1:0", { input: 1, output: 3 }]]);
+      assert.equal(callBuildPricingFields("amazon.nova-pro-v1:0", map).priceCategory, "medium");
+    });
+
+    test("priceCategory very_high for expensive models (avg >2000 credits/1M)", () => {
+      // Opus: $15 in / $75 out → 1500/7500 credits, avg=4500 → very_high
+      const map = makeDevMapWithCost([["anthropic.claude-opus-4", { input: 15, output: 75 }]]);
+      assert.equal(
+        callBuildPricingFields("anthropic.claude-opus-4", map).priceCategory,
+        "very_high",
+      );
+    });
+
+    test("formats fractional credits with one decimal place", () => {
+      // $0.035/1M → 3.5 credits
+      const map = makeDevMapWithCost([["amazon.nova-micro-v1:0", { input: 0.035, output: 0.14 }]]);
+      const result = callBuildPricingFields("amazon.nova-micro-v1:0", map);
+      assert.ok(
+        result.pricing?.includes("3.5 credits"),
+        `Expected '3.5 credits', got: ${result.pricing}`,
+      );
+    });
+
+    test("omits cacheCost when not in pricing data", () => {
+      const map = makeDevMapWithCost([["deepseek.r1", { input: 1.35, output: 5.4 }]]);
+      assert.equal(callBuildPricingFields("deepseek.r1", map).cacheCost, undefined);
     });
   });
 });
