@@ -215,6 +215,74 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.ok(est > 0);
     });
 
+    test("provideTokenCount string estimation: ceil(length/4)", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const model = {
+        capabilities: {},
+        family: "bedrock",
+        id: "m",
+        maxInputTokens: 1000,
+        maxOutputTokens: 1000,
+        name: "m",
+        version: "1.0.0",
+      };
+      const token = new vscode.CancellationTokenSource().token;
+      // "abcd" = 4 chars → 1 token
+      assert.equal(await provider.provideTokenCount(model, "abcd", token), 1);
+      // "abcde" = 5 chars → ceil(5/4) = 2
+      assert.equal(await provider.provideTokenCount(model, "abcde", token), 2);
+    });
+
+    test("provideTokenCount falls back to estimation when CountTokens API returns undefined", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Inject a mock client where countTokens returns undefined (API unavailable)
+      (provider as unknown as { client: unknown }).client = {
+        // eslint-disable-next-line unicorn/no-useless-undefined -- returning undefined is the point: simulates CountTokens API being unavailable
+        countTokens: async () => undefined,
+        resolveModelId: async (id: string) => id,
+      };
+      const text = vscode.LanguageModelChatMessage.User("hello world");
+      const result = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "anthropic.claude-sonnet-4-6",
+          maxInputTokens: 1000,
+          maxOutputTokens: 1000,
+          name: "m",
+          version: "1.0.0",
+        },
+        text,
+        new vscode.CancellationTokenSource().token,
+      );
+      assert.equal(typeof result, "number");
+      assert.ok(result > 0, "should return a positive estimate");
+    });
+
+    test("provideTokenCount uses CountTokens API result when available", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      // Inject a mock client where countTokens returns a known value
+      (provider as unknown as { client: unknown }).client = {
+        countTokens: async () => 42,
+        resolveModelId: async (id: string) => id,
+      };
+      const text = vscode.LanguageModelChatMessage.User("hello");
+      const result = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "anthropic.claude-sonnet-4-6",
+          maxInputTokens: 1000,
+          maxOutputTokens: 1000,
+          name: "m",
+          version: "1.0.0",
+        },
+        text,
+        new vscode.CancellationTokenSource().token,
+      );
+      assert.equal(result, 42);
+    });
+
     test("does not add legacy opt-in beta headers for Opus 4.7", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),

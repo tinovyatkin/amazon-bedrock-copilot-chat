@@ -17,7 +17,12 @@ A VSCode extension that brings Amazon Bedrock models into GitHub Copilot Chat us
 - **Function Calling**: Full support for tool/function calling capabilities
 - **Cross-Region Inference**: Automatic support for cross-region inference profiles
 - **Extended Thinking**: Automatic support for extended thinking in Claude Opus 4+, Sonnet 4+, and Sonnet 3.7 for enhanced reasoning on complex tasks. Also respects GitHub Copilot's `github.copilot.chat.anthropic.thinking.enabled` and `github.copilot.chat.anthropic.thinking.maxTokens` settings
-- **Thinking Effort Control**: For Claude Opus 4.5 and Sonnet 4.6, configure thinking effort level (high/medium/low) via `bedrock.thinking.effort` setting to balance quality vs. token usage. Defaults to "high" for maximum capability
+- **Per-Model Picker Controls**: Context size, thinking effort, and reasoning effort controls appear directly in the model picker for supported models:
+  - **Context Size** (200K / 1M) — for Claude models with optional 1M context (Opus 4.6, Sonnet 4.5)
+  - **Thinking Amount** — for Claude models with `output_config.effort`: Opus 4.7/4.8 get `low/medium/high/xhigh/max`, Opus 4.6 gets `low/medium/high/max`, Opus 4.5 and Sonnet 4.6 get `low/medium/high`
+  - **Reasoning Effort** (Low / Medium / High) — for DeepSeek, Qwen, GLM, MiniMax, Kimi, OpenAI gpt-oss, and other reasoning models
+- **Context Window Meter**: The token usage ring in Copilot Chat fills correctly for Bedrock models, showing real prompt/completion token counts after each response
+- **Model Pricing**: Per-model pricing is shown in the model picker hover tooltip (input/output cost in credits, sourced from [models.dev](https://models.dev))
 - **1M Context Window**: Optional 1M token context window for Claude Sonnet 4.x and Opus 4.6 models (can be disabled in settings to reduce costs)
 - **Prompt Caching**: Automatic caching of system prompts, tool definitions, and conversation history for faster responses and reduced costs (Claude and Nova models)
 - **Vision Support**: Work with models that support image inputs
@@ -77,7 +82,7 @@ Once configured, Bedrock models will appear in GitHub Copilot Chat's model selec
 
 The extension automatically filters and displays only models that:
 
-- Support **tool calling** (function calling), which is essential for GitHub Copilot Chat features like `@workspace`, `@terminal`, and other integrations
+- Support **text generation with streaming**, which is required for Copilot Chat
 - Are **enabled** in your Amazon Bedrock console (models must be authorized and available in your selected region)
 
 ### Models Automatically Excluded
@@ -89,8 +94,6 @@ The extension automatically filters models to show only text generation models (
 - **Deprecated models** (models with `LEGACY` lifecycle status)
 
 Models are sorted with newest inference profiles first (by creation/update date), making it easier to find recently released models.
-
-**Note**: Some text models that appear in the list may have limited or no tool calling support (e.g., legacy Amazon Titan Text, AI21 Jurassic 2, Meta Llama 2 and 3.0). These will fail gracefully if tool calls are attempted.
 
 ## Troubleshooting
 

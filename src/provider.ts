@@ -1,7 +1,6 @@
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
   ConverseStreamCommandInput,
-  CountTokensCommandInput,
   Message,
   SystemContentBlock,
   ToolConfiguration,
@@ -21,7 +20,7 @@ import * as vscode from "vscode";
 
 import { getRegionPrefix } from "./aws-partition";
 import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
-import { convertMessages, stripThinkingContent } from "./converters/messages";
+import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { loadModelsDevData } from "./models-dev";
@@ -776,9 +775,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Log request details
       this.logRequestDetails(requestInput);
 
-      // Validate token count
-      await this.validateTokenCount(model, requestInput, token);
-
       // Process the stream
       await this.processResponseStream(
         requestInput,
@@ -859,6 +855,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return totalTokens;
     };
 
+    // forceEstimateTokens: skip everything — no model ID resolution, no API call.
+    // VS Code calls provideTokenCount many times per turn (once per tool, message
+    // part, etc.) so even the resolveModelId cache lookup adds up. Enable this for
+    // faster responses at the cost of approximate token counts in the context ring.
+    const settings = await getBedrockSettings(this.globalState);
+    if (settings.debug.forceEstimateTokens || typeof text === "string") {
+      return estimateTokens(text);
+    }
+
     try {
       // Create AbortController for cancellation support
       const abortController = new AbortController();
@@ -886,13 +891,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       try {
-        // For simple string input, use estimation (CountTokens API expects structured messages)
-        if (typeof text === "string") {
-          return estimateTokens(text);
-        }
-
-        // Convert the message to Bedrock format
-        const settings = await getBedrockSettings(this.globalState);
         const converted = convertMessages([text], baseModelId, {
           extendedThinkingEnabled: false,
           lastThinkingBlock: undefined,
@@ -1381,11 +1379,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
-   * Build VS Code pricing fields for a model from the models.dev pricing map.
+   * Build VS Code pricing fields for a model from the bundled models.dev data.
    *
-   * Costs are expressed in **GitHub Copilot credits per million tokens**,
-   * where 1 credit = $0.01 USD. The `pricing` label is formatted for display
-   * in the model picker (e.g. "300 credits in · 1500 credits out / 1M tokens").
+   * `inputCost`, `outputCost`, and `cacheCost` are expressed in **GitHub Copilot
+   * credits per million tokens** (1 credit = $0.01 USD) because VS Code renders
+   * those fields directly with a "credits" suffix in the hover tooltip.
+   *
+   * The `pricing` string uses USD for readability
+   * (e.g. `"$3.00 in · $15.00 out / 1M tokens"`).
    *
    * Returns an empty object if no pricing data is found, so spread syntax works
    * cleanly at every call site.
@@ -1608,113 +1609,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     if (reasoningEffort) {
       this.applyReasoningEffort(requestInput, modelId, baseModelId, reasoningEffort);
-    }
-  }
-
-  /**
-   * Count tokens for a complete request using the CountTokens API.
-   * Falls back to estimation if the API is unavailable or fails.
-   * @param modelId The model ID to count tokens for
-   * @param input The complete input structure (messages, system, toolConfig)
-   * @param token Cancellation token
-   * @returns The number of input tokens
-   */
-  private async countRequestTokens(
-    modelId: string,
-    input: {
-      messages: Message[];
-      system?: SystemContentBlock[];
-      toolConfig?: ToolConfiguration;
-    },
-    token: CancellationToken,
-  ): Promise<number> {
-    // Fallback estimation function
-    const estimateTokens = (): number => {
-      let total = 0;
-
-      // Estimate messages tokens
-      for (const msg of input.messages) {
-        for (const content of msg.content ?? []) {
-          if ("text" in content && content.text) {
-            total += Math.ceil(content.text.length / 4);
-          }
-        }
-      }
-
-      // Estimate system tokens
-      if (input.system) {
-        for (const sys of input.system) {
-          if ("text" in sys && sys.text) {
-            total += Math.ceil(sys.text.length / 4);
-          }
-        }
-      }
-
-      // Estimate tool tokens
-      if ((input.toolConfig?.tools?.length ?? 0) > 0) {
-        try {
-          const json = JSON.stringify(input.toolConfig);
-          total += Math.ceil(json.length / 4);
-        } catch {
-          // Ignore serialization errors
-        }
-      }
-
-      return total;
-    };
-
-    try {
-      // Create AbortController for cancellation support
-      const abortController = new AbortController();
-      const cancellationListener = token.onCancellationRequested(() => {
-        abortController.abort();
-      });
-
-      try {
-        // Deep copy messages and strip thinking content for CountTokens API
-        // The CountTokens API doesn't support thinking blocks when thinking mode is not enabled,
-        // but our messages may contain thinking blocks from previous responses (injected via lastThinkingBlock)
-        const messagesForCounting = structuredClone(input.messages);
-        stripThinkingContent(messagesForCounting);
-
-        // Build the CountTokens API input
-        const countInput: CountTokensCommandInput["input"] = {
-          converse: {
-            messages: messagesForCounting,
-            ...(input.system && input.system.length > 0 ? { system: input.system } : {}),
-            ...(input.toolConfig ? { toolConfig: input.toolConfig } : {}),
-          },
-        };
-
-        // Use the CountTokens API
-        const tokenCount = await this.client.countTokens(
-          modelId,
-          countInput,
-          abortController.signal,
-        );
-
-        // If CountTokens API is available, use its result
-        if (tokenCount !== undefined) {
-          logger.debug(`[Bedrock Model Provider] Request token count from API: ${tokenCount}`);
-          return tokenCount;
-        }
-
-        // Fall back to estimation if CountTokens is not available
-        logger.debug(
-          "[Bedrock Model Provider] CountTokens not available for request, using estimation",
-        );
-        return estimateTokens();
-      } finally {
-        cancellationListener.dispose();
-      }
-    } catch (error) {
-      // If there's any error (including cancellation), fall back to estimation
-      if (error instanceof Error && error.name === "AbortError") {
-        logger.debug("[Bedrock Model Provider] Request token count cancelled, using estimation");
-      } else {
-        logger.warn("[Bedrock Model Provider] Request token count failed, using estimation", error);
-      }
-      return estimateTokens();
     }
   }
 
@@ -2355,41 +2249,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     // Fall back to hardcoded profiles for models not yet in models.dev
     return getModelTokenLimits(modelId, context1MEnabled);
-  }
-
-  /**
-   * Validate token count against model limits
-   */
-  private async validateTokenCount(
-    model: LanguageModelChatInformation,
-    requestInput: ConverseStreamCommandInput,
-    token: CancellationToken,
-  ): Promise<void> {
-    const inputTokenCount = await this.countRequestTokens(
-      model.id,
-      {
-        messages: requestInput.messages!,
-        system: requestInput.system,
-        toolConfig: requestInput.toolConfig,
-      },
-      token,
-    );
-
-    const tokenLimit = Math.max(1, model.maxInputTokens);
-    if (inputTokenCount > tokenLimit) {
-      logger.error("[Bedrock Model Provider] Message exceeds token limit", {
-        inputTokenCount,
-        tokenLimit,
-      });
-      throw new Error(
-        `Message exceeds token limit. Input: ${inputTokenCount} tokens, Limit: ${tokenLimit} tokens.`,
-      );
-    }
-
-    logger.debug("[Bedrock Model Provider] Token count validation passed", {
-      inputTokenCount,
-      tokenLimit,
-    });
   }
 }
 

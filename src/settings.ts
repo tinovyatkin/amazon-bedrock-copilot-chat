@@ -15,6 +15,10 @@ export interface BedrockSettings {
   context1M: {
     enabled: boolean;
   };
+  debug: {
+    /** Skip CountTokens API calls and use character-based estimation instead. */
+    forceEstimateTokens: boolean;
+  };
   inferenceProfiles: {
     preferRegional: boolean;
   };
@@ -146,6 +150,9 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   return {
     context1M: {
       enabled: context1MEnabled,
+    },
+    debug: {
+      forceEstimateTokens: config.get<boolean>("debug.forceEstimateTokens") ?? false,
     },
     inferenceProfiles: {
       preferRegional: preferRegionalInferenceProfiles,

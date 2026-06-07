@@ -77,30 +77,4 @@ export class ToolBuffer {
     this.tools.set(index, { id, input: {}, name });
     this.inputBuffers.set(index, "");
   }
-
-  /**
-   * Try to parse and return the tool if JSON is valid, without removing from buffer.
-   * Useful for early emission while continuing to accumulate more input.
-   * Returns undefined if JSON is not yet valid or tool doesn't exist.
-   */
-  tryGetValidTool(index: number): ToolCall | undefined {
-    const tool = this.tools.get(index);
-    const inputStr = this.inputBuffers.get(index);
-
-    if (!tool || !inputStr) {
-      return undefined;
-    }
-
-    try {
-      const parsed = JSON.parse(inputStr) as JsonValue;
-      return {
-        id: tool.id,
-        input: parsed,
-        name: tool.name,
-      };
-    } catch {
-      // JSON not yet valid - this is expected during streaming
-      return undefined;
-    }
-  }
 }

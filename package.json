@@ -137,6 +137,12 @@
           "default": false,
           "description": "Prefer regional inference profiles over global ones. Enable this if your policies restrict access to global inference profiles. When enabled, the extension will use regional inference profiles (e.g., eu.anthropic.claude-opus-4-6-v1) instead of global ones (e.g., global.anthropic.claude-opus-4-6-v1).",
           "scope": "resource"
+        },
+        "bedrock.debug.forceEstimateTokens": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use fast character-based token estimation instead of calling the Bedrock CountTokens API. Improves response latency since VS Code calls provideTokenCount many times per turn. Trade-off: the context-window ring shows estimated rather than exact token counts.",
+          "scope": "resource"
         }
       }
     }

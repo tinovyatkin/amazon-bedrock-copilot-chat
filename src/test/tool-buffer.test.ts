@@ -159,38 +159,6 @@ suite("ToolBuffer", () => {
     });
   });
 
-  suite("tryGetValidTool", () => {
-    test("returns undefined while JSON is still incomplete", () => {
-      const buf = new ToolBuffer();
-      buf.startTool(0, "call-1", "my_tool");
-      buf.appendInput(0, '{"key":');
-
-      const result = buf.tryGetValidTool(0);
-      assert.equal(result, undefined);
-    });
-
-    test("returns parsed tool once JSON is complete without removing from buffer", () => {
-      const buf = new ToolBuffer();
-      buf.startTool(0, "call-1", "my_tool");
-      buf.appendInput(0, '{"key":"val"}');
-
-      const result = buf.tryGetValidTool(0);
-      assert.ok(result);
-      assert.deepStrictEqual(result.input, { key: "val" });
-
-      // Buffer must still be intact — finalizeTool should also succeed
-      const finalized = buf.finalizeTool(0);
-      assert.ok(finalized);
-      assert.deepStrictEqual(finalized.input, { key: "val" });
-    });
-
-    test("returns undefined when tool does not exist", () => {
-      const buf = new ToolBuffer();
-      const result = buf.tryGetValidTool(42);
-      assert.equal(result, undefined);
-    });
-  });
-
   suite("isEmitted / markEmitted", () => {
     test("isEmitted returns false before markEmitted", () => {
       const buf = new ToolBuffer();

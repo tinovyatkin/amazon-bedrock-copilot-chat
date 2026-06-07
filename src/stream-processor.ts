@@ -424,7 +424,7 @@ export class StreamProcessor {
 
   private handleToolUseDelta(
     delta: NonNullable<ConverseStreamOutput["contentBlockDelta"]>,
-    progress: Progress<LanguageModelResponsePart2>,
+    _progress: Progress<LanguageModelResponsePart2>,
     state: ProcessingState,
   ): void {
     const toolUse = delta.delta?.toolUse;
@@ -435,8 +435,9 @@ export class StreamProcessor {
 
     logger.trace("[Stream Processor] Tool use delta received for block:", delta.contentBlockIndex);
     state.toolBuffer.appendInput(delta.contentBlockIndex, toolUse.input);
-
-    this.tryEarlyToolEmission(delta.contentBlockIndex, progress, state);
+    // Tool calls are emitted at contentBlockStop, not here — emitting early
+    // interrupts VS Code's text rendering mid-sentence (the built-in Copilot
+    // provider batches tool calls at finish_reason, same principle).
   }
 
   private hasVisibleOutput(state: ProcessingState): boolean {
@@ -455,33 +456,6 @@ export class StreamProcessor {
       thinkingLength: state.capturedThinkingBlock?.text.length,
       toolCallCount: state.toolCallCount,
     });
-  }
-
-  private tryEarlyToolEmission(
-    contentBlockIndex: number,
-    progress: Progress<LanguageModelResponsePart2>,
-    state: ProcessingState,
-  ): void {
-    if (state.toolBuffer.isEmitted(contentBlockIndex)) {
-      return;
-    }
-
-    const validTool = state.toolBuffer.tryGetValidTool(contentBlockIndex);
-    if (!validTool) {
-      return;
-    }
-
-    state.toolCallCount++;
-    logger.debug("[Stream Processor] Tool call emitted early (valid JSON):", {
-      id: validTool.id,
-      input: validTool.input,
-      name: validTool.name,
-    });
-    progress.report(
-      new vscode.LanguageModelToolCallPart(validTool.id, validTool.name, validTool.input as object),
-    );
-    state.toolBuffer.markEmitted(contentBlockIndex);
-    state.hasEmittedContent = true;
   }
 
   private validateContentEmission(state: ProcessingState, token: CancellationToken): void {
