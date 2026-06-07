@@ -850,6 +850,14 @@ export class BedrockAPIClient {
     }
 
     const code = this.getErrorCode(error);
+
+    // AccessDeniedException means the IAM policy doesn't allow bedrock:CountTokens.
+    // This is a permanent condition for the current credentials — cache it so we
+    // stop firing ~142ms round-trips to get the same denial on every provideTokenCount call.
+    if (code === "AccessDeniedException") {
+      return true;
+    }
+
     const message = this.getErrorMessage(error);
     return (
       code === "ValidationException" &&
