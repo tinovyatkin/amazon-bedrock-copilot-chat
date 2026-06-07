@@ -855,12 +855,17 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return totalTokens;
     };
 
+    // String inputs never need the CountTokens API — estimate immediately.
+    if (typeof text === "string") {
+      return estimateTokens(text);
+    }
+
     // forceEstimateTokens: skip everything — no model ID resolution, no API call.
     // VS Code calls provideTokenCount many times per turn (once per tool, message
     // part, etc.) so even the resolveModelId cache lookup adds up. Enable this for
     // faster responses at the cost of approximate token counts in the context ring.
     const settings = await getBedrockSettings(this.globalState);
-    if (settings.debug.forceEstimateTokens || typeof text === "string") {
+    if (settings.debug.forceEstimateTokens) {
       return estimateTokens(text);
     }
 

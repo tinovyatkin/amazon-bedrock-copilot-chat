@@ -134,12 +134,21 @@ function benchmarkEstimation(): { avg: number; min: number; max: number } {
 
 // Check if we're on main or the perf branch by looking for validateTokenCount
 import { readFileSync } from "fs";
-const providerSrc = readFileSync(new URL("../src/provider.ts", import.meta.url), "utf8");
-const hasPreflightCheck = providerSrc.includes("validateTokenCount");
-const hasEarlyToolEmission = readFileSync(
-  new URL("../src/stream-processor.ts", import.meta.url),
-  "utf8",
-).includes("tryEarlyToolEmission");
+let hasPreflightCheck = false;
+let hasEarlyToolEmission = false;
+try {
+  hasPreflightCheck = readFileSync(new URL("../src/provider.ts", import.meta.url), "utf8").includes(
+    "validateTokenCount",
+  );
+  hasEarlyToolEmission = readFileSync(
+    new URL("../src/stream-processor.ts", import.meta.url),
+    "utf8",
+  ).includes("tryEarlyToolEmission");
+} catch {
+  console.warn(
+    "Could not read source files to detect branch characteristics — run from the repo root.",
+  );
+}
 
 console.log("=".repeat(60));
 console.log("Bedrock Extension Token Count Benchmark");
