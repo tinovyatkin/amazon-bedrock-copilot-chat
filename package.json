@@ -193,7 +193,7 @@
     "@vscode/test-cli": "0.0.15",
     "@vscode/test-electron": "3.0.0",
     "commitlint": "21.1.0",
-    "eslint": "10.5.0",
+    "eslint": "10.6.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-formatter-compact": "9.0.1",
     "eslint-plugin-perfectionist": "5.9.1",
