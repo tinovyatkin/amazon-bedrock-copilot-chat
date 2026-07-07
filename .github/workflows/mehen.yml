@@ -17,6 +17,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
-      - uses: ophidiarium/mehen@9f45dcbcd414adacfcd7842c5442c7a67ec76f94 # v1.2.0
+      - uses: ophidiarium/mehen@33c491e69dcdd4eb13ac0e67370c73cf5ba4514a # v1.3.0
         with:
           paths: src
