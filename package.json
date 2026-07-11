@@ -200,7 +200,7 @@
     "eslint-plugin-sonarjs": "4.1.0",
     "eslint-plugin-unicorn": "71.1.0",
     "globals": "17.7.0",
-    "lefthook": "2.1.9",
+    "lefthook": "2.1.10",
     "prettier": "3.8.5",
     "prettier-plugin-organize-imports": "4.3.0",
     "type-fest": "5.8.0",
