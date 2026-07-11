@@ -174,7 +174,7 @@
     "@aws-sdk/credential-providers": "^3.1081.0",
     "@aws-sdk/protocol-http": "^3.374.0",
     "@smithy/shared-ini-file-loader": "^4.6.7",
-    "@smithy/util-retry": "^4.5.6",
+    "@smithy/util-retry": "^4.5.7",
     "smithy-node-native-fetch": "^1.2.1"
   },
   "devDependencies": {
