@@ -198,7 +198,7 @@
     "eslint-formatter-compact": "9.0.1",
     "eslint-plugin-perfectionist": "5.10.0",
     "eslint-plugin-sonarjs": "4.1.0",
-    "eslint-plugin-unicorn": "71.0.0",
+    "eslint-plugin-unicorn": "71.1.0",
     "globals": "17.7.0",
     "lefthook": "2.1.9",
     "prettier": "3.8.5",
