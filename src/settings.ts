@@ -25,6 +25,9 @@ export interface BedrockSettings {
   };
   reasoningEffort: ReasoningEffort | undefined;
   region: string;
+  temperature: {
+    override: boolean | undefined;
+  };
   thinking: {
     budgetTokens: number;
     effort: ThinkingEffort;
@@ -105,13 +108,13 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   }
 
   // Read 1M context settings with defaults (enabled by default)
-  const context1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
+  const isContext1MEnabled = config.get<boolean>("context1M.enabled") ?? true;
 
   // Read prompt caching settings with defaults (enabled by default)
-  const promptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
+  const isPromptCachingEnabled = config.get<boolean>("promptCaching.enabled") ?? true;
 
   // Read inference profiles settings with defaults (prefer global by default for backward compatibility)
-  const preferRegionalInferenceProfiles =
+  const isPreferRegionalInferenceProfiles =
     config.get<boolean>("inferenceProfiles.preferRegional") ?? false;
 
   // Read thinking settings with defaults
@@ -120,7 +123,8 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const copilotThinkingEnabled = copilotConfig.get<boolean>("thinking.enabled");
   const copilotThinkingMaxTokens = copilotConfig.get<number>("thinking.maxTokens");
 
-  const thinkingEnabled = copilotThinkingEnabled ?? config.get<boolean>("thinking.enabled") ?? true;
+  const isThinkingEnabled =
+    copilotThinkingEnabled ?? config.get<boolean>("thinking.enabled") ?? true;
   const thinkingBudgetTokens =
     copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
@@ -145,22 +149,25 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
 
   return {
     context1M: {
-      enabled: context1MEnabled,
+      enabled: isContext1MEnabled,
     },
     inferenceProfiles: {
-      preferRegional: preferRegionalInferenceProfiles,
+      preferRegional: isPreferRegionalInferenceProfiles,
     },
     preferredModel,
     profile,
     promptCaching: {
-      enabled: promptCachingEnabled,
+      enabled: isPromptCachingEnabled,
     },
     reasoningEffort,
     region,
+    temperature: {
+      override: config.get<boolean | null>("temperature.override") ?? undefined,
+    },
     thinking: {
       budgetTokens: Math.max(1024, thinkingBudgetTokens), // Ensure minimum 1024
       effort: thinkingEffort,
-      enabled: thinkingEnabled,
+      enabled: isThinkingEnabled,
     },
   };
 }

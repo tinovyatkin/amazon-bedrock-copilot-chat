@@ -173,10 +173,11 @@ export function getModelProfile(modelId: string): ModelProfile {
     case "anthropic": {
       // Claude models support tool choice and prompt caching
       // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, Sonnet 3.7,
-      // and Haiku 4.5
-      const supportsThinking =
+      // Sonnet 5, and Haiku 4.5
+      const isSupportsThinking =
         modelId.includes("opus-4") ||
         modelId.includes("sonnet-4") ||
+        modelId.includes("sonnet-5") ||
         modelId.includes("sonnet-3-7") ||
         modelId.includes("sonnet-3.7") ||
         modelId.includes("haiku-4-5") ||
@@ -192,12 +193,13 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       // Claude models with extended thinking have issues with cachePoint after toolResult
       // When extended thinking is enabled, cachePoint should only be added to messages without toolResult
-      const supportsCachingWithToolResults = !supportsThinking;
+      const isSupportsCachingWithToolResults = !isSupportsThinking;
 
-      // output_config.effort is supported on Claude Opus 4.8, 4.7, 4.6, 4.5, and Sonnet 4.6.
+      // output_config.effort is supported on Claude Opus 4.8, 4.7, 4.6, and 4.5, and Sonnet 4.6.
+      // Sonnet 5 does NOT support output_config.effort (uses adaptive thinking only).
       // The available levels vary by model (see supportsMaxEffort for the full breakdown).
-      // Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
-      const supportsThinkingEffort =
+      // Reference: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
+      const isSupportsThinkingEffort =
         normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6") ||
@@ -206,36 +208,45 @@ export function getModelProfile(modelId: string): ModelProfile {
 
       // "max" effort level is available on Opus 4.8, 4.7, and 4.6.
       // "xhigh" is additionally available on Opus 4.8 and 4.7 (covered by requiresAdaptiveThinking).
-      // Sonnet 4.6 only gets low/medium/high — AWS Bedrock docs confirm that "max"
+      // Sonnet 4.6 and Sonnet 5 only get low/medium/high — AWS Bedrock docs confirm that "max"
       // is restricted to Opus 4.6 in the adaptive thinking context and returns an error on other models.
-      const supportsMaxEffort =
+      const isSupportsMaxEffort =
         normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6");
 
-      // CLI-verified: Opus 4.7 and 4.8 reject `thinking.type="enabled"` and require
+      // CLI-verified: Opus 4.7, 4.8, and Sonnet 5 reject `thinking.type="enabled"` and require
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
       // models still use enabled+budget.
-      const requiresAdaptiveThinking = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
+      const requiresAdaptiveThinking =
+        modelId.includes("opus-4-7") ||
+        modelId.includes("opus-4-8") ||
+        modelId.includes("sonnet-5");
 
-      // CLI-verified: Opus 4.7 and 4.8 reject requests that include the `temperature`
-      // inference parameter (Bedrock returns a ValidationException). All other
-      // Claude models still accept temperature.
-      const temperatureDeprecated = modelId.includes("opus-4-7") || modelId.includes("opus-4-8");
+      // CLI-verified via models.dev: Opus 4.7, 4.8, Opus 5, Sonnet 5, and Fable 5
+      // reject requests that include the `temperature` inference parameter (Bedrock returns
+      // a ValidationException). All other Claude models still accept temperature.
+      // Note: users can override this with bedrock.temperature.override setting if auto-detection fails.
+      const isTemperatureDeprecated =
+        modelId.includes("opus-4-7") ||
+        modelId.includes("opus-4-8") ||
+        modelId.includes("opus-5") ||
+        modelId.includes("sonnet-5") ||
+        modelId.includes("fable-5");
 
       return {
         requiresAdaptiveThinking,
         requiresInterleavedThinkingHeader,
-        supports1MContext: supports1MContext(modelId),
-        supportsCachingWithToolResults,
-        supportsMaxEffort,
+        supports1MContext: is1MContextSupported(modelId),
+        supportsCachingWithToolResults: isSupportsCachingWithToolResults,
+        supportsMaxEffort: isSupportsMaxEffort,
         supportsPromptCaching: true,
         supportsReasoningEffort: false, // Anthropic uses thinking.* / output_config.effort, not reasoning_effort
-        supportsThinking,
-        supportsThinkingEffort,
+        supportsThinking: isSupportsThinking,
+        supportsThinkingEffort: isSupportsThinkingEffort,
         supportsToolChoice: true,
         supportsToolResultStatus: true, // Claude models support status field in tool results
-        temperatureDeprecated,
+        temperatureDeprecated: isTemperatureDeprecated,
         toolResultFormat: "text",
       };
     }
@@ -297,9 +308,24 @@ export function getModelProfile(modelId: string): ModelProfile {
     }
 
     case "openai": {
-      // OpenAI gpt-oss models support tool choice AND the OpenAI-style
+      // OpenAI models on Bedrock support tool choice AND the OpenAI-style
       // `reasoning_effort` parameter (CLI-verified: low | medium | high work;
       // `minimal` is OpenAI-only; `max` is rejected).
+      //
+      // Temperature support varies by model (via models.dev):
+      // - gpt-oss models: accept temperature
+      // - gpt-5.x and gpt-5.x-luna/sol/terra: reject temperature
+      //
+      // gpt-5.x-luna variants (Luna 5.6, etc.) do NOT support reasoning_effort
+      // despite being OpenAI models on Bedrock.
+      const isRejectsTemperature =
+        modelId.includes("gpt-5.4") || modelId.includes("gpt-5.5") || modelId.includes("gpt-5.6");
+
+      const isSupportsReasoningEffort =
+        !modelId.includes("gpt-5.6-luna") &&
+        !modelId.includes("gpt-5.5-luna") &&
+        !modelId.includes("gpt-5.4-luna");
+
       return {
         requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
@@ -307,12 +333,12 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsCachingWithToolResults: false,
         supportsMaxEffort: false,
         supportsPromptCaching: false,
-        supportsReasoningEffort: true,
+        supportsReasoningEffort: isSupportsReasoningEffort,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,
         supportsToolResultStatus: false,
-        temperatureDeprecated: false,
+        temperatureDeprecated: isRejectsTemperature,
         toolResultFormat: "text",
       };
     }
@@ -339,12 +365,12 @@ export function getModelProfile(modelId: string): ModelProfile {
  * @param enable1MContext Whether to enable 1M context for supported models (default: false)
  * @returns Token limits with maxInputTokens and maxOutputTokens
  */
-export function getModelTokenLimits(modelId: string, enable1MContext = false): ModelTokenLimits {
+export function getModelTokenLimits(modelId: string, is1MContextEnabled = false): ModelTokenLimits {
   const normalizedModelId = normalizeModelId(modelId);
 
   // Claude models have specific token limits based on model family
   if (normalizedModelId.startsWith("anthropic.claude")) {
-    return getClaudeTokenLimits(normalizedModelId, enable1MContext);
+    return getClaudeTokenLimits(normalizedModelId, is1MContextEnabled);
   }
 
   // Default for unknown models
@@ -406,7 +432,7 @@ export function requires1MContextBetaHeader(modelId: string): boolean {
  */
 function getClaudeTokenLimits(
   normalizedModelId: string,
-  enable1MContext: boolean,
+  is1MContextEnabled: boolean,
 ): ModelTokenLimits {
   // Claude Opus 4.8: always 1M context, 128K max output.
   if (normalizedModelId.includes("opus-4-8")) {
@@ -422,9 +448,17 @@ function getClaudeTokenLimits(
   // Claude Opus 4.6: 200K context (or 1M with setting enabled), 128K max output.
   if (normalizedModelId.includes("opus-4-6")) {
     return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 128_000,
+      maxInputTokens: (is1MContextEnabled ? 1_000_000 : 200_000) - 128_000,
       maxOutputTokens: 128_000,
     };
+  }
+
+  // Claude Sonnet 5: always 1M context (default), 128K output.
+  // 1M is the standard context window for this model — no beta header needed.
+  // Uses new tokenizer: ~30% more tokens than Sonnet 4.6 for same text.
+  // Reference: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
+  if (normalizedModelId.includes("sonnet-5")) {
+    return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
   // Claude Sonnet 4.6: always 1M context (default), 64K output.
@@ -436,7 +470,7 @@ function getClaudeTokenLimits(
   // Claude Sonnet 4.5 and 4: 200K context (or 1M with setting enabled), 64K output.
   if (normalizedModelId.includes("sonnet-4")) {
     return {
-      maxInputTokens: (enable1MContext ? 1_000_000 : 200_000) - 64_000,
+      maxInputTokens: (is1MContextEnabled ? 1_000_000 : 200_000) - 64_000,
       maxOutputTokens: 64_000,
     };
   }
@@ -492,14 +526,15 @@ function getClaudeTokenLimits(
 
 /**
  * Check if a model supports 1M context window
- * Claude Opus 4.7 and 4.8 (always), Opus 4.6, Sonnet 4.6, and Sonnet 4.x models support
+ * Claude Opus 4.7 and 4.8 (always), Opus 4.6, Sonnet 5, Sonnet 4.6, and Sonnet 4.x models support
  * extended 1M context.
  */
-function supports1MContext(modelId: string): boolean {
+function is1MContextSupported(modelId: string): boolean {
   const normalizedModelId = normalizeModelId(modelId);
   return (
     normalizedModelId.includes("opus-4-7") ||
     normalizedModelId.includes("opus-4-8") ||
+    normalizedModelId.includes("sonnet-5") ||
     requires1MContextBetaHeader(normalizedModelId)
   );
 }

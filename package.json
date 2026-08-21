@@ -137,6 +137,15 @@
           "default": false,
           "description": "Prefer regional inference profiles over global ones. Enable this if your policies restrict access to global inference profiles. When enabled, the extension will use regional inference profiles (e.g., eu.anthropic.claude-opus-4-6-v1) instead of global ones (e.g., global.anthropic.claude-opus-4-6-v1).",
           "scope": "resource"
+        },
+        "bedrock.temperature.override": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Override temperature parameter handling globally. When set, this overrides the automatic `temperatureDeprecated` detection for all models. **null** (default) = use automatic detection based on model profiles; **true** = disable temperature parameter on all models (treat as deprecated); **false** = enable temperature parameter on all models (treat as not deprecated). Use this to work around models that incorrectly reject or require the temperature parameter.",
+          "scope": "resource"
         }
       }
     }
