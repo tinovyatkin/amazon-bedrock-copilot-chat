@@ -9,27 +9,35 @@ set -euo pipefail
 
 CACHE_FILE="src/models-dev-cache.json"
 URL="https://models.dev/api.json"
+TEMP_FILE=$(mktemp)
+
+trap "rm -f '$TEMP_FILE'" EXIT
 
 echo "Fetching $URL ..."
-FULL=$(curl -fsSL "$URL")
+curl -fsSL "$URL" > "$TEMP_FILE"
 
 # Extract only the amazon-bedrock section to keep the file small
-python3 - <<'EOF'
+python3 <<PYTHON_EOF
 import sys, json
 
-with open('/dev/stdin') as f:
-    data = json.load(f)
+try:
+    with open('$TEMP_FILE', 'r') as f:
+        data = json.load(f)
+except json.JSONDecodeError as e:
+    print(f"ERROR: Invalid JSON from models.dev: {e}", file=sys.stderr)
+    sys.exit(1)
 
 bedrock = data.get('amazon-bedrock')
 if not bedrock:
     print("ERROR: amazon-bedrock section not found in models.dev response", file=sys.stderr)
     sys.exit(1)
 
-output = json.dumps({'amazon-bedrock': bedrock}, separators=(',', ':'), sort_keys=True)
-print(output)
-EOF
-<<< "$FULL" > "$CACHE_FILE"
+output = json.dumps({'amazon-bedrock': bedrock}, indent=2, sort_keys=True)
+with open('$CACHE_FILE', 'w') as f:
+    f.write(output)
 
-MODEL_COUNT=$(python3 -c "import json; d=json.load(open('$CACHE_FILE')); print(len(d['amazon-bedrock'].get('models', {})))")
-echo "Done. $MODEL_COUNT models written to $CACHE_FILE"
+MODEL_COUNT = len(bedrock.get('models', {}))
+print(f"Done. {MODEL_COUNT} models written to $CACHE_FILE")
+PYTHON_EOF
+
 echo "Review the diff and commit: git add $CACHE_FILE && git commit -m 'chore: update models.dev cache'"
