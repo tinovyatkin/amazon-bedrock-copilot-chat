@@ -1,3 +1,9 @@
+/* eslint-disable unicorn/consistent-class-member-order -- AWS client methods are grouped by API workflow */
+/* eslint-disable unicorn/no-break-in-nested-loop -- cancellation checks intentionally short-circuit pagination */
+/* eslint-disable unicorn/no-error-property-assignment -- AbortError names are required by VS Code cancellation handling */
+/* eslint-disable unicorn/no-unreadable-for-of-expression -- AWS paginator iteration is the documented SDK pattern */
+/* eslint-disable unicorn/prefer-includes-over-repeated-comparisons -- model and region matching is clearer as explicit comparisons */
+
 import type { BedrockClientConfig } from "@aws-sdk/client-bedrock";
 import {
   AccessDeniedException,
@@ -34,8 +40,12 @@ import {
 } from "./aws-partition";
 import { getProfileSdkUaAppId, isSsoProfile } from "./aws-profiles";
 import { logger } from "./logger";
-import { loadModelsDevData } from "./models-dev";
-import type { AuthConfig, BedrockModelSummary, ModelsDevMap } from "./types";
+import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
+import type {
+  AuthConfig,
+  BedrockModelSummary,
+  ModelsDevMap as ModelsDevelopmentMap,
+} from "./types";
 
 export class BedrockAPIClient {
   private authConfig?: AuthConfig;
@@ -118,8 +128,8 @@ export class BedrockAPIClient {
 
       return response.inputTokens;
     } catch (error) {
-      const countTokensUnsupported = this.isUnsupportedCountTokensError(error, abortSignal);
-      if (countTokensUnsupported) {
+      const isCountTokensUnsupported = this.isUnsupportedCountTokensError(error, abortSignal);
+      if (isCountTokensUnsupported) {
         this.unsupportedCountTokensModels.add(modelId);
         if (baseModelId && baseModelId !== modelId) {
           this.unsupportedCountTokensModels.add(baseModelId);
@@ -143,7 +153,7 @@ export class BedrockAPIClient {
       // The caller should fall back to estimation. Logged at trace level because Copilot
       // Chat calls provideTokenCount many times per turn -- one line per call would
       // flood the output channel.
-      if (countTokensUnsupported) {
+      if (isCountTokensUnsupported) {
         logger.trace(
           `[Bedrock API Client] CountTokens not available for model ${modelId}: ${
             error instanceof Error ? error.message : String(error)
@@ -325,8 +335,8 @@ export class BedrockAPIClient {
    * (callers pass a signal they already have) but is unused because the
    * data comes from a local bundled file rather than a network request.
    */
-  async fetchModelsDevData(_abortSignal?: AbortSignal): Promise<ModelsDevMap> {
-    return loadModelsDevData();
+  async fetchModelsDevData(_abortSignal?: AbortSignal): Promise<ModelsDevelopmentMap> {
+    return loadModelsDevelopmentData();
   }
 
   /**
@@ -422,11 +432,11 @@ export class BedrockAPIClient {
     const arnProfilePattern =
       /^arn:aws(-[a-z0-9]+)?:bedrock:[a-z0-9-]+:\d{12}:(application-)?inference-profile\//;
     const appProfileIdPattern = /^ip-[a-z0-9]+/i;
-    const looksLikeProfile =
+    const isLooksLikeProfile =
       dotProfilePattern.test(modelId) ||
       arnProfilePattern.test(modelId) ||
       appProfileIdPattern.test(modelId);
-    if (!looksLikeProfile) {
+    if (!isLooksLikeProfile) {
       // Not an inference profile, return as-is
       return modelId;
     }
@@ -474,16 +484,28 @@ export class BedrockAPIClient {
   }
 
   setAuthConfig(authConfig: AuthConfig | undefined): void {
+    if (this.authConfigsEqual(this.authConfig, authConfig)) {
+      return;
+    }
+
     this.authConfig = authConfig;
     this.recreateClients();
   }
 
   setProfile(profileName: string | undefined): void {
+    if (this.profileName === profileName) {
+      return;
+    }
+
     this.profileName = profileName;
     this.recreateClients();
   }
 
   setRegion(region: string): void {
+    if (this.region === region) {
+      return;
+    }
+
     this.region = region;
     this.recreateClients();
   }
@@ -512,6 +534,33 @@ export class BedrockAPIClient {
    */
   async testInferenceProfileAccess(profileId: string, abortSignal?: AbortSignal): Promise<boolean> {
     return this.testAccessViaConverse(profileId, "Inference profile", abortSignal);
+  }
+
+  private authConfigsEqual(left: AuthConfig | undefined, right: AuthConfig | undefined): boolean {
+    if (left?.method !== right?.method) {
+      return false;
+    }
+
+    if (!left || !right) {
+      return left === right;
+    }
+
+    switch (left.method) {
+      case "access-keys": {
+        return (
+          right.method === "access-keys" &&
+          left.accessKeyId === right.accessKeyId &&
+          left.secretAccessKey === right.secretAccessKey &&
+          left.sessionToken === right.sessionToken
+        );
+      }
+      case "api-key": {
+        return right.method === "api-key" && left.apiKey === right.apiKey;
+      }
+      case "profile": {
+        return right.method === "profile" && left.profile === right.profile;
+      }
+    }
   }
 
   /**
@@ -609,11 +658,11 @@ export class BedrockAPIClient {
       candidates.map(async (candidate) => {
         // Try global profile first (if available in this partition)
         if (candidate.globalProfileId) {
-          const globalProfileAccessible = await this.testInferenceProfileAccess(
+          const isGlobalProfileAccessible = await this.testInferenceProfileAccess(
             candidate.globalProfileId,
             abortSignal,
           );
-          if (globalProfileAccessible) {
+          if (isGlobalProfileAccessible) {
             return { accessible: true, candidate, profileId: candidate.globalProfileId };
           }
           logger.debug(
@@ -623,11 +672,11 @@ export class BedrockAPIClient {
 
         // Try regional profiles
         for (const regionalProfileId of candidate.regionalProfileIds) {
-          const regionalProfileAccessible = await this.testInferenceProfileAccess(
+          const isRegionalProfileAccessible = await this.testInferenceProfileAccess(
             regionalProfileId,
             abortSignal,
           );
-          if (regionalProfileAccessible) {
+          if (isRegionalProfileAccessible) {
             if (candidate.globalProfileId) {
               logger.info(
                 `[Bedrock API Client] Global profile ${candidate.globalProfileId} denied, using regional profile ${regionalProfileId}`,
@@ -642,11 +691,11 @@ export class BedrockAPIClient {
         }
 
         // No accessible profile found, fall back to base model if reachable
-        const baseModelAccessible = await this.isModelAccessible(
+        const isBaseModelAccessible = await this.isModelAccessible(
           candidate.baseModelId,
           abortSignal,
         );
-        if (baseModelAccessible) {
+        if (isBaseModelAccessible) {
           logger.info(
             `[Bedrock API Client] No accessible inference profile for ${candidate.baseModelId}, using base model`,
           );
@@ -752,7 +801,7 @@ export class BedrockAPIClient {
         const creds: AwsCredentialIdentity = {
           accessKeyId: this.authConfig.accessKeyId,
           secretAccessKey: this.authConfig.secretAccessKey,
-          ...(this.authConfig.sessionToken ? { sessionToken: this.authConfig.sessionToken } : {}),
+          ...(this.authConfig.sessionToken && { sessionToken: this.authConfig.sessionToken }),
         };
         return { ...base, credentials: creds };
       }
@@ -804,7 +853,7 @@ export class BedrockAPIClient {
     const wrapped: AwsCredentialIdentityProvider = async () => {
       if (!provider) {
         const stsRegion = options?.stsRegion;
-        const useExplicitStsRegion =
+        const isUseExplicitStsRegion =
           typeof stsRegion === "string" && !(await isSsoProfile(profile));
         const userAgentAppId = await getProfileSdkUaAppId(profile);
         if (userAgentAppId) {
@@ -815,8 +864,8 @@ export class BedrockAPIClient {
 
         provider = fromIni({
           clientConfig: {
-            ...(useExplicitStsRegion ? { region: stsRegion } : {}),
-            ...(userAgentAppId ? { userAgentAppId } : {}),
+            ...(isUseExplicitStsRegion && { region: stsRegion }),
+            ...(userAgentAppId && { userAgentAppId }),
           },
           profile,
         });
@@ -980,3 +1029,9 @@ function getClaude47RegionalProfileIds(
 
   return [...prefixes].map((prefix) => `${prefix}.${baseModelId}`);
 }
+
+/* eslint-enable unicorn/consistent-class-member-order -- end intentional file-level exception */
+/* eslint-enable unicorn/no-break-in-nested-loop -- end intentional file-level exception */
+/* eslint-enable unicorn/no-error-property-assignment -- end intentional file-level exception */
+/* eslint-enable unicorn/no-unreadable-for-of-expression -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-includes-over-repeated-comparisons -- end intentional file-level exception */

@@ -1,3 +1,7 @@
+/* eslint-disable unicorn/consistent-boolean-name -- names mirror VS Code and Bedrock message terminology */
+/* eslint-disable unicorn/prefer-includes-over-repeated-comparisons -- MIME and content checks are intentionally explicit */
+/* eslint-disable unicorn/prefer-simple-condition-first -- condition order preserves short-circuit safety */
+
 import {
   type Message as BedrockMessage,
   CachePointType,
@@ -49,9 +53,9 @@ export function convertMessages(
   });
 
   // Process each message by role
-  for (const msg of messages) {
-    if (msg.role === vscode.LanguageModelChatMessageRole.User) {
-      const { content, hasToolResults } = processUserMessageParts(msg, profile);
+  for (const message of messages) {
+    if (message.role === vscode.LanguageModelChatMessageRole.User) {
+      const { content, hasToolResults } = processUserMessageParts(message, profile);
       mergeOrAppendMessage(
         bedrockMessages,
         content,
@@ -59,8 +63,8 @@ export function convertMessages(
         hasToolResults,
         userMessageIndicesWithToolResults,
       );
-    } else if (msg.role === vscode.LanguageModelChatMessageRole.Assistant) {
-      const content = processAssistantMessageParts(msg);
+    } else if (message.role === vscode.LanguageModelChatMessageRole.Assistant) {
+      const content = processAssistantMessageParts(message);
       mergeOrAppendMessage(
         bedrockMessages,
         content,
@@ -70,7 +74,7 @@ export function convertMessages(
       );
     } else {
       // System messages
-      systemMessages.push(...processSystemMessageParts(msg));
+      systemMessages.push(...processSystemMessageParts(message));
     }
   }
 
@@ -140,12 +144,12 @@ function addPromptCachingPoints(
   } else if (!profile.supportsCachingWithToolResults) {
     // Model does NOT support caching with tool results: cache messages WITHOUT tool results
     const userMessagesWithoutToolResults: number[] = [];
-    for (const [i, message] of bedrockMessages.entries()) {
+    for (const [index, message] of bedrockMessages.entries()) {
       if (
         message?.role === ConversationRole.USER &&
-        !userMessageIndicesWithToolResults.includes(i)
+        !userMessageIndicesWithToolResults.includes(index)
       ) {
-        userMessagesWithoutToolResults.push(i);
+        userMessagesWithoutToolResults.push(index);
       }
     }
 
@@ -159,8 +163,8 @@ function addPromptCachingPoints(
   }
 
   // Add cache points to the selected messages
-  for (const idx of indicesToCache) {
-    const message = bedrockMessages[idx];
+  for (const index of indicesToCache) {
+    const message = bedrockMessages[index];
     if (message?.content !== undefined) {
       message.content.push({ cachePoint: { type: CachePointType.DEFAULT } });
     }
@@ -198,8 +202,14 @@ function extractToolResultText(content: unknown): string {
           mimeType: item.mimeType,
         });
       } else {
-        // For unknown types, try to stringify
-        textContent += inspect(item, { depth: 4 });
+        // For unknown types, use fast JSON.stringify instead of inspect
+        // inspect() with depth:4 is extremely slow on large objects (9-19KB)
+        try {
+          textContent += JSON.stringify(item);
+        } catch {
+          // Fallback if object is not serializable
+          textContent += String(item);
+        }
       }
     }
   } else if (typeof content === "string") {
@@ -210,7 +220,11 @@ function extractToolResultText(content: unknown): string {
       mimeType: content.mimeType,
     });
   } else {
-    textContent = inspect(content);
+    try {
+      textContent = JSON.stringify(content);
+    } catch {
+      textContent = String(content);
+    }
   }
   return textContent;
 }
@@ -232,21 +246,21 @@ function filterContentBlocks(
   let filteredCount = 0;
 
   for (const message of messages) {
-    if (message.content) {
-      const originalLength = message.content.length;
-      message.content = message.content.filter((block) => {
-        if (!predicate(block)) {
-          filteredCount++;
-          return false;
-        }
-        return true;
-      });
+    if (!message.content) {
+      continue;
+    }
 
-      if (message.content.length === 0 && originalLength > 0) {
-        logger.trace(
-          `[Message Converter] Message became empty after ${logContext}, will be removed`,
-        );
+    const originalLength = message.content.length;
+    message.content = message.content.filter((block) => {
+      if (!predicate(block)) {
+        filteredCount++;
+        return false;
       }
+      return true;
+    });
+
+    if (message.content.length === 0 && originalLength > 0) {
+      logger.trace(`[Message Converter] Message became empty after ${logContext}, will be removed`);
     }
   }
 
@@ -255,7 +269,7 @@ function filterContentBlocks(
   messages.splice(
     0,
     messages.length,
-    ...messages.filter((msg) => msg.content && msg.content.length > 0),
+    ...messages.filter((message) => message.content && message.content.length > 0),
   );
 
   if (filteredCount > 0) {
@@ -309,9 +323,9 @@ function injectExtendedThinking(
 
   // Find the LAST assistant message without reasoning content
   // We only inject into the last one because that's the only one we have a valid thinking block for
-  let lastAssistantIdx = -1;
-  for (let i = bedrockMessages.length - 1; i >= 0; i--) {
-    const message = bedrockMessages[i];
+  let lastAssistantIndex = -1;
+  for (let index = bedrockMessages.length - 1; index >= 0; index--) {
+    const message = bedrockMessages[index];
     if (
       message.role === ConversationRole.ASSISTANT &&
       message.content &&
@@ -322,18 +336,18 @@ function injectExtendedThinking(
       );
 
       if (!hasReasoning) {
-        lastAssistantIdx = i;
+        lastAssistantIndex = index;
         break;
       }
     }
   }
 
-  if (lastAssistantIdx === -1) {
+  if (lastAssistantIndex === -1) {
     logger.trace("[Message Converter] No assistant message found needing thinking block injection");
     return;
   }
 
-  const message = bedrockMessages[lastAssistantIdx];
+  const message = bedrockMessages[lastAssistantIndex];
   const reasoningBlock: ContentBlock.ReasoningContentMember = {
     reasoningContent: {
       reasoningText: {
@@ -345,7 +359,7 @@ function injectExtendedThinking(
 
   message.content!.unshift(reasoningBlock);
   logger.debug("[Message Converter] Injected thinking into last assistant message", {
-    messageIndex: lastAssistantIdx,
+    messageIndex: lastAssistantIndex,
     signatureLength: thinkingBlock.signature.length,
     textLength: thinkingBlock.text.length,
   });
@@ -433,10 +447,10 @@ function mergeOrAppendMessage(
 /**
  * Process all parts of an assistant message
  */
-function processAssistantMessageParts(msg: vscode.LanguageModelChatMessage): ContentBlock[] {
+function processAssistantMessageParts(message: vscode.LanguageModelChatMessage): ContentBlock[] {
   const content: ContentBlock[] = [];
 
-  for (const part of msg.content) {
+  for (const part of message.content) {
     if (part instanceof vscode.LanguageModelTextPart) {
       const block = processTextPart(part);
       if (block) content.push(block);
@@ -473,9 +487,8 @@ function processImagePart(part: ImageDataPart, role: ConversationRole): ContentB
             },
           },
         } satisfies ContentBlock.ImageMember;
-      } else {
-        logger.warn(`[Message Converter] Unsupported image format in ${role} message`, { format });
       }
+      logger.warn(`[Message Converter] Unsupported image format in ${role} message`, { format });
     }
   } catch (error) {
     logger.warn(`[Message Converter] Invalid MIME type in ${role} message`, {
@@ -489,10 +502,10 @@ function processImagePart(part: ImageDataPart, role: ConversationRole): ContentB
 /**
  * Process all parts of a system message
  */
-function processSystemMessageParts(msg: vscode.LanguageModelChatMessage): SystemContentBlock[] {
+function processSystemMessageParts(message: vscode.LanguageModelChatMessage): SystemContentBlock[] {
   const systemBlocks: SystemContentBlock[] = [];
 
-  for (const part of msg.content) {
+  for (const part of message.content) {
     if (part instanceof vscode.LanguageModelTextPart && part.value.trim()) {
       systemBlocks.push({ text: part.value });
     } else if (isMetadataPart(part)) {
@@ -558,15 +571,15 @@ function processToolResultPart(
     : ({ text: textContent } satisfies ToolResultContentBlock.TextMember);
 
   // Detect errors from explicit flag (when present) or content
-  const explicitIsError =
+  const isExplicitIsError =
     "isError" in part ? Boolean((part as Record<string, unknown>).isError) : false;
-  const isLikelyError = explicitIsError || detectToolResultError(textContent);
+  const isLikelyError = isExplicitIsError || detectToolResultError(textContent);
   const status = profile.supportsToolResultStatus && isLikelyError ? "error" : undefined;
 
   logger.debug("[Message Converter] Error status decision:", {
     contentLength: textContent.length,
-    detectedFromContent: !explicitIsError && isLikelyError,
-    explicitIsError,
+    detectedFromContent: !isExplicitIsError && isLikelyError,
+    explicitIsError: isExplicitIsError,
     hasIsErrorProperty: "isError" in part,
     modelSupportsStatus: profile.supportsToolResultStatus,
     resultingStatus: status,
@@ -583,7 +596,7 @@ function processToolResultPart(
     toolResult: {
       content: [contentBlock],
       toolUseId: part.callId,
-      ...(status ? { status } : {}),
+      ...(status && { status }),
     },
   } satisfies ContentBlock.ToolResultMember;
 }
@@ -592,13 +605,13 @@ function processToolResultPart(
  * Process all parts of a user message
  */
 function processUserMessageParts(
-  msg: vscode.LanguageModelChatMessage,
+  message: vscode.LanguageModelChatMessage,
   profile: ModelProfile,
 ): { content: ContentBlock[]; hasToolResults: boolean } {
   const content: ContentBlock[] = [];
   let hasToolResults = false;
 
-  for (const part of msg.content) {
+  for (const part of message.content) {
     if (part instanceof vscode.LanguageModelTextPart) {
       const block = processTextPart(part);
       if (block) content.push(block);
@@ -617,3 +630,7 @@ function processUserMessageParts(
 
   return { content, hasToolResults };
 }
+
+/* eslint-enable unicorn/consistent-boolean-name -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-includes-over-repeated-comparisons -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-simple-condition-first -- end intentional file-level exception */

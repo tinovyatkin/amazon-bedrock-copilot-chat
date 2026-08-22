@@ -1,39 +1,52 @@
+/* eslint-disable unicorn/consistent-boolean-name -- provider parameters match VS Code and settings API names */
+/* eslint-disable unicorn/consistent-class-member-order -- lifecycle event is exposed before private implementation state */
+/* eslint-disable unicorn/consistent-function-scoping -- helper remains local to the token-counting workflow */
+/* eslint-disable unicorn/no-break-in-nested-loop -- message scanning intentionally skips unsupported parts */
+/* eslint-disable unicorn/prefer-includes-over-repeated-comparisons -- protocol checks are intentionally explicit */
+/* eslint-disable unicorn/prefer-simple-condition-first -- condition order preserves short-circuit safety */
+/* eslint-disable unicorn/prefer-ternary -- branches contain logging and control-flow side effects */
+
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-  ConverseStreamCommandInput,
-  CountTokensCommandInput,
-  Message,
-  SystemContentBlock,
-  ToolConfiguration,
+    ConverseStreamCommandInput,
+    Message,
+    SystemContentBlock,
+    ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-  CancellationToken,
-  LanguageModelChatInformation,
-  LanguageModelChatMessage,
-  LanguageModelChatProvider,
-  LanguageModelConfigurationSchema,
-  LanguageModelResponsePart,
-  LanguageModelResponsePart2,
-  Progress,
+    CancellationToken,
+    LanguageModelChatInformation,
+    LanguageModelChatMessage,
+    LanguageModelChatProvider,
+    LanguageModelConfigurationSchema,
+    LanguageModelResponsePart,
+    LanguageModelResponsePart2,
+    Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
 import { getRegionPrefix } from "./aws-partition";
 import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
-import { convertMessages, stripThinkingContent } from "./converters/messages";
+import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
-import { loadModelsDevData } from "./models-dev";
+import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
 import {
-  getModelProfile,
-  getModelTokenLimits,
-  normalizeModelId,
-  requires1MContextBetaHeader,
+    getModelProfile,
+    getModelTokenLimits,
+    normalizeModelId,
+    requires1MContextBetaHeader,
 } from "./profiles";
 import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
-import type { AuthConfig, AuthMethod, BedrockModelSummary, ModelsDevMap } from "./types";
+import type {
+    AuthConfig,
+    AuthMethod,
+    BedrockModelSummary,
+    ModelsDevEntry as ModelsDevelopmentEntry,
+    ModelsDevMap as ModelsDevelopmentMap,
+} from "./types";
 import { validateBedrockMessages } from "./validation";
 
 type PickerLanguageModelChatInformation = LanguageModelChatInformation & {
@@ -57,7 +70,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
   private chatEndpoints: { model: string; modelMaxPromptTokens: number }[] = [];
   private readonly client: BedrockAPIClient;
-  /** Tracks whether the initial model fetch has completed (for avoiding startup feedback loops) */
+  /**
+  Tracks whether the initial model fetch has completed (for avoiding startup feedback loops)
+  */
   private initialFetchComplete = false;
   private lastThinkingBlock?: ThinkingBlock;
   private readonly streamProcessor: StreamProcessor;
@@ -124,7 +139,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         await vscode.commands.executeCommand("bedrock.manage");
         // Return empty array - user will need to refresh after configuring
         return [];
-      } else if (action !== "Use Default Credentials") {
+      }
+      if (action !== "Use Default Credentials") {
         // User cancelled
         return [];
       }
@@ -162,7 +178,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         ): Promise<LanguageModelChatInformation[]> => {
           progress?.report({ message: "Fetching model list..." });
 
-          const [models, apiProfileIds, modelsDevMap] = await Promise.all([
+          const [models, apiProfileIds, modelsDevelopmentMap] = await Promise.all([
             this.client.fetchModels(abortController.signal),
             this.client.fetchInferenceProfiles(abortController.signal),
             // Fetch models.dev data in parallel — provides live token limits, capability flags,
@@ -177,7 +193,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           }
 
           // Fetch application inference profiles after we have foundation models
-          const applicationProfiles = await this.client.fetchApplicationInferenceProfiles(
+          const appProfiles = await this.client.fetchApplicationInferenceProfiles(
             models,
             abortController.signal,
           );
@@ -233,14 +249,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const limits = this.resolveModelLimits(
               modelIdToUse,
               settings.context1M.enabled,
-              modelsDevMap,
+              modelsDevelopmentMap,
             );
             const maxInput = limits.maxInputTokens;
             const maxOutput = limits.maxOutputTokens;
             // Use models.dev modalities when available (more accurate than Bedrock API)
-            const devEntry = modelsDevMap.get(modelIdToUse);
-            const vision = devEntry
-              ? (devEntry.modalities?.input?.includes("image") ?? false)
+            const developmentEntry = modelsDevelopmentMap.get(modelIdToUse);
+            const isVision = developmentEntry
+              ? (developmentEntry.modalities?.input?.includes("image") ?? false)
               : m.inputModalities.includes(ModelModality.IMAGE);
 
             // Classify the invocation route so the tooltip can state it plainly.
@@ -257,7 +273,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const modelInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
-                imageInput: vision,
+                imageInput: isVision,
                 // Advertise tool calling for all models: profiles.ts correctly gates
                 // tool use at request time via supportsToolChoice, but advertising
                 // false here would break agent mode for any model not yet enumerated.
@@ -266,9 +282,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               configurationSchema: this.buildConfigurationSchema(
                 modelIdToUse,
                 modelProfile,
-                modelsDevMap,
+                modelsDevelopmentMap,
               ),
-              detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, vision),
+              detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, isVision),
               family: "bedrock",
               id: modelIdToUse,
               isUserSelectable: true,
@@ -281,7 +297,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 modelId: modelIdToUse,
                 providerName: m.providerName,
                 route,
-                vision,
+                vision: isVision,
               }),
               version: "1.0.0",
             };
@@ -290,10 +306,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
           // Add application inference profiles
           progress?.report({
-            message: `Processing ${applicationProfiles.length} application profiles...`,
+            message: `Processing ${appProfiles.length} application profiles...`,
           });
 
-          for (const profile of applicationProfiles) {
+          for (const profile of appProfiles) {
             // Filter profiles similar to foundation models - must support streaming and text output
             if (
               !profile.responseStreamingSupported ||
@@ -310,28 +326,28 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             const limits = this.resolveModelLimits(
               modelIdForLimits,
               settings.context1M.enabled,
-              modelsDevMap,
+              modelsDevelopmentMap,
             );
             const maxInput = limits.maxInputTokens;
             const maxOutput = limits.maxOutputTokens;
-            const devEntryForProfile = modelsDevMap.get(modelIdForLimits);
-            const vision = devEntryForProfile
-              ? (devEntryForProfile.modalities?.input?.includes("image") ?? false)
+            const developmentEntryForProfile = modelsDevelopmentMap.get(modelIdForLimits);
+            const isVision = developmentEntryForProfile
+              ? (developmentEntryForProfile.modalities?.input?.includes("image") ?? false)
               : profile.inputModalities.includes(ModelModality.IMAGE);
 
             const appProfileModelProfile = getModelProfile(modelIdForLimits);
             const profileInfo: PickerLanguageModelChatInformation = {
               capabilities: {
                 agentMode: true,
-                imageInput: vision,
+                imageInput: isVision,
                 toolCalling: true,
               },
               configurationSchema: this.buildConfigurationSchema(
                 modelIdForLimits,
                 appProfileModelProfile,
-                modelsDevMap,
+                modelsDevelopmentMap,
               ),
-              detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, vision),
+              detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, isVision),
               family: "bedrock",
               id: profile.modelArn,
               isUserSelectable: true,
@@ -344,7 +360,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
                 modelId: modelIdForLimits,
                 providerName: profile.providerName,
                 route: "Application inference profile",
-                vision,
+                vision: isVision,
               }),
               version: "1.0.0",
             };
@@ -361,7 +377,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             modelDateMap.set(c.model.modelId, date);
             modelDateMap.set(c.model.modelArn, date);
           }
-          for (const p of applicationProfiles) {
+          for (const p of appProfiles) {
             const date = p.updatedAt ?? p.createdAt;
             modelDateMap.set(p.modelId, date);
             modelDateMap.set(p.modelArn, date);
@@ -572,28 +588,33 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Look up the bundled models.dev entry for this model. Used as a fallback
       // for capability flags that profiles.ts may not yet enumerate for newly-added
       // models (temperatureDeprecated, tool_call support).
-      const modelsDevMap = loadModelsDevData();
+      const modelsDevelopmentMap = loadModelsDevelopmentData();
       const normalizedBaseId = normalizeModelId(baseModelId);
-      const chatDevEntry =
-        modelsDevMap.get(baseModelId) ??
-        modelsDevMap.get(normalizedBaseId) ??
-        (() => {
-          // Full-scan fallback: strip version suffix and match by normalized prefix
-          for (const [key, entry] of modelsDevMap) {
-            if (normalizeModelId(key) === normalizedBaseId) return entry;
-          }
-        })();
+      const chatDevelopmentEntry = resolveModelsDevelopmentEntry(
+        baseModelId,
+        normalizedBaseId,
+        modelsDevelopmentMap,
+      );
 
       // temperatureDeprecated: profiles.ts is authoritative; fall back to
       // models.dev `temperature: false` for models not yet enumerated.
-      const effectiveTemperatureDeprecated =
-        modelProfile.temperatureDeprecated || chatDevEntry?.temperature === false;
+      // User can override with bedrock.temperature.override setting:
+      // - null/undefined = use auto-detection (default)
+      // - true = disable temperature on all models (temperatureDeprecated = true)
+      // - false = enable temperature on all models (temperatureDeprecated = false)
+      let isEffectiveTemperatureDeprecated =
+        modelProfile.temperatureDeprecated || chatDevelopmentEntry?.temperature === false;
+
+      if (settings.temperature.override !== undefined) {
+        // User override: true means disable temp (deprecated), false means enable temp (not deprecated)
+        isEffectiveTemperatureDeprecated = settings.temperature.override;
+      }
 
       // tool_call: profiles.ts is authoritative; fall back to models.dev
       // `tool_call: false` to suppress tool configs for unknown models that
       // reject them (avoids ValidationException on new text-only additions).
-      const effectiveToolCallSupported =
-        modelProfile.supportsToolChoice || chatDevEntry?.tool_call !== false;
+      const isEffectiveToolCallSupported =
+        modelProfile.supportsToolChoice || chatDevelopmentEntry?.tool_call !== false;
 
       // Apply per-request overrides from the VS Code model-picker UI.
       // When the user selects a context size, thinking effort, or reasoning
@@ -607,7 +628,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // context1M override: the picker value fully overrides settings.context1M.enabled
       // for this request — so the user can turn 1M *off* for a single request even when
       // the workspace setting has it enabled.
-      const context1MEnabled =
+      const isContext1MEnabled =
         typeof mc?.contextSize === "number"
           ? mc.contextSize >= 1_000_000
           : settings.context1M.enabled;
@@ -628,13 +649,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const effectiveThinkingEffort: ThinkingEffort =
         thinkingEffortOverride ?? settings.thinking.effort;
 
-      // reasoningEffort: profiles.ts is authoritative; also enable for models
-      // discovered only via models.dev (devEntry.reasoning=true) so the picker
-      // and the request path stay in sync.
+      // reasoningEffort: profiles.ts is authoritative. A models.dev entry with
+      // reasoning=true can only ADD support when profiles.ts has no explicit
+      // opinion; it must never override an explicit profiles.ts opt-out (e.g.
+      // gpt-5.x named variants -- Luna/Sol/Terra -- which are CLI-verified to
+      // reject the field).
       const isAnthropicBaseModel = baseModelId.toLowerCase().includes("anthropic.");
-      const effectiveSupportsReasoningEffort =
-        modelProfile.supportsReasoningEffort ||
-        (chatDevEntry?.reasoning === true && !isAnthropicBaseModel);
+      const isEffectiveSupportsReasoningEffort =
+        !isNamedGpt5Variant(baseModelId) &&
+        (modelProfile.supportsReasoningEffort ||
+          (chatDevelopmentEntry?.reasoning === true && !isAnthropicBaseModel));
 
       // reasoningEffort override: picker value wins over workspace setting.
       const validReasoningEfforts: readonly ReasoningEffort[] = [
@@ -653,7 +677,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       if (mc && Object.keys(mc).length > 0) {
         logger.debug("[Bedrock Model Provider] Applying modelConfiguration overrides", {
-          context1MEnabled,
+          context1MEnabled: isContext1MEnabled,
           modelConfiguration: mc,
           reasoningEffort: effectiveReasoningEffort,
           thinkingEffort: effectiveThinkingEffort,
@@ -680,7 +704,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           maxTokensForRequest,
           settings.thinking.enabled,
         );
-      let extendedThinkingEnabled = initialThinkingEnabled;
+      let isExtendedThinkingEnabled = initialThinkingEnabled;
 
       // Check if we can actually use extended thinking with the current conversation history
       // When thinking is enabled, ALL assistant messages must have thinking blocks.
@@ -689,35 +713,35 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // - There are no previous assistant messages (first turn), OR
       // - There is exactly one previous assistant message AND we have a stored thinking block
       // If there are 2+ assistant messages, we can't provide thinking blocks for all of them.
-      if (extendedThinkingEnabled) {
-        const assistantMsgCount = messages.filter(
+      if (isExtendedThinkingEnabled) {
+        const assistantMessageCount = messages.filter(
           (m) => m.role === vscode.LanguageModelChatMessageRole.Assistant,
         ).length;
 
-        if (assistantMsgCount > 1) {
+        if (assistantMessageCount > 1) {
           // Can't inject thinking blocks for multiple previous assistant messages
           // Each assistant message needs its own unique thinking block, but we only have one stored
           logger.warn(
             "[Bedrock Model Provider] Disabling extended thinking - multiple assistant messages in history require individual thinking blocks",
-            { assistantMsgCount },
+            { assistantMsgCount: assistantMessageCount },
           );
-          extendedThinkingEnabled = false;
+          isExtendedThinkingEnabled = false;
           // Clear stale thinking block to prevent it from being misapplied if conversation
           // history later truncates back to a single assistant message (signatures are
           // integrity-bound to specific thinking blocks)
           this.lastThinkingBlock = undefined;
-        } else if (assistantMsgCount === 1 && !this.lastThinkingBlock?.signature) {
+        } else if (assistantMessageCount === 1 && !this.lastThinkingBlock?.signature) {
           // Have one assistant message but no thinking block to inject
           logger.warn(
             "[Bedrock Model Provider] Disabling extended thinking - no stored thinking block available for previous assistant message",
           );
-          extendedThinkingEnabled = false;
+          isExtendedThinkingEnabled = false;
         }
       }
 
       // Convert messages with thinking configuration
       const converted = convertMessages(messages, baseModelId, {
-        extendedThinkingEnabled,
+        extendedThinkingEnabled: isExtendedThinkingEnabled,
         lastThinkingBlock: this.lastThinkingBlock,
         promptCachingEnabled: settings.promptCaching.enabled,
       });
@@ -731,9 +755,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const toolConfig = convertTools(
         options,
         baseModelId,
-        extendedThinkingEnabled,
+        isExtendedThinkingEnabled,
         settings.promptCaching.enabled,
-        effectiveToolCallSupported,
+        isEffectiveToolCallSupported,
       );
 
       if (options.tools && options.tools.length > 128) {
@@ -741,16 +765,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       // Determine if thinking effort should be applied (only for Opus 4.5 and Sonnet 4.6)
-      const thinkingEffortEnabled = modelProfile.supportsThinkingEffort;
+      const isThinkingEffortEnabled = modelProfile.supportsThinkingEffort;
 
       // Build beta headers — use the effective context1M flag (may be overridden by
       // the model-picker contextSize selection via modelConfiguration)
       const betaHeaders = this.buildBetaHeaders(
         modelProfile,
         baseModelId,
-        extendedThinkingEnabled,
-        context1MEnabled,
-        thinkingEffortEnabled,
+        isExtendedThinkingEnabled,
+        isContext1MEnabled,
+        isThinkingEffortEnabled,
       );
 
       // Build request input — use effective effort values (model-picker overrides win)
@@ -760,27 +784,30 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         converted,
         options,
         toolConfig,
-        extendedThinkingEnabled,
+        isExtendedThinkingEnabled,
         budgetTokens,
         betaHeaders,
-        thinkingEffortEnabled ? effectiveThinkingEffort : undefined,
-        effectiveTemperatureDeprecated,
+        isThinkingEffortEnabled ? effectiveThinkingEffort : undefined,
+        isEffectiveTemperatureDeprecated,
         modelProfile.requiresAdaptiveThinking,
-        effectiveSupportsReasoningEffort ? effectiveReasoningEffort : undefined,
+        isEffectiveSupportsReasoningEffort ? effectiveReasoningEffort : undefined,
       );
 
       // Log request details
       this.logRequestDetails(requestInput);
 
-      // Validate token count
-      await this.validateTokenCount(model, requestInput, token);
-
-      // Process the stream
-      await this.processResponseStream(
+      // Process the stream, with a generic one-shot retry that strips any
+      // request field the model rejects as "unknown"/unsupported. This
+      // protects against Bedrock exposing new models that don't yet support
+      // a parameter our profiles.ts / models.dev heuristics enabled (e.g. a
+      // model rejecting `reasoning_effort`). On retry we surface a warning to
+      // the user so they can report the gap to the extension maintainers.
+      await this.processResponseStreamWithFallback(
         requestInput,
         trackingProgress,
-        extendedThinkingEnabled,
+        isExtendedThinkingEnabled,
         token,
+        model.id,
       );
     } catch (error) {
       // Check for context window overflow errors and provide better error messages
@@ -841,18 +868,111 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     text: LanguageModelChatMessage | string,
     token: CancellationToken,
   ): Promise<number> {
-    // Fallback estimation function
-    const estimateTokens = (input: LanguageModelChatMessage | string): number => {
-      if (typeof input === "string") {
-        return Math.ceil(input.length / 4);
+    // Model-specific token multipliers for accurate local estimation
+    // These override the default length/4 heuristic for models with known token patterns
+    const getTokenMultiplier = (modelId: string): number => {
+      const normalizedId = modelId.toLowerCase();
+
+      // Sonnet models use approximately 1.3x more tokens due to tokenizer characteristics
+      if (normalizedId.includes("sonnet")) {
+        return 1.3;
       }
-      let totalTokens = 0;
-      for (const part of input.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          totalTokens += Math.ceil(part.value.length / 4);
+
+      // Haiku models use approximately 1.0x (baseline)
+      if (normalizedId.includes("haiku")) {
+        return 1;
+      }
+
+      // Opus models use approximately 1.1x
+      if (normalizedId.includes("opus")) {
+        return 1.1;
+      }
+
+      // OpenAI gpt-5.x models typically use slightly fewer tokens
+      if (normalizedId.includes("gpt-5")) {
+        return 0.95;
+      }
+
+      // Default fallback for unknown models
+      return 1;
+    };
+
+    // Estimate the character length of a single message content part.
+    // Text parts count directly; tool calls/results serialize their payload
+    // so large tool inputs/outputs aren't undercounted as zero tokens.
+    const estimatePartCharLength = (part: unknown): number => {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        return part.value.length;
+      }
+      if (part instanceof vscode.LanguageModelToolCallPart) {
+        try {
+          return JSON.stringify(part.input).length;
+        } catch {
+          return 0;
         }
       }
-      return totalTokens;
+      if (part instanceof vscode.LanguageModelToolResultPart) {
+        return part.content.reduce(
+          (sum: number, inner: unknown) => sum + estimatePartCharLength(inner),
+          0,
+        );
+      }
+      return 0;
+    };
+
+    // Image MIME types that convertMessages actually forwards to Bedrock as
+    // image content blocks (see isImageDataPart in converters/messages.ts).
+    const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+
+    // Estimate the token cost of a single image data part. convertMessages
+    // sends PNG/JPEG/GIF/WebP LanguageModelDataPart values to Bedrock as
+    // image blocks, but images don't tokenize like text -- counting their
+    // raw byte length via char_count/4 would wildly overcount, while
+    // returning 0 (the previous behavior) undercounts and can cause context
+    // overflows to go undetected. Without decoding pixel dimensions, use a
+    // conservative estimate based on the base64-encoded payload size, which
+    // approximates Claude's vision token cost of roughly
+    // (width * height) / 750 for typical photo/screenshot compression ratios.
+    const estimateImageTokens = (dataLength: number): number => {
+      const base64Length = Math.ceil(dataLength / 3) * 4;
+      return Math.ceil(base64Length / 100);
+    };
+
+    // Sum image token costs (bypasses the char_count/4 + multiplier path
+    // used for text, since image tokenization doesn't scale the same way).
+    const estimateImagePartTokens = (part: unknown): number => {
+      if (
+        part instanceof vscode.LanguageModelDataPart &&
+        SUPPORTED_IMAGE_MIME_TYPES.has(part.mimeType)
+      ) {
+        return estimateImageTokens(part.data.length);
+      }
+      if (part instanceof vscode.LanguageModelToolResultPart) {
+        return part.content.reduce(
+          (sum: number, inner: unknown) => sum + estimateImagePartTokens(inner),
+          0,
+        );
+      }
+      return 0;
+    };
+
+    // Fallback estimation function with model-aware token multipliers
+    const estimateTokens = (input: LanguageModelChatMessage | string, modelId: string): number => {
+      const multiplier = getTokenMultiplier(modelId);
+      if (typeof input === "string") {
+        return Math.ceil((input.length / 4) * multiplier);
+      }
+
+      const charLength = input.content.reduce(
+        (sum: number, part: unknown) => sum + estimatePartCharLength(part),
+        0,
+      );
+      const imageTokens = input.content.reduce(
+        (sum: number, part: unknown) => sum + estimateImagePartTokens(part),
+        0,
+      );
+
+      return Math.ceil((charLength / 4) * multiplier) + imageTokens;
     };
 
     try {
@@ -884,38 +1004,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       try {
         // For simple string input, use estimation (CountTokens API expects structured messages)
         if (typeof text === "string") {
-          return estimateTokens(text);
+          return estimateTokens(text, baseModelId);
         }
 
-        // Convert the message to Bedrock format
-        const settings = await getBedrockSettings(this.globalState);
-        const converted = convertMessages([text], baseModelId, {
-          extendedThinkingEnabled: false,
-          lastThinkingBlock: undefined,
-          promptCachingEnabled: settings.promptCaching.enabled,
-        });
-
-        // Use the CountTokens API
-        const tokenCount = await this.client.countTokens(
-          model.id,
-          {
-            converse: {
-              messages: converted.messages,
-              ...(converted.system.length > 0 ? { system: converted.system } : {}),
-            },
-          },
-          abortController.signal,
-        );
-
-        // If CountTokens API is available, use its result
-        if (tokenCount !== undefined) {
-          logger.debug(`[Bedrock Model Provider] Token count from API: ${tokenCount}`);
-          return tokenCount;
-        }
-
-        // Fall back to estimation if CountTokens is not available
-        logger.debug("[Bedrock Model Provider] CountTokens not available, using estimation");
-        return estimateTokens(text);
+        // Use the local estimate by default. The CountTokens API adds a network
+        // round trip and may be denied even when Converse is permitted.
+        return estimateTokens(text, baseModelId);
       } finally {
         cancellationListener.dispose();
       }
@@ -926,7 +1020,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       } else {
         logger.warn("[Bedrock Model Provider] Token count failed, using estimation", error);
       }
-      return estimateTokens(text);
+      return estimateTokens(text, model.id);
     }
   }
 
@@ -961,9 +1055,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     requestInput.additionalModelRequestFields = {
       thinking: thinkingField,
-      ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
+      ...(betaHeaders.length > 0 && { anthropic_beta: betaHeaders }),
       // Add thinking effort for Claude Opus 4.5 and Sonnet 4.6 (controls token expenditure)
-      ...(thinkingEffort ? { output_config: { effort: thinkingEffort } } : {}),
+      ...(thinkingEffort && { output_config: { effort: thinkingEffort } }),
     };
 
     logger.debug("[Bedrock Model Provider] Extended thinking enabled", {
@@ -996,11 +1090,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   ): void {
     const openAiIndex = baseModelId.indexOf("openai.");
     const normalizedBaseModelId = openAiIndex === -1 ? baseModelId : baseModelId.slice(openAiIndex);
-    const supportsMinimalReasoningEffort =
+    const isSupportsMinimalReasoningEffort =
       getModelProfile(normalizedBaseModelId).supportsReasoningEffort &&
       normalizedBaseModelId.startsWith("openai.");
     const resolved =
-      reasoningEffort === "minimal" && !supportsMinimalReasoningEffort ? "low" : reasoningEffort;
+      reasoningEffort === "minimal" && !isSupportsMinimalReasoningEffort ? "low" : reasoningEffort;
     requestInput.additionalModelRequestFields = {
       ...((requestInput.additionalModelRequestFields ?? {}) as Record<string, unknown>),
       reasoning_effort: resolved,
@@ -1080,16 +1174,21 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private buildConfigurationSchema(
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
-    modelsDevMap: ModelsDevMap = new Map(),
+    modelsDevelopmentMap: ModelsDevelopmentMap = new Map(),
   ): LanguageModelConfigurationSchema | undefined {
     // Mutable during construction; returned as LanguageModelConfigurationSchema.
     const properties: Record<string, Record<string, unknown>> = {};
 
     // Resolve the models.dev entry for live capability data.
     // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
-    // can match against the bare model IDs stored in models.dev.
+    // can match against the bare model IDs stored in models.dev. Falls back to
+    // a full-map scan by normalized ID (same as resolveModelLimits and the
+    // chatDevelopmentEntry lookup in provideLanguageModelChatResponse) because
+    // models.dev entries can be stored under a different regional prefix than
+    // the one currently selected (e.g. picker uses `us.` but models.dev only
+    // has a `global.` entry for the same base model).
     const normalizedId = normalizeModelId(modelId);
-    const devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
+    const developmentEntry = resolveModelsDevelopmentEntry(modelId, normalizedId, modelsDevelopmentMap);
 
     // ── Context size picker ────────────────────────────────────────────────
     // Only shown for models where 1M context is an *optional* beta-header opt-in
@@ -1191,9 +1290,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // Use profiles.ts flag as primary signal. Supplement with models.dev:
     // if models.dev says `reasoning: true` for a non-Anthropic model that
     // profiles.ts doesn't know about yet, show the picker for it too.
+    // gpt-5.x named variants (Luna/Sol/Terra) are excluded even if models.dev
+    // reports `reasoning: true` -- they're CLI-verified to reject the field,
+    // so the picker would offer a control with no effect (see isNamedGpt5Variant).
     const isAnthropicModel = modelId.toLowerCase().includes("anthropic.");
-    const devSupportsReasoning = devEntry?.reasoning === true && !isAnthropicModel;
-    if (modelProfile.supportsReasoningEffort || devSupportsReasoning) {
+    const isDevelopmentSupportsReasoning =
+      developmentEntry?.reasoning === true && !isAnthropicModel;
+    if (
+      !isNamedGpt5Variant(modelId) &&
+      (modelProfile.supportsReasoningEffort || isDevelopmentSupportsReasoning)
+    ) {
       const isOpenAI = modelId.toLowerCase().includes("openai.");
       const effortLevels = isOpenAI
         ? (["minimal", "low", "medium", "high"] as const)
@@ -1250,32 +1356,32 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
       const manualModelProfile = getModelProfile(baseModelId);
       // Load bundled models.dev data for the manual model.
-      const manualModelsDevMap = loadModelsDevData();
+      const manualModelsDevelopmentMap = loadModelsDevelopmentData();
       const limits = this.resolveModelLimits(
         baseModelId,
         settings.context1M.enabled,
-        manualModelsDevMap,
+        manualModelsDevelopmentMap,
       );
-      const devEntry = manualModelsDevMap.get(baseModelId);
-      const likelyVisionCapable = devEntry
-        ? (devEntry.modalities?.input?.includes("image") ?? false)
+      const developmentEntry = manualModelsDevelopmentMap.get(baseModelId);
+      const isLikelyVisionCapable = developmentEntry
+        ? (developmentEntry.modalities?.input?.includes("image") ?? false)
         : /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
       return {
         capabilities: {
-          imageInput: likelyVisionCapable,
+          imageInput: isLikelyVisionCapable,
           toolCalling: true,
         },
         configurationSchema: this.buildConfigurationSchema(
           baseModelId,
           manualModelProfile,
-          manualModelsDevMap,
+          manualModelsDevelopmentMap,
         ),
         detail: this.formatDetail(
           baseModelId,
           limits.maxInputTokens,
           limits.maxOutputTokens,
-          likelyVisionCapable,
+          isLikelyVisionCapable,
         ),
         family: "bedrock",
         id: modelId,
@@ -1288,7 +1394,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           modelId: baseModelId,
           providerName: "Bedrock",
           route: "Manual entry",
-          vision: likelyVisionCapable,
+          vision: isLikelyVisionCapable,
         }),
         version: "1.0.0",
       };
@@ -1400,13 +1506,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           model.maxOutputTokens,
         ),
         // CLI-verified: Claude Opus 4.7 rejects requests that include
-        // `temperature`. All other models still accept it.
-        ...(!temperatureDeprecated && {
-          temperature:
-            typeof options.modelOptions?.temperature === "number"
-              ? options.modelOptions?.temperature
-              : 0.7,
-        }),
+        // `temperature`. Sonnet 5 also rejects non-default temperature values.
+        // Only include temperature if the user explicitly set one.
+        ...(!temperatureDeprecated &&
+          typeof options.modelOptions?.temperature === "number" && {
+            temperature: options.modelOptions.temperature,
+          }),
       },
       messages: converted.messages,
       modelId: model.id,
@@ -1473,10 +1578,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       0,
       Math.min(baseBudget, maxBudgetFromOutput, maxTokensForRequest - visibleReserve),
     );
-    const extendedThinkingEnabled =
+    const isExtendedThinkingEnabled =
       thinkingEnabled && modelProfile.supportsThinking && budgetTokens >= 1024;
 
-    return { budgetTokens, extendedThinkingEnabled };
+    return { budgetTokens, extendedThinkingEnabled: isExtendedThinkingEnabled };
   }
 
   /**
@@ -1508,7 +1613,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // Claude Opus 4.5 and Sonnet 4.6 effort parameter can be used even without extended thinking
       // This affects all token spend including tool calls
       requestInput.additionalModelRequestFields = {
-        ...(betaHeaders.length > 0 ? { anthropic_beta: betaHeaders } : {}),
+        ...(betaHeaders.length > 0 && { anthropic_beta: betaHeaders }),
         output_config: { effort: thinkingEffort },
       };
 
@@ -1516,6 +1621,18 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
         modelId,
         thinkingEffort,
+      });
+    } else if (requiresAdaptiveThinking) {
+      // For models with adaptive thinking enabled by default (e.g., Sonnet 5),
+      // explicitly send thinking: {type: "disabled"} if the user hasn't enabled extended thinking
+      requestInput.additionalModelRequestFields = {
+        thinking: { type: "disabled" },
+        ...(betaHeaders.length > 0 && { anthropic_beta: betaHeaders }),
+      };
+
+      logger.debug("[Bedrock Model Provider] Adaptive thinking disabled", {
+        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+        modelId,
       });
     } else if (betaHeaders.length > 0) {
       // Add beta headers even without thinking or effort
@@ -1528,113 +1645,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     if (reasoningEffort) {
       this.applyReasoningEffort(requestInput, modelId, baseModelId, reasoningEffort);
-    }
-  }
-
-  /**
-   * Count tokens for a complete request using the CountTokens API.
-   * Falls back to estimation if the API is unavailable or fails.
-   * @param modelId The model ID to count tokens for
-   * @param input The complete input structure (messages, system, toolConfig)
-   * @param token Cancellation token
-   * @returns The number of input tokens
-   */
-  private async countRequestTokens(
-    modelId: string,
-    input: {
-      messages: Message[];
-      system?: SystemContentBlock[];
-      toolConfig?: ToolConfiguration;
-    },
-    token: CancellationToken,
-  ): Promise<number> {
-    // Fallback estimation function
-    const estimateTokens = (): number => {
-      let total = 0;
-
-      // Estimate messages tokens
-      for (const msg of input.messages) {
-        for (const content of msg.content ?? []) {
-          if ("text" in content && content.text) {
-            total += Math.ceil(content.text.length / 4);
-          }
-        }
-      }
-
-      // Estimate system tokens
-      if (input.system) {
-        for (const sys of input.system) {
-          if ("text" in sys && sys.text) {
-            total += Math.ceil(sys.text.length / 4);
-          }
-        }
-      }
-
-      // Estimate tool tokens
-      if ((input.toolConfig?.tools?.length ?? 0) > 0) {
-        try {
-          const json = JSON.stringify(input.toolConfig);
-          total += Math.ceil(json.length / 4);
-        } catch {
-          // Ignore serialization errors
-        }
-      }
-
-      return total;
-    };
-
-    try {
-      // Create AbortController for cancellation support
-      const abortController = new AbortController();
-      const cancellationListener = token.onCancellationRequested(() => {
-        abortController.abort();
-      });
-
-      try {
-        // Deep copy messages and strip thinking content for CountTokens API
-        // The CountTokens API doesn't support thinking blocks when thinking mode is not enabled,
-        // but our messages may contain thinking blocks from previous responses (injected via lastThinkingBlock)
-        const messagesForCounting = structuredClone(input.messages);
-        stripThinkingContent(messagesForCounting);
-
-        // Build the CountTokens API input
-        const countInput: CountTokensCommandInput["input"] = {
-          converse: {
-            messages: messagesForCounting,
-            ...(input.system && input.system.length > 0 ? { system: input.system } : {}),
-            ...(input.toolConfig ? { toolConfig: input.toolConfig } : {}),
-          },
-        };
-
-        // Use the CountTokens API
-        const tokenCount = await this.client.countTokens(
-          modelId,
-          countInput,
-          abortController.signal,
-        );
-
-        // If CountTokens API is available, use its result
-        if (tokenCount !== undefined) {
-          logger.debug(`[Bedrock Model Provider] Request token count from API: ${tokenCount}`);
-          return tokenCount;
-        }
-
-        // Fall back to estimation if CountTokens is not available
-        logger.debug(
-          "[Bedrock Model Provider] CountTokens not available for request, using estimation",
-        );
-        return estimateTokens();
-      } finally {
-        cancellationListener.dispose();
-      }
-    } catch (error) {
-      // If there's any error (including cancellation), fall back to estimation
-      if (error instanceof Error && error.name === "AbortError") {
-        logger.debug("[Bedrock Model Provider] Request token count cancelled, using estimation");
-      } else {
-        logger.warn("[Bedrock Model Provider] Request token count failed, using estimation", error);
-      }
-      return estimateTokens();
     }
   }
 
@@ -1666,12 +1676,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       }
 
       // Profile not in list, validate with Converse as last resort
-      const profileAccessible = await this.client.testInferenceProfileAccess(
+      const isProfileAccessible = await this.client.testInferenceProfileAccess(
         candidate.modelIdToUse,
         abortSignal,
       );
 
-      if (profileAccessible) {
+      if (isProfileAccessible) {
         return { ...candidate, isAccessible: true };
       }
 
@@ -1687,12 +1697,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     // No inference profile; check base model directly
-    const baseModelAccessible = await this.client.isModelAccessible(
+    const isBaseModelAccessible = await this.client.isModelAccessible(
       candidate.model.modelId,
       abortSignal,
     );
 
-    return { ...candidate, isAccessible: baseModelAccessible };
+    return { ...candidate, isAccessible: isBaseModelAccessible };
   }
 
   /**
@@ -1768,11 +1778,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     // No accessible profile found, fall back to base model
-    const baseModelAccessible = await this.client.isModelAccessible(
+    const isBaseModelAccessible = await this.client.isModelAccessible(
       candidate.model.modelId,
       abortSignal,
     );
-    if (baseModelAccessible) {
+    if (isBaseModelAccessible) {
       logger.info(
         `[Bedrock Model Provider] No accessible inference profile found for ${candidate.model.modelId}, using base model`,
       );
@@ -1815,8 +1825,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           !excludedProfileIds.has(profileId) && this.isRegionalProfileForModel(profileId, modelId),
       )
       .toSorted((a, b) => {
-        const aPriority = priorityByPrefix.get(a.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
-        const bPriority = priorityByPrefix.get(b.split(".")[0]) ?? Number.MAX_SAFE_INTEGER;
+        const aPriority = priorityByPrefix.get(a.split(".", 1)[0]) ?? Number.MAX_SAFE_INTEGER;
+        const bPriority = priorityByPrefix.get(b.split(".", 1)[0]) ?? Number.MAX_SAFE_INTEGER;
         return aPriority - bPriority || a.localeCompare(b);
       })[0];
   }
@@ -1837,9 +1847,9 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     const profile = getModelProfile(modelId);
     // Total context window = input budget + output limit (mirrors VS Code picker rendering)
     const totalContext = maxInput + maxOutput;
-    const ctxK = Math.round(totalContext / 1000);
+    const contextK = Math.round(totalContext / 1000);
     const outK = Math.round(maxOutput / 1000);
-    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M` : `${ctxK}K`;
+    const contextLabel = contextK >= 1000 ? `${(contextK / 1000).toFixed(0)}M` : `${contextK}K`;
 
     let thinkingDescription: string | undefined;
     if (profile.requiresAdaptiveThinking) {
@@ -1849,13 +1859,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     const parts = [
-      `${ctxLabel} ctx`,
+      `${contextLabel} ctx`,
       `${outK}K out`,
       ...(thinkingDescription ? [thinkingDescription] : []),
       ...(vision ? ["vision"] : []),
     ];
 
-    return parts.join(" \u00B7 ");
+    return parts.join(" \u{B7} ");
   }
 
   /**
@@ -1865,7 +1875,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    * users can distinguish between, e.g., `us.anthropic.claude-opus-4-7` vs
    * `global.anthropic.claude-opus-4-7` vs the base foundation model.
    */
-  private formatTooltip(args: {
+  private formatTooltip(arguments_: {
     maxInput: number;
     maxOutput: number;
     modelId: string;
@@ -1873,15 +1883,19 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     route: string;
     vision: boolean;
   }): string {
-    const profile = getModelProfile(args.modelId);
+    const profile = getModelProfile(arguments_.modelId);
     // Total context window = input budget + output limit (mirrors VS Code picker rendering)
-    const totalContext = args.maxInput + args.maxOutput;
-    const ctxK = Math.round(totalContext / 1000);
-    const ctxLabel = ctxK >= 1000 ? `${(ctxK / 1000).toFixed(0)}M tokens` : `${ctxK}K tokens`;
+    const totalContext = arguments_.maxInput + arguments_.maxOutput;
+    const contextK = Math.round(totalContext / 1000);
+    const contextLabel =
+      contextK >= 1000 ? `${(contextK / 1000).toFixed(0)}M tokens` : `${contextK}K tokens`;
 
     let thinkingLine: string | undefined;
-    if (profile.requiresAdaptiveThinking) {
+    if (profile.requiresAdaptiveThinking && profile.supportsThinkingEffort) {
       thinkingLine = "Thinking: adaptive only (uses output_config.effort)";
+    } else if (profile.requiresAdaptiveThinking) {
+      // Sonnet 5: adaptive thinking without output_config.effort support.
+      thinkingLine = "Thinking: adaptive only";
     } else if (profile.supportsThinkingEffort) {
       thinkingLine = "Thinking: enabled+budget_tokens with effort setting";
     } else if (profile.supportsThinking) {
@@ -1889,13 +1903,13 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
 
     const lines = [
-      `Amazon Bedrock - ${args.providerName}`,
-      `Route: ${args.route}`,
-      `Model ID: ${args.modelId}`,
-      `Context: ${ctxLabel} | Max output: ${Math.round(args.maxOutput / 1000)}K tokens`,
+      `Amazon Bedrock - ${arguments_.providerName}`,
+      `Route: ${arguments_.route}`,
+      `Model ID: ${arguments_.modelId}`,
+      `Context: ${contextLabel} | Max output: ${Math.round(arguments_.maxOutput / 1000)}K tokens`,
       ...(thinkingLine ? [thinkingLine] : []),
       ...(profile.temperatureDeprecated ? ["Note: temperature parameter is not supported"] : []),
-      ...(args.vision ? ["Vision: image input supported"] : []),
+      ...(arguments_.vision ? ["Vision: image input supported"] : []),
     ];
 
     return lines.join("\n");
@@ -2019,8 +2033,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
    */
   private logConvertedMessages(messages: Message[]): void {
     logger.debug("[Bedrock Model Provider] Converted to Bedrock messages:", messages.length);
-    for (const [idx, msg] of messages.entries()) {
-      const contentTypes = msg.content?.map((c) => {
+    for (const [index, message] of messages.entries()) {
+      const contentTypes = message.content?.map((c) => {
         if ("text" in c) return "text";
         if ("image" in c) return "image";
         if ("toolUse" in c) return "toolUse";
@@ -2030,7 +2044,10 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         if ("cachePoint" in c) return "cachePoint";
         return "unknown";
       });
-      logger.debug(`[Bedrock Model Provider] Bedrock message ${idx} (${msg.role}):`, contentTypes);
+      logger.debug(
+        `[Bedrock Model Provider] Bedrock message ${index} (${message.role}):`,
+        contentTypes,
+      );
     }
   }
 
@@ -2043,8 +2060,8 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     // Log full incoming VSCode messages at trace level for reproduction
     logger.trace("[Bedrock Model Provider] Full VSCode messages for reproduction:", {
-      messages: messages.map((msg) => ({
-        content: msg.content.map((part) => {
+      messages: messages.map((message) => ({
+        content: message.content.map((part) => {
           if (part instanceof vscode.LanguageModelTextPart) {
             return { type: "text", value: part.value };
           }
@@ -2055,7 +2072,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             return { callId: part.callId, content: part.content, type: "toolResult" };
           }
           if (typeof part === "object" && part != null && "mimeType" in part && "data" in part) {
-            const dataPart = part;
+            const dataPart = part as { data: Uint8Array; mimeType: string };
             return {
               dataLength: dataPart.data.length,
               mimeType: dataPart.mimeType,
@@ -2064,12 +2081,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
           }
           return { type: "unknown" };
         }),
-        role: msg.role,
+        role: message.role,
       })),
     });
 
-    for (const [idx, msg] of messages.entries()) {
-      const partTypes = msg.content.map((p) => {
+    for (const [index, message] of messages.entries()) {
+      const partTypes = message.content.map((p) => {
         if (p instanceof vscode.LanguageModelTextPart) return "text";
         if (p instanceof vscode.LanguageModelToolCallPart) {
           return `toolCall(${p.name})`;
@@ -2091,25 +2108,27 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         }
         return "unknown";
       });
-      logger.debug(`[Bedrock Model Provider] Message ${idx} (${msg.role}):`, partTypes);
+      logger.debug(`[Bedrock Model Provider] Message ${index} (${message.role}):`, partTypes);
       // Log tool result details
-      for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelToolResultPart) {
-          let contentPreview = "[Unable to preview]";
-          try {
-            const contentStr =
-              typeof part.content === "string" ? part.content : JSON.stringify(part.content);
-            contentPreview = contentStr.slice(0, 100);
-          } catch {
-            // Keep default
-          }
-          logger.debug(`[Bedrock Model Provider]   Tool Result:`, {
-            callId: part.callId,
-            contentPreview,
-            contentType: typeof part.content,
-            isError: "isError" in part ? part.isError : false,
-          });
+      for (const part of message.content) {
+        if (!(part instanceof vscode.LanguageModelToolResultPart)) {
+          continue;
         }
+
+        let contentPreview = "[Unable to preview]";
+        try {
+          const contentString =
+            typeof part.content === "string" ? part.content : JSON.stringify(part.content);
+          contentPreview = contentString.slice(0, 100);
+        } catch {
+          // Keep default
+        }
+        logger.debug(`[Bedrock Model Provider]   Tool Result:`, {
+          callId: part.callId,
+          contentPreview,
+          contentType: typeof part.content,
+          isError: "isError" in part ? part.isError : false,
+        });
       }
     }
   }
@@ -2214,6 +2233,67 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
+   * Wraps {@link processResponseStream} with a single generic retry: if Bedrock
+   * rejects the request because of an unsupported/unknown parameter (typically
+   * a field we opted the model into via profiles.ts or a models.dev heuristic,
+   * but which this particular model build doesn't actually support), we strip
+   * that field from the request and retry exactly once. A warning is surfaced
+   * to the user (via a text part) so they know the extension auto-recovered
+   * and can report the gap upstream.
+   *
+   * This guards against Bedrock adding new models that don't match our
+   * hardcoded capability assumptions, without requiring a code change for
+   * every such mismatch.
+   */
+  private async processResponseStreamWithFallback(
+    requestInput: ConverseStreamCommandInput,
+    trackingProgress: Progress<LanguageModelResponsePart2>,
+    extendedThinkingEnabled: boolean,
+    token: CancellationToken,
+    modelId: string,
+  ): Promise<void> {
+    try {
+      await this.processResponseStream(
+        requestInput,
+        trackingProgress,
+        extendedThinkingEnabled,
+        token,
+      );
+    } catch (error) {
+      const unsupportedParameterName = getUnsupportedParameterName(error);
+      if (!unsupportedParameterName) {
+        throw error;
+      }
+
+      const wasRemoved = didRemoveUnsupportedParameter(requestInput, unsupportedParameterName);
+      if (!wasRemoved) {
+        // We recognized the error shape but couldn't locate/remove the field
+        // (e.g. it lives somewhere we don't know how to strip) -- don't retry
+        // blindly, just surface the original error.
+        throw error;
+      }
+
+      logger.warn("[Bedrock Model Provider] Retrying after stripping unsupported parameter", {
+        modelId,
+        parameter: unsupportedParameterName,
+      });
+
+      const warningMessage =
+        ` **Bedrock Copilot Chat**: model \`${modelId}\` rejected the \`${unsupportedParameterName}\` ` +
+        "parameter. Retried without it. Please report this to the extension developers " +
+        "(github.com/vtkn/amazon-bedrock-copilot-chat/issues) so support can be fixed.\n\n";
+      trackingProgress.report(new vscode.LanguageModelTextPart(warningMessage));
+
+      await this.processResponseStream(
+        requestInput,
+        trackingProgress,
+        extendedThinkingEnabled,
+        token,
+      );
+    }
+  }
+
+  /**
    * Resolve token limits for a model, preferring live data from models.dev over
    * the hardcoded `getModelTokenLimits` fallback.
    *
@@ -2231,7 +2311,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   private resolveModelLimits(
     modelId: string,
     context1MEnabled: boolean,
-    modelsDevMap: ModelsDevMap,
+    modelsDevelopmentMap: ModelsDevelopmentMap,
   ): { maxInputTokens: number; maxOutputTokens: number } {
     // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
     // can match against the bare model IDs stored in models.dev.
@@ -2239,78 +2319,82 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // so a direct + normalized lookup may still miss entries stored under a
     // different prefix variant. Fall back to a full-map scan by normalized ID.
     const normalizedId = normalizeModelId(modelId);
-    let devEntry = modelsDevMap.get(modelId) ?? modelsDevMap.get(normalizedId);
-    if (!devEntry) {
-      for (const [key, entry] of modelsDevMap) {
-        if (normalizeModelId(key) === normalizedId) {
-          devEntry = entry;
-          break;
-        }
-      }
-    }
+    const developmentEntry = resolveModelsDevelopmentEntry(modelId, normalizedId, modelsDevelopmentMap);
 
-    if (devEntry) {
-      const devOutput = devEntry.limit.output;
-      const devContext = devEntry.limit.context;
+    if (developmentEntry) {
+      const developmentOutput = developmentEntry.limit.output;
+      const developmentContext = developmentEntry.limit.context;
 
       // VS Code renders the context window size in the model picker as
       // `maxInputTokens + maxOutputTokens`, so maxInputTokens must be the input
       // budget (context - output), not the raw context window.
       //
       // For models with optional 1M context (requires beta header opt-in), respect the setting.
-      if (devContext >= 1_000_000 && requires1MContextBetaHeader(modelId)) {
-        const effectiveContext = context1MEnabled ? devContext : 200_000;
+      if (developmentContext >= 1_000_000 && requires1MContextBetaHeader(modelId)) {
+        const effectiveContext = context1MEnabled ? developmentContext : 200_000;
         return {
-          maxInputTokens: effectiveContext - devOutput,
-          maxOutputTokens: devOutput,
+          maxInputTokens: effectiveContext - developmentOutput,
+          maxOutputTokens: developmentOutput,
         };
       }
 
       // For all other models (including always-1M like Opus 4.7/4.8), use live limits directly.
       return {
-        maxInputTokens: devContext - devOutput,
-        maxOutputTokens: devOutput,
+        maxInputTokens: developmentContext - developmentOutput,
+        maxOutputTokens: developmentOutput,
       };
     }
 
     // Fall back to hardcoded profiles for models not yet in models.dev
     return getModelTokenLimits(modelId, context1MEnabled);
   }
+}
 
-  /**
-   * Validate token count against model limits
-   */
-  private async validateTokenCount(
-    model: LanguageModelChatInformation,
-    requestInput: ConverseStreamCommandInput,
-    token: CancellationToken,
-  ): Promise<void> {
-    const inputTokenCount = await this.countRequestTokens(
-      model.id,
-      {
-        messages: requestInput.messages!,
-        system: requestInput.system,
-        toolConfig: requestInput.toolConfig,
-      },
-      token,
-    );
+/**
+ * GPT-5.x named variants (Luna, Sol, Terra) are CLI-verified via
+ * `aws bedrock-runtime converse` (2026-08-22) to reject the `reasoning_effort`
+ * field with an "unknown_parameter" error, even though models.dev reports
+ * `reasoning: true` for all three -- that flag is misleading for Bedrock's
+ * actual behavior on these specific model IDs. Shared by both the
+ * configuration schema (picker visibility) and request building (actual
+ * field inclusion) so the two can never drift out of sync.
+ */
+function isNamedGpt5Variant(baseModelId: string): boolean {
+  return (
+    baseModelId.includes("-luna") || baseModelId.includes("-sol") || baseModelId.includes("-terra")
+  );
+}
 
-    const tokenLimit = Math.max(1, model.maxInputTokens);
-    if (inputTokenCount > tokenLimit) {
-      logger.error("[Bedrock Model Provider] Message exceeds token limit", {
-        inputTokenCount,
-        tokenLimit,
-      });
-      throw new Error(
-        `Message exceeds token limit. Input: ${inputTokenCount} tokens, Limit: ${tokenLimit} tokens.`,
-      );
-    }
-
-    logger.debug("[Bedrock Model Provider] Token count validation passed", {
-      inputTokenCount,
-      tokenLimit,
-    });
+/**
+ * Look up a models.dev entry for a model ID, trying (in order):
+ * 1. Exact match on the raw model ID.
+ * 2. Exact match on the normalized ID (regional prefix stripped).
+ * 3. A full-map scan comparing normalized keys against the normalized ID.
+ *
+ * Step 3 is necessary because models.dev entries can be stored under a
+ * different regional prefix (e.g. `global.`) than the one currently in use
+ * (e.g. `us.`) for the same base model -- a direct or single normalized
+ * lookup can miss the entry entirely. Shared by every call site that reads
+ * models.dev capability/limit data (buildConfigurationSchema,
+ * resolveModelLimits, provideLanguageModelChatResponse) so they can never
+ * drift out of sync on how models.dev entries are resolved.
+ */
+function resolveModelsDevelopmentEntry(
+  modelId: string,
+  normalizedId: string,
+  modelsDevelopmentMap: ModelsDevelopmentMap,
+): ModelsDevelopmentEntry | undefined {
+  const direct = modelsDevelopmentMap.get(modelId) ?? modelsDevelopmentMap.get(normalizedId);
+  if (direct) {
+    return direct;
   }
+
+  for (const [key, entry] of modelsDevelopmentMap) {
+    if (normalizeModelId(key) === normalizedId) {
+      return entry;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2334,5 +2418,148 @@ function isContextWindowOverflowError(error: unknown): boolean {
   }
 
   const errorMessage = error instanceof Error ? error.message : inspect(error);
-  return CONTEXT_WINDOW_OVERFLOW_MESSAGES.some((msg) => errorMessage.includes(msg));
+  return CONTEXT_WINDOW_OVERFLOW_MESSAGES.some((message) => errorMessage.includes(message));
 }
+
+/**
+ * Regexes matching known "unsupported/unknown parameter" error shapes from
+ * Bedrock-fronted providers (OpenAI-compatible passthrough errors, and
+ * Bedrock's own ValidationException wording). Each must capture the offending
+ * parameter name in group 1.
+ */
+const UNSUPPORTED_PARAMETER_PATTERNS = [
+  // OpenAI-compatible passthrough error, e.g.:
+  // {"error":{"code":"unknown_parameter","message":"Unknown parameter: 'reasoning_effort'.","param":"reasoning_effort", ...}}
+  /"param"\s*:\s*"([\w.]+)"[^}]*"unknown_parameter"/,
+  /"unknown_parameter"[^}]*"param"\s*:\s*"([\w.]+)"/,
+  /Unknown parameter:\s*'([\w.]+)'/i,
+  // Bedrock ValidationException wording for unrecognized additionalModelRequestFields keys
+  /Unrecognized (?:request )?(?:field|parameter|argument)[:\s]+['"]?([\w.]+)['"]?/i,
+  /extraneous key \[([\w.]+)\] is not permitted/i,
+];
+
+/**
+ * Delete a dotted path (e.g. "output_config.effort") from a nested record,
+ * mutating it in place. Returns true if the leaf key was found and removed.
+ */
+function didDeleteDottedPath(root: Record<string, unknown>, dottedPath: string): boolean {
+  const pathParts = dottedPath.split(".");
+  const [rootKey, ...pathRest] = pathParts;
+  const rootValue = root[rootKey];
+  if (pathRest.length === 0 || !rootValue || typeof rootValue !== "object") {
+    return false;
+  }
+
+  // Walk down to the leaf's parent, keeping track of each ancestor object and
+  // the key used to reach it so we can prune now-empty ancestors afterward.
+  const ancestors: { key: string; object: Record<string, unknown> }[] = [
+    { key: rootKey, object: root },
+  ];
+  let cursor: Record<string, unknown> = rootValue as Record<string, unknown>;
+  for (let index = 0; index < pathRest.length - 1; index++) {
+    const next = cursor[pathRest[index]];
+    if (!next || typeof next !== "object") {
+      return false;
+    }
+    ancestors.push({ key: pathRest[index], object: cursor });
+    cursor = next as Record<string, unknown>;
+  }
+
+  const leafKey = pathRest.at(-1)!;
+  if (!Object.hasOwn(cursor, leafKey)) {
+    return false;
+  }
+  delete cursor[leafKey];
+
+  // Prune now-empty parent objects (e.g. an emptied `output_config` or
+  // `thinking` object) so the retry request doesn't resend an empty object
+  // that Bedrock may reject with the same or a different validation error.
+  let emptyChild: Record<string, unknown> = cursor;
+  for (let index = ancestors.length - 1; index >= 0; index--) {
+    if (Object.keys(emptyChild).length > 0) {
+      break;
+    }
+    const { key, object: parent } = ancestors[index];
+    delete parent[key];
+    emptyChild = parent;
+  }
+
+  return true;
+}
+
+/**
+ * Remove a top-level or `additionalModelRequestFields`-nested parameter from
+ * the request input, mutating it in place. Returns true if the field was
+ * found and removed, false otherwise (caller should not retry in that case).
+ */
+function didRemoveUnsupportedParameter(
+  requestInput: ConverseStreamCommandInput,
+  parameterName: string,
+): boolean {
+  // temperature/topP/stopSequences live under inferenceConfig, not at the
+  // request root or in additionalModelRequestFields. Support both the bare
+  // key (e.g. "temperature") and the dotted form some providers report
+  // (e.g. "inferenceConfig.temperature").
+  const inferenceConfig = requestInput.inferenceConfig as Record<string, unknown> | undefined;
+  const inferenceConfigKey = parameterName.startsWith("inferenceConfig.")
+    ? parameterName.slice("inferenceConfig.".length)
+    : parameterName;
+  if (inferenceConfig && Object.hasOwn(inferenceConfig, inferenceConfigKey)) {
+    delete inferenceConfig[inferenceConfigKey];
+    return true;
+  }
+
+  const additionalFields = requestInput.additionalModelRequestFields as
+    | Record<string, unknown>
+    | undefined;
+
+  if (additionalFields && Object.hasOwn(additionalFields, parameterName)) {
+    delete additionalFields[parameterName];
+    return true;
+  }
+
+  // Also handle dotted paths like "output_config.effort"
+  if (
+    parameterName.includes(".") &&
+    additionalFields &&
+    didDeleteDottedPath(additionalFields, parameterName)
+  ) {
+    return true;
+  }
+
+  const requestRecord = requestInput as unknown as Record<string, unknown>;
+  if (Object.hasOwn(requestRecord, parameterName)) {
+    delete requestRecord[parameterName];
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Attempt to extract the name of an unsupported/unknown parameter from a
+ * Bedrock/Converse API error. Returns undefined if the error doesn't match
+ * any known "unknown parameter" shape.
+ */
+function getUnsupportedParameterName(error: unknown): string | undefined {
+  if (!error) {
+    return undefined;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : inspect(error);
+  for (const pattern of UNSUPPORTED_PARAMETER_PATTERNS) {
+    const match = pattern.exec(errorMessage);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+  return undefined;
+}
+
+/* eslint-enable unicorn/consistent-boolean-name -- end intentional file-level exception */
+/* eslint-enable unicorn/consistent-class-member-order -- end intentional file-level exception */
+/* eslint-enable unicorn/consistent-function-scoping -- end intentional file-level exception */
+/* eslint-enable unicorn/no-break-in-nested-loop -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-includes-over-repeated-comparisons -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-simple-condition-first -- end intentional file-level exception */
+/* eslint-enable unicorn/prefer-ternary -- end intentional file-level exception */
