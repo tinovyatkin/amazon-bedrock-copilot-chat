@@ -8,21 +8,21 @@
 
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-  ConverseStreamCommandInput,
-  Message,
-  SystemContentBlock,
-  ToolConfiguration,
+    ConverseStreamCommandInput,
+    Message,
+    SystemContentBlock,
+    ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-  CancellationToken,
-  LanguageModelChatInformation,
-  LanguageModelChatMessage,
-  LanguageModelChatProvider,
-  LanguageModelConfigurationSchema,
-  LanguageModelResponsePart,
-  LanguageModelResponsePart2,
-  Progress,
+    CancellationToken,
+    LanguageModelChatInformation,
+    LanguageModelChatMessage,
+    LanguageModelChatProvider,
+    LanguageModelConfigurationSchema,
+    LanguageModelResponsePart,
+    LanguageModelResponsePart2,
+    Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
@@ -33,18 +33,19 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
 import {
-  getModelProfile,
-  getModelTokenLimits,
-  normalizeModelId,
-  requires1MContextBetaHeader,
+    getModelProfile,
+    getModelTokenLimits,
+    normalizeModelId,
+    requires1MContextBetaHeader,
 } from "./profiles";
 import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type {
-  AuthConfig,
-  AuthMethod,
-  BedrockModelSummary,
-  ModelsDevMap as ModelsDevelopmentMap,
+    AuthConfig,
+    AuthMethod,
+    BedrockModelSummary,
+    ModelsDevEntry as ModelsDevelopmentEntry,
+    ModelsDevMap as ModelsDevelopmentMap,
 } from "./types";
 import { validateBedrockMessages } from "./validation";
 
@@ -589,15 +590,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // models (temperatureDeprecated, tool_call support).
       const modelsDevelopmentMap = loadModelsDevelopmentData();
       const normalizedBaseId = normalizeModelId(baseModelId);
-      const chatDevelopmentEntry =
-        modelsDevelopmentMap.get(baseModelId) ??
-        modelsDevelopmentMap.get(normalizedBaseId) ??
-        (() => {
-          // Full-scan fallback: strip version suffix and match by normalized prefix
-          for (const [key, entry] of modelsDevelopmentMap) {
-            if (normalizeModelId(key) === normalizedBaseId) return entry;
-          }
-        })();
+      const chatDevelopmentEntry = resolveModelsDevelopmentEntry(
+        baseModelId,
+        normalizedBaseId,
+        modelsDevelopmentMap,
+      );
 
       // temperatureDeprecated: profiles.ts is authoritative; fall back to
       // models.dev `temperature: false` for models not yet enumerated.
@@ -923,18 +920,59 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return 0;
     };
 
+    // Image MIME types that convertMessages actually forwards to Bedrock as
+    // image content blocks (see isImageDataPart in converters/messages.ts).
+    const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+
+    // Estimate the token cost of a single image data part. convertMessages
+    // sends PNG/JPEG/GIF/WebP LanguageModelDataPart values to Bedrock as
+    // image blocks, but images don't tokenize like text -- counting their
+    // raw byte length via char_count/4 would wildly overcount, while
+    // returning 0 (the previous behavior) undercounts and can cause context
+    // overflows to go undetected. Without decoding pixel dimensions, use a
+    // conservative estimate based on the base64-encoded payload size, which
+    // approximates Claude's vision token cost of roughly
+    // (width * height) / 750 for typical photo/screenshot compression ratios.
+    const estimateImageTokens = (dataLength: number): number => {
+      const base64Length = Math.ceil(dataLength / 3) * 4;
+      return Math.ceil(base64Length / 100);
+    };
+
+    // Sum image token costs (bypasses the char_count/4 + multiplier path
+    // used for text, since image tokenization doesn't scale the same way).
+    const estimateImagePartTokens = (part: unknown): number => {
+      if (
+        part instanceof vscode.LanguageModelDataPart &&
+        SUPPORTED_IMAGE_MIME_TYPES.has(part.mimeType)
+      ) {
+        return estimateImageTokens(part.data.length);
+      }
+      if (part instanceof vscode.LanguageModelToolResultPart) {
+        return part.content.reduce(
+          (sum: number, inner: unknown) => sum + estimateImagePartTokens(inner),
+          0,
+        );
+      }
+      return 0;
+    };
+
     // Fallback estimation function with model-aware token multipliers
     const estimateTokens = (input: LanguageModelChatMessage | string, modelId: string): number => {
       const multiplier = getTokenMultiplier(modelId);
-      const charLength =
-        typeof input === "string"
-          ? input.length
-          : input.content.reduce(
-              (sum: number, part: unknown) => sum + estimatePartCharLength(part),
-              0,
-            );
+      if (typeof input === "string") {
+        return Math.ceil((input.length / 4) * multiplier);
+      }
 
-      return Math.ceil((charLength / 4) * multiplier);
+      const charLength = input.content.reduce(
+        (sum: number, part: unknown) => sum + estimatePartCharLength(part),
+        0,
+      );
+      const imageTokens = input.content.reduce(
+        (sum: number, part: unknown) => sum + estimateImagePartTokens(part),
+        0,
+      );
+
+      return Math.ceil((charLength / 4) * multiplier) + imageTokens;
     };
 
     try {
@@ -1143,10 +1181,14 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
 
     // Resolve the models.dev entry for live capability data.
     // normalizeModelId strips regional prefixes (us., eu., global., etc.) so we
-    // can match against the bare model IDs stored in models.dev.
+    // can match against the bare model IDs stored in models.dev. Falls back to
+    // a full-map scan by normalized ID (same as resolveModelLimits and the
+    // chatDevelopmentEntry lookup in provideLanguageModelChatResponse) because
+    // models.dev entries can be stored under a different regional prefix than
+    // the one currently selected (e.g. picker uses `us.` but models.dev only
+    // has a `global.` entry for the same base model).
     const normalizedId = normalizeModelId(modelId);
-    const developmentEntry =
-      modelsDevelopmentMap.get(modelId) ?? modelsDevelopmentMap.get(normalizedId);
+    const developmentEntry = resolveModelsDevelopmentEntry(modelId, normalizedId, modelsDevelopmentMap);
 
     // ── Context size picker ────────────────────────────────────────────────
     // Only shown for models where 1M context is an *optional* beta-header opt-in
@@ -1849,8 +1891,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       contextK >= 1000 ? `${(contextK / 1000).toFixed(0)}M tokens` : `${contextK}K tokens`;
 
     let thinkingLine: string | undefined;
-    if (profile.requiresAdaptiveThinking) {
+    if (profile.requiresAdaptiveThinking && profile.supportsThinkingEffort) {
       thinkingLine = "Thinking: adaptive only (uses output_config.effort)";
+    } else if (profile.requiresAdaptiveThinking) {
+      // Sonnet 5: adaptive thinking without output_config.effort support.
+      thinkingLine = "Thinking: adaptive only";
     } else if (profile.supportsThinkingEffort) {
       thinkingLine = "Thinking: enabled+budget_tokens with effort setting";
     } else if (profile.supportsThinking) {
@@ -2274,16 +2319,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // so a direct + normalized lookup may still miss entries stored under a
     // different prefix variant. Fall back to a full-map scan by normalized ID.
     const normalizedId = normalizeModelId(modelId);
-    let developmentEntry =
-      modelsDevelopmentMap.get(modelId) ?? modelsDevelopmentMap.get(normalizedId);
-    if (!developmentEntry) {
-      for (const [key, entry] of modelsDevelopmentMap) {
-        if (normalizeModelId(key) === normalizedId) {
-          developmentEntry = entry;
-          break;
-        }
-      }
-    }
+    const developmentEntry = resolveModelsDevelopmentEntry(modelId, normalizedId, modelsDevelopmentMap);
 
     if (developmentEntry) {
       const developmentOutput = developmentEntry.limit.output;
@@ -2327,6 +2363,38 @@ function isNamedGpt5Variant(baseModelId: string): boolean {
   return (
     baseModelId.includes("-luna") || baseModelId.includes("-sol") || baseModelId.includes("-terra")
   );
+}
+
+/**
+ * Look up a models.dev entry for a model ID, trying (in order):
+ * 1. Exact match on the raw model ID.
+ * 2. Exact match on the normalized ID (regional prefix stripped).
+ * 3. A full-map scan comparing normalized keys against the normalized ID.
+ *
+ * Step 3 is necessary because models.dev entries can be stored under a
+ * different regional prefix (e.g. `global.`) than the one currently in use
+ * (e.g. `us.`) for the same base model -- a direct or single normalized
+ * lookup can miss the entry entirely. Shared by every call site that reads
+ * models.dev capability/limit data (buildConfigurationSchema,
+ * resolveModelLimits, provideLanguageModelChatResponse) so they can never
+ * drift out of sync on how models.dev entries are resolved.
+ */
+function resolveModelsDevelopmentEntry(
+  modelId: string,
+  normalizedId: string,
+  modelsDevelopmentMap: ModelsDevelopmentMap,
+): ModelsDevelopmentEntry | undefined {
+  const direct = modelsDevelopmentMap.get(modelId) ?? modelsDevelopmentMap.get(normalizedId);
+  if (direct) {
+    return direct;
+  }
+
+  for (const [key, entry] of modelsDevelopmentMap) {
+    if (normalizeModelId(key) === normalizedId) {
+      return entry;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2375,18 +2443,25 @@ const UNSUPPORTED_PARAMETER_PATTERNS = [
  * mutating it in place. Returns true if the leaf key was found and removed.
  */
 function didDeleteDottedPath(root: Record<string, unknown>, dottedPath: string): boolean {
-  const [rootKey, ...pathRest] = dottedPath.split(".");
+  const pathParts = dottedPath.split(".");
+  const [rootKey, ...pathRest] = pathParts;
   const rootValue = root[rootKey];
   if (pathRest.length === 0 || !rootValue || typeof rootValue !== "object") {
     return false;
   }
 
+  // Walk down to the leaf's parent, keeping track of each ancestor object and
+  // the key used to reach it so we can prune now-empty ancestors afterward.
+  const ancestors: { key: string; object: Record<string, unknown> }[] = [
+    { key: rootKey, object: root },
+  ];
   let cursor: Record<string, unknown> = rootValue as Record<string, unknown>;
   for (let index = 0; index < pathRest.length - 1; index++) {
     const next = cursor[pathRest[index]];
     if (!next || typeof next !== "object") {
       return false;
     }
+    ancestors.push({ key: pathRest[index], object: cursor });
     cursor = next as Record<string, unknown>;
   }
 
@@ -2395,6 +2470,20 @@ function didDeleteDottedPath(root: Record<string, unknown>, dottedPath: string):
     return false;
   }
   delete cursor[leafKey];
+
+  // Prune now-empty parent objects (e.g. an emptied `output_config` or
+  // `thinking` object) so the retry request doesn't resend an empty object
+  // that Bedrock may reject with the same or a different validation error.
+  let emptyChild: Record<string, unknown> = cursor;
+  for (let index = ancestors.length - 1; index >= 0; index--) {
+    if (Object.keys(emptyChild).length > 0) {
+      break;
+    }
+    const { key, object: parent } = ancestors[index];
+    delete parent[key];
+    emptyChild = parent;
+  }
+
   return true;
 }
 
