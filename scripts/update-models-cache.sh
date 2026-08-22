@@ -14,11 +14,11 @@ TEMP_FILE=$(mktemp)
 trap 'rm -f "$TEMP_FILE"' EXIT
 
 echo "Fetching $URL ..."
-curl -fsSL "$URL" > "$TEMP_FILE"
+curl --connect-timeout 10 --max-time 60 -fsSL "$URL" > "$TEMP_FILE"
 
 # Extract only the amazon-bedrock section to keep the file small
 python3 <<PYTHON_EOF
-import os, sys, json
+import os, sys, json, tempfile
 
 try:
     with open('$TEMP_FILE', 'r') as f:
@@ -39,12 +39,20 @@ if not isinstance(models, dict):
 
 output = json.dumps({'amazon-bedrock': bedrock}, indent=2, sort_keys=True)
 
-# Write atomically: build the file next to the destination, then rename it
-# into place, so a crash or interruption never leaves a truncated cache.
-tmp_cache = '$CACHE_FILE' + '.tmp'
-with open(tmp_cache, 'w') as f:
-    f.write(output)
-os.replace(tmp_cache, '$CACHE_FILE')
+# Write atomically: build the file next to the destination (unique per
+# invocation so concurrent runs don't race on the same temp path), then
+# rename it into place so a crash or interruption never leaves a truncated
+# cache.
+cache_dir = os.path.dirname(os.path.abspath('$CACHE_FILE')) or '.'
+fd, tmp_cache = tempfile.mkstemp(dir=cache_dir, prefix='.models-dev-cache-', suffix='.tmp')
+try:
+    with os.fdopen(fd, 'w') as f:
+        f.write(output)
+    os.replace(tmp_cache, '$CACHE_FILE')
+except BaseException:
+    if os.path.exists(tmp_cache):
+        os.remove(tmp_cache)
+    raise
 
 MODEL_COUNT = len(models)
 print(f"Done. {MODEL_COUNT} models written to $CACHE_FILE")

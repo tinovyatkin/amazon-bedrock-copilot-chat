@@ -8,21 +8,21 @@
 
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-    ConverseStreamCommandInput,
-    Message,
-    SystemContentBlock,
-    ToolConfiguration,
+  ConverseStreamCommandInput,
+  Message,
+  SystemContentBlock,
+  ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-    CancellationToken,
-    LanguageModelChatInformation,
-    LanguageModelChatMessage,
-    LanguageModelChatProvider,
-    LanguageModelConfigurationSchema,
-    LanguageModelResponsePart,
-    LanguageModelResponsePart2,
-    Progress,
+  CancellationToken,
+  LanguageModelChatInformation,
+  LanguageModelChatMessage,
+  LanguageModelChatProvider,
+  LanguageModelConfigurationSchema,
+  LanguageModelResponsePart,
+  LanguageModelResponsePart2,
+  Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
@@ -33,18 +33,18 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
 import {
-    getModelProfile,
-    getModelTokenLimits,
-    normalizeModelId,
-    requires1MContextBetaHeader,
+  getModelProfile,
+  getModelTokenLimits,
+  normalizeModelId,
+  requires1MContextBetaHeader,
 } from "./profiles";
 import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type {
-    AuthConfig,
-    AuthMethod,
-    BedrockModelSummary,
-    ModelsDevMap as ModelsDevelopmentMap,
+  AuthConfig,
+  AuthMethod,
+  BedrockModelSummary,
+  ModelsDevMap as ModelsDevelopmentMap,
 } from "./types";
 import { validateBedrockMessages } from "./validation";
 
@@ -655,14 +655,11 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // reasoningEffort: profiles.ts is authoritative. A models.dev entry with
       // reasoning=true can only ADD support when profiles.ts has no explicit
       // opinion; it must never override an explicit profiles.ts opt-out (e.g.
-      // gpt-5.x-luna variants, which are CLI-verified to reject the field).
+      // gpt-5.x named variants -- Luna/Sol/Terra -- which are CLI-verified to
+      // reject the field).
       const isAnthropicBaseModel = baseModelId.toLowerCase().includes("anthropic.");
-      const isLunaVariant =
-        baseModelId.includes("gpt-5.4-luna") ||
-        baseModelId.includes("gpt-5.5-luna") ||
-        baseModelId.includes("gpt-5.6-luna");
       const isEffectiveSupportsReasoningEffort =
-        !isLunaVariant &&
+        !isNamedGpt5Variant(baseModelId) &&
         (modelProfile.supportsReasoningEffort ||
           (chatDevelopmentEntry?.reasoning === true && !isAnthropicBaseModel));
 
@@ -903,23 +900,41 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       return 1;
     };
 
+    // Estimate the character length of a single message content part.
+    // Text parts count directly; tool calls/results serialize their payload
+    // so large tool inputs/outputs aren't undercounted as zero tokens.
+    const estimatePartCharLength = (part: unknown): number => {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        return part.value.length;
+      }
+      if (part instanceof vscode.LanguageModelToolCallPart) {
+        try {
+          return JSON.stringify(part.input).length;
+        } catch {
+          return 0;
+        }
+      }
+      if (part instanceof vscode.LanguageModelToolResultPart) {
+        return part.content.reduce(
+          (sum: number, inner: unknown) => sum + estimatePartCharLength(inner),
+          0,
+        );
+      }
+      return 0;
+    };
+
     // Fallback estimation function with model-aware token multipliers
     const estimateTokens = (input: LanguageModelChatMessage | string, modelId: string): number => {
       const multiplier = getTokenMultiplier(modelId);
-      const baseEstimate =
+      const charLength =
         typeof input === "string"
-          ? input.length / 4
-          : (() => {
-              let total = 0;
-              for (const part of input.content) {
-                if (part instanceof vscode.LanguageModelTextPart) {
-                  total += part.value.length / 4;
-                }
-              }
-              return total;
-            })();
+          ? input.length
+          : input.content.reduce(
+              (sum: number, part: unknown) => sum + estimatePartCharLength(part),
+              0,
+            );
 
-      return Math.ceil(baseEstimate * multiplier);
+      return Math.ceil((charLength / 4) * multiplier);
     };
 
     try {
@@ -1233,10 +1248,16 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // Use profiles.ts flag as primary signal. Supplement with models.dev:
     // if models.dev says `reasoning: true` for a non-Anthropic model that
     // profiles.ts doesn't know about yet, show the picker for it too.
+    // gpt-5.x named variants (Luna/Sol/Terra) are excluded even if models.dev
+    // reports `reasoning: true` -- they're CLI-verified to reject the field,
+    // so the picker would offer a control with no effect (see isNamedGpt5Variant).
     const isAnthropicModel = modelId.toLowerCase().includes("anthropic.");
     const isDevelopmentSupportsReasoning =
       developmentEntry?.reasoning === true && !isAnthropicModel;
-    if (modelProfile.supportsReasoningEffort || isDevelopmentSupportsReasoning) {
+    if (
+      !isNamedGpt5Variant(modelId) &&
+      (modelProfile.supportsReasoningEffort || isDevelopmentSupportsReasoning)
+    ) {
       const isOpenAI = modelId.toLowerCase().includes("openai.");
       const effortLevels = isOpenAI
         ? (["minimal", "low", "medium", "high"] as const)
@@ -2291,6 +2312,21 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     // Fall back to hardcoded profiles for models not yet in models.dev
     return getModelTokenLimits(modelId, context1MEnabled);
   }
+}
+
+/**
+ * GPT-5.x named variants (Luna, Sol, Terra) are CLI-verified via
+ * `aws bedrock-runtime converse` (2026-08-22) to reject the `reasoning_effort`
+ * field with an "unknown_parameter" error, even though models.dev reports
+ * `reasoning: true` for all three -- that flag is misleading for Bedrock's
+ * actual behavior on these specific model IDs. Shared by both the
+ * configuration schema (picker visibility) and request building (actual
+ * field inclusion) so the two can never drift out of sync.
+ */
+function isNamedGpt5Variant(baseModelId: string): boolean {
+  return (
+    baseModelId.includes("-luna") || baseModelId.includes("-sol") || baseModelId.includes("-terra")
+  );
 }
 
 /**

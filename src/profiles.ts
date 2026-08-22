@@ -309,22 +309,24 @@ export function getModelProfile(modelId: string): ModelProfile {
 
     case "openai": {
       // OpenAI models on Bedrock support tool choice AND the OpenAI-style
-      // `reasoning_effort` parameter (CLI-verified: low | medium | high work;
-      // `minimal` is OpenAI-only; `max` is rejected).
+      // `reasoning_effort` parameter (CLI-verified: low | medium | high work
+      // on gpt-oss; `minimal` is OpenAI-only; `max` is rejected).
       //
       // Temperature support varies by model (via models.dev):
       // - gpt-oss models: accept temperature
       // - gpt-5.x and gpt-5.x-luna/sol/terra: reject temperature
       //
-      // gpt-5.x-luna variants (Luna 5.6, etc.) do NOT support reasoning_effort
-      // despite being OpenAI models on Bedrock.
+      // CLI-verified via `aws bedrock-runtime converse` (2026-08-22): ALL
+      // gpt-5.6 named variants (Luna, Sol, Terra) reject reasoning_effort
+      // with "unknown_parameter", not just Luna. models.dev reports
+      // `reasoning: true` for all three, which is misleading for Bedrock's
+      // actual behavior -- do not trust that flag for -luna/-sol/-terra IDs.
       const isRejectsTemperature =
         modelId.includes("gpt-5.4") || modelId.includes("gpt-5.5") || modelId.includes("gpt-5.6");
 
-      const isSupportsReasoningEffort =
-        !modelId.includes("gpt-5.6-luna") &&
-        !modelId.includes("gpt-5.5-luna") &&
-        !modelId.includes("gpt-5.4-luna");
+      const isNamedVariant =
+        modelId.includes("-luna") || modelId.includes("-sol") || modelId.includes("-terra");
+      const isSupportsReasoningEffort = !isNamedVariant;
 
       return {
         requiresAdaptiveThinking: false,
