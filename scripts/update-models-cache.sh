@@ -11,14 +11,14 @@ CACHE_FILE="src/models-dev-cache.json"
 URL="https://models.dev/api.json"
 TEMP_FILE=$(mktemp)
 
-trap "rm -f '$TEMP_FILE'" EXIT
+trap 'rm -f "$TEMP_FILE"' EXIT
 
 echo "Fetching $URL ..."
 curl -fsSL "$URL" > "$TEMP_FILE"
 
 # Extract only the amazon-bedrock section to keep the file small
 python3 <<PYTHON_EOF
-import sys, json
+import os, sys, json
 
 try:
     with open('$TEMP_FILE', 'r') as f:
@@ -28,15 +28,25 @@ except json.JSONDecodeError as e:
     sys.exit(1)
 
 bedrock = data.get('amazon-bedrock')
-if not bedrock:
-    print("ERROR: amazon-bedrock section not found in models.dev response", file=sys.stderr)
+if not isinstance(bedrock, dict):
+    print("ERROR: amazon-bedrock section not found or not an object in models.dev response", file=sys.stderr)
+    sys.exit(1)
+
+models = bedrock.get('models')
+if not isinstance(models, dict):
+    print("ERROR: amazon-bedrock.models is missing or not an object in models.dev response", file=sys.stderr)
     sys.exit(1)
 
 output = json.dumps({'amazon-bedrock': bedrock}, indent=2, sort_keys=True)
-with open('$CACHE_FILE', 'w') as f:
-    f.write(output)
 
-MODEL_COUNT = len(bedrock.get('models', {}))
+# Write atomically: build the file next to the destination, then rename it
+# into place, so a crash or interruption never leaves a truncated cache.
+tmp_cache = '$CACHE_FILE' + '.tmp'
+with open(tmp_cache, 'w') as f:
+    f.write(output)
+os.replace(tmp_cache, '$CACHE_FILE')
+
+MODEL_COUNT = len(models)
 print(f"Done. {MODEL_COUNT} models written to $CACHE_FILE")
 PYTHON_EOF
 

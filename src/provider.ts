@@ -8,21 +8,21 @@
 
 import { ModelModality } from "@aws-sdk/client-bedrock";
 import type {
-  ConverseStreamCommandInput,
-  Message,
-  SystemContentBlock,
-  ToolConfiguration,
+    ConverseStreamCommandInput,
+    Message,
+    SystemContentBlock,
+    ToolConfiguration,
 } from "@aws-sdk/client-bedrock-runtime";
 import { inspect, MIMEType } from "node:util";
 import type {
-  CancellationToken,
-  LanguageModelChatInformation,
-  LanguageModelChatMessage,
-  LanguageModelChatProvider,
-  LanguageModelConfigurationSchema,
-  LanguageModelResponsePart,
-  LanguageModelResponsePart2,
-  Progress,
+    CancellationToken,
+    LanguageModelChatInformation,
+    LanguageModelChatMessage,
+    LanguageModelChatProvider,
+    LanguageModelConfigurationSchema,
+    LanguageModelResponsePart,
+    LanguageModelResponsePart2,
+    Progress,
 } from "vscode";
 import * as vscode from "vscode";
 
@@ -33,18 +33,18 @@ import { convertTools } from "./converters/tools";
 import { logger } from "./logger";
 import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
 import {
-  getModelProfile,
-  getModelTokenLimits,
-  normalizeModelId,
-  requires1MContextBetaHeader,
+    getModelProfile,
+    getModelTokenLimits,
+    normalizeModelId,
+    requires1MContextBetaHeader,
 } from "./profiles";
 import { getBedrockSettings, type ReasoningEffort, type ThinkingEffort } from "./settings";
 import { StreamProcessor, type ThinkingBlock } from "./stream-processor";
 import type {
-  AuthConfig,
-  AuthMethod,
-  BedrockModelSummary,
-  ModelsDevMap as ModelsDevelopmentMap,
+    AuthConfig,
+    AuthMethod,
+    BedrockModelSummary,
+    ModelsDevMap as ModelsDevelopmentMap,
 } from "./types";
 import { validateBedrockMessages } from "./validation";
 
@@ -664,9 +664,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const isEffectiveSupportsReasoningEffort =
         !isLunaVariant &&
         (modelProfile.supportsReasoningEffort ||
-          (modelProfile.supportsReasoningEffort &&
-            chatDevelopmentEntry?.reasoning === true &&
-            !isAnthropicBaseModel));
+          (chatDevelopmentEntry?.reasoning === true && !isAnthropicBaseModel));
 
       // reasoningEffort override: picker value wins over workspace setting.
       const validReasoningEfforts: readonly ReasoningEffort[] = [
@@ -2337,6 +2335,34 @@ const UNSUPPORTED_PARAMETER_PATTERNS = [
 ];
 
 /**
+ * Delete a dotted path (e.g. "output_config.effort") from a nested record,
+ * mutating it in place. Returns true if the leaf key was found and removed.
+ */
+function didDeleteDottedPath(root: Record<string, unknown>, dottedPath: string): boolean {
+  const [rootKey, ...pathRest] = dottedPath.split(".");
+  const rootValue = root[rootKey];
+  if (pathRest.length === 0 || !rootValue || typeof rootValue !== "object") {
+    return false;
+  }
+
+  let cursor: Record<string, unknown> = rootValue as Record<string, unknown>;
+  for (let index = 0; index < pathRest.length - 1; index++) {
+    const next = cursor[pathRest[index]];
+    if (!next || typeof next !== "object") {
+      return false;
+    }
+    cursor = next as Record<string, unknown>;
+  }
+
+  const leafKey = pathRest.at(-1)!;
+  if (!Object.hasOwn(cursor, leafKey)) {
+    return false;
+  }
+  delete cursor[leafKey];
+  return true;
+}
+
+/**
  * Remove a top-level or `additionalModelRequestFields`-nested parameter from
  * the request input, mutating it in place. Returns true if the field was
  * found and removed, false otherwise (caller should not retry in that case).
@@ -2345,6 +2371,19 @@ function didRemoveUnsupportedParameter(
   requestInput: ConverseStreamCommandInput,
   parameterName: string,
 ): boolean {
+  // temperature/topP/stopSequences live under inferenceConfig, not at the
+  // request root or in additionalModelRequestFields. Support both the bare
+  // key (e.g. "temperature") and the dotted form some providers report
+  // (e.g. "inferenceConfig.temperature").
+  const inferenceConfig = requestInput.inferenceConfig as Record<string, unknown> | undefined;
+  const inferenceConfigKey = parameterName.startsWith("inferenceConfig.")
+    ? parameterName.slice("inferenceConfig.".length)
+    : parameterName;
+  if (inferenceConfig && Object.hasOwn(inferenceConfig, inferenceConfigKey)) {
+    delete inferenceConfig[inferenceConfigKey];
+    return true;
+  }
+
   const additionalFields = requestInput.additionalModelRequestFields as
     | Record<string, unknown>
     | undefined;
@@ -2355,24 +2394,12 @@ function didRemoveUnsupportedParameter(
   }
 
   // Also handle dotted paths like "output_config.effort"
-  if (parameterName.includes(".") && additionalFields) {
-    const [rootKey, ...pathRest] = parameterName.split(".");
-    const root = additionalFields[rootKey];
-    if (pathRest.length > 0 && root && typeof root === "object") {
-      let cursor: Record<string, unknown> = root as Record<string, unknown>;
-      for (let index = 0; index < pathRest.length - 1; index++) {
-        const next = cursor[pathRest[index]];
-        if (!next || typeof next !== "object") {
-          return false;
-        }
-        cursor = next as Record<string, unknown>;
-      }
-      const leafKey = pathRest.at(-1)!;
-      if (Object.hasOwn(cursor, leafKey)) {
-        delete cursor[leafKey];
-        return true;
-      }
-    }
+  if (
+    parameterName.includes(".") &&
+    additionalFields &&
+    didDeleteDottedPath(additionalFields, parameterName)
+  ) {
+    return true;
   }
 
   const requestRecord = requestInput as unknown as Record<string, unknown>;
