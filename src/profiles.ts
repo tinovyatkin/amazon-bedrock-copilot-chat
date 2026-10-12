@@ -4,6 +4,19 @@
 
 export interface ModelProfile {
   /**
+   * Thinking mode to send when adaptive thinking is turned off for this model.
+   * Sonnet 5.5 requires "between_tools" rather than "disabled".
+   */
+  disabledThinkingType?: "adaptive" | "between_tools" | "disabled";
+  /**
+   * Request field shape used by reasoning-effort models.
+   */
+  reasoningEffortField?: "flat" | "nested";
+  /**
+   * Accepted effort values for a model's reasoning-effort request field.
+   */
+  reasoningEffortValues?: readonly ("high" | "low" | "medium" | "minimal")[];
+  /**
    * Whether the model requires adaptive thinking (thinking.type="adaptive") instead of
    * the usual thinking.type="enabled" with budget_tokens.
    * Claude Opus 4.7 and 4.8 require adaptive thinking; manual extended thinking
@@ -75,6 +88,10 @@ export interface ModelProfile {
    * CLI-verified: only Claude Opus 4.7 rejects requests that include `temperature`.
    */
   temperatureDeprecated: boolean;
+  /**
+   * Accepted effort values for Claude's output_config.effort field.
+   */
+  thinkingEffortValues?: readonly ("high" | "low" | "max" | "medium" | "xhigh")[];
   /**
    * Format to use for tool result content ('text' or 'json')
    */
@@ -174,7 +191,13 @@ export function getModelProfile(modelId: string): ModelProfile {
       // Claude models support tool choice and prompt caching
       // Extended thinking is supported by Claude Opus 4+, Sonnet 4+, Sonnet 3.7,
       // Sonnet 5, and Haiku 4.5
+      const isClaude5Family =
+        normalizedId.includes("fable-5") ||
+        normalizedId.includes("haiku-5-5") ||
+        normalizedId.includes("opus-5") ||
+        normalizedId.includes("sonnet-5");
       const isSupportsThinking =
+        isClaude5Family ||
         modelId.includes("opus-4") ||
         modelId.includes("sonnet-4") ||
         modelId.includes("sonnet-5") ||
@@ -200,6 +223,8 @@ export function getModelProfile(modelId: string): ModelProfile {
       // The available levels vary by model (see supportsMaxEffort for the full breakdown).
       // Reference: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
       const isSupportsThinkingEffort =
+        (isClaude5Family && !normalizedId.includes("sonnet-5")) ||
+        normalizedId.includes("sonnet-5-5") ||
         normalizedId.includes("opus-4-8") ||
         normalizedId.includes("opus-4-7") ||
         normalizedId.includes("opus-4-6") ||
@@ -219,6 +244,7 @@ export function getModelProfile(modelId: string): ModelProfile {
       // `thinking.type="adaptive"` (with no budget_tokens). All other Claude
       // models still use enabled+budget.
       const requiresAdaptiveThinking =
+        isClaude5Family ||
         modelId.includes("opus-4-7") ||
         modelId.includes("opus-4-8") ||
         modelId.includes("sonnet-5");
@@ -228,13 +254,31 @@ export function getModelProfile(modelId: string): ModelProfile {
       // a ValidationException). All other Claude models still accept temperature.
       // Note: users can override this with bedrock.temperature.override setting if auto-detection fails.
       const isTemperatureDeprecated =
+        isClaude5Family ||
         modelId.includes("opus-4-7") ||
         modelId.includes("opus-4-8") ||
         modelId.includes("opus-5") ||
         modelId.includes("sonnet-5") ||
         modelId.includes("fable-5");
 
+      // Sonnet 5.5 explicitly requires between_tools when thinking is off.
+      // Opus 5.5 rejects disabled and requires adaptive thinking; use its
+      // lowest effort when the extension's thinking toggle is off.
+      let disabledThinkingType: ModelProfile["disabledThinkingType"];
+      if (normalizedId.includes("sonnet-5-5")) {
+        disabledThinkingType = "between_tools";
+      } else if (normalizedId.includes("opus-5-5")) {
+        disabledThinkingType = "adaptive";
+      }
+      const thinkingEffortValues =
+        isSupportsThinkingEffort && isClaude5Family
+          ? (["low", "medium", "high", "xhigh", "max"] as const)
+          : undefined;
+
       return {
+        disabledThinkingType,
+        reasoningEffortField: undefined,
+        reasoningEffortValues: undefined,
         requiresAdaptiveThinking,
         requiresInterleavedThinkingHeader,
         supports1MContext: is1MContextSupported(modelId),
@@ -247,6 +291,7 @@ export function getModelProfile(modelId: string): ModelProfile {
         supportsToolChoice: true,
         supportsToolResultStatus: true, // Claude models support status field in tool results
         temperatureDeprecated: isTemperatureDeprecated,
+        thinkingEffortValues,
         toolResultFormat: "text",
       };
     }
@@ -327,15 +372,24 @@ export function getModelProfile(modelId: string): ModelProfile {
       const isNamedVariant =
         modelId.includes("-luna") || modelId.includes("-sol") || modelId.includes("-terra");
       const isSupportsReasoningEffort = !isNamedVariant;
+      const isGpt6Family = /^openai\.gpt-6(?:[.-]|$)/.test(normalizedId);
+      let reasoningEffortValues: ModelProfile["reasoningEffortValues"];
+      if (isGpt6Family) {
+        reasoningEffortValues = ["low", "medium", "high"];
+      } else if (isSupportsReasoningEffort) {
+        reasoningEffortValues = ["minimal", "low", "medium", "high"];
+      }
 
       return {
+        reasoningEffortField: isGpt6Family ? "nested" : "flat",
+        reasoningEffortValues,
         requiresAdaptiveThinking: false,
         requiresInterleavedThinkingHeader: false,
         supports1MContext: false,
         supportsCachingWithToolResults: false,
         supportsMaxEffort: false,
         supportsPromptCaching: false,
-        supportsReasoningEffort: isSupportsReasoningEffort,
+        supportsReasoningEffort: isSupportsReasoningEffort || isGpt6Family,
         supportsThinking: false,
         supportsThinkingEffort: false,
         supportsToolChoice: true,
@@ -373,6 +427,11 @@ export function getModelTokenLimits(modelId: string, is1MContextEnabled = false)
   // Claude models have specific token limits based on model family
   if (normalizedModelId.startsWith("anthropic.claude")) {
     return getClaudeTokenLimits(normalizedModelId, is1MContextEnabled);
+  }
+
+  // GPT-6 family metadata: 1.05M context and 128K maximum output.
+  if (/^openai\.gpt-6(?:[.-]|$)/.test(normalizedModelId)) {
+    return { maxInputTokens: 1_050_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
   // Default for unknown models
@@ -436,8 +495,8 @@ function getClaudeTokenLimits(
   normalizedModelId: string,
   is1MContextEnabled: boolean,
 ): ModelTokenLimits {
-  // Claude Opus 4.8: always 1M context, 128K max output.
-  if (normalizedModelId.includes("opus-4-8")) {
+  // Claude Opus 4.8 and Opus 5.x: always 1M context, 128K max output.
+  if (normalizedModelId.includes("opus-4-8") || normalizedModelId.includes("opus-5")) {
     return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
@@ -455,11 +514,14 @@ function getClaudeTokenLimits(
     };
   }
 
-  // Claude Sonnet 5: always 1M context (default), 128K output.
-  // 1M is the standard context window for this model — no beta header needed.
-  // Uses new tokenizer: ~30% more tokens than Sonnet 4.6 for same text.
-  // Reference: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
-  if (normalizedModelId.includes("sonnet-5")) {
+  // Claude 5-family models: 1M context (default), 128K output.
+  // Includes Fable 5/5.1, Haiku 5.5, Opus 5/5.5, and Sonnet 5/5.5.
+  if (
+    normalizedModelId.includes("fable-5") ||
+    normalizedModelId.includes("haiku-5-5") ||
+    normalizedModelId.includes("opus-5") ||
+    normalizedModelId.includes("sonnet-5")
+  ) {
     return { maxInputTokens: 1_000_000 - 128_000, maxOutputTokens: 128_000 };
   }
 
@@ -536,6 +598,9 @@ function is1MContextSupported(modelId: string): boolean {
   return (
     normalizedModelId.includes("opus-4-7") ||
     normalizedModelId.includes("opus-4-8") ||
+    normalizedModelId.includes("opus-5") ||
+    normalizedModelId.includes("fable-5") ||
+    normalizedModelId.includes("haiku-5-5") ||
     normalizedModelId.includes("sonnet-5") ||
     requires1MContextBetaHeader(normalizedModelId)
   );

@@ -71,7 +71,7 @@
         "bedrock.thinking.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable extended thinking for supported Anthropic Claude models (Opus 4.1, Opus 4, Sonnet 4.6, Sonnet 4.5, Sonnet 4, Sonnet 3.7). Allows models to reason through complex tasks before responding.",
+          "description": "Enable extended thinking for supported Anthropic Claude models, including Claude 5-family and Claude 4 models. Allows models to reason through complex tasks before responding.",
           "scope": "resource"
         },
         "bedrock.thinking.budgetTokens": {
@@ -94,7 +94,7 @@
             "Balanced approach with moderate token savings. Good for tasks requiring a balance of speed, cost, and performance.",
             "Most efficient—significant token savings with some capability reduction. Best for simpler tasks that need speed and lowest costs."
           ],
-          "description": "Thinking effort level for Claude Opus 4.5 and Sonnet 4.6. Controls how eager Claude is about spending tokens when responding. Higher effort = better quality but more tokens.",
+          "description": "Fallback thinking effort for Claude models that support effort controls. Per-model picker selections take precedence.",
           "scope": "resource"
         },
         "bedrock.reasoningEffort": {

@@ -128,8 +128,8 @@ export async function getBedrockSettings(globalState: vscode.Memento): Promise<B
   const thinkingBudgetTokens =
     copilotThinkingMaxTokens ?? config.get<number>("thinking.budgetTokens") ?? 10_000;
 
-  // Read thinking effort setting (only for Claude Opus 4.5 and Sonnet 4.6)
-  // Default to "high" for maximum capability
+  // Read fallback thinking effort. Per-model picker selections override this.
+  // Default to "high" for maximum capability.
   const validEffortValues: ThinkingEffort[] = ["high", "low", "medium"];
   const rawEffort = config.get<string>("thinking.effort");
   const thinkingEffort: ThinkingEffort =

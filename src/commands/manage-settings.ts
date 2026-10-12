@@ -23,27 +23,13 @@ export async function getBedrockRegionsFromSSM(
       : undefined;
 
     const client = new SSMClient({
-      region: "us-east-1",
-      ...(credentials ? { credentials } : {}),
+      region: process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1",
+      ...(credentials && { credentials }),
       ...nodeNativeFetch,
     });
 
     try {
-      // AWS maintains service availability info in SSM Parameter Store
-      for await (const page of paginateGetParametersByPath(
-        { client },
-        {
-          Path: "/aws/service/global-infrastructure/services/bedrock/regions",
-          Recursive: true,
-        },
-        { abortSignal },
-      )) {
-        for (const param of page.Parameters ?? []) {
-          if (param.Type !== "String" || param.Name?.endsWith("/endpoint")) continue;
-          const region = param.Value;
-          if (region) AWS_REGIONS.add(region);
-        }
-      }
+      await cacheBedrockRegions(client, abortSignal);
     } catch (error) {
       providedLogger?.error("Error fetching Bedrock regions from SSM", error);
     }
@@ -110,7 +96,7 @@ export async function manageSettings(
   }
 }
 
-async function askConfigurationScope(): Promise<undefined | vscode.ConfigurationTarget> {
+async function askConfigScope(): Promise<undefined | vscode.ConfigurationTarget> {
   const scope = await vscode.window.showQuickPick(
     [
       {
@@ -131,6 +117,25 @@ async function askConfigurationScope(): Promise<undefined | vscode.Configuration
   );
 
   return scope?.value;
+}
+
+async function cacheBedrockRegions(client: SSMClient, abortSignal?: AbortSignal): Promise<void> {
+  // AWS maintains service availability info in SSM Parameter Store
+  const pages = paginateGetParametersByPath(
+    { client },
+    {
+      Path: "/aws/service/global-infrastructure/services/bedrock/regions",
+      Recursive: true,
+    },
+    { abortSignal },
+  );
+  for await (const page of pages) {
+    const regions = (page.Parameters ?? [])
+      .filter((parameter) => parameter.Type === "String" && !parameter.Name?.endsWith("/endpoint"))
+      .map((parameter) => parameter.Value)
+      .filter((region): region is string => typeof region === "string" && region.length > 0);
+    for (const region of regions) AWS_REGIONS.add(region);
+  }
 }
 
 async function clearAllSettings(
@@ -354,7 +359,7 @@ async function handleProfileSelection(
 
   if (selected === undefined) return;
 
-  const scope = await askConfigurationScope();
+  const scope = await askConfigScope();
   if (scope === undefined) return;
 
   await updateBedrockSettings("profile", selected.value, scope, globalState);
@@ -398,7 +403,7 @@ async function handleRegionSelection(
 
     if (!region) return;
 
-    const scope = await askConfigurationScope();
+    const scope = await askConfigScope();
     if (scope === undefined) return;
 
     await updateBedrockSettings("region", region, scope, globalState);
@@ -477,8 +482,8 @@ async function resolveSsmCredentials(
       } catch {
         // ignore and try config directly
       }
-      const cfg = vscode.workspace.getConfiguration("bedrock");
-      const prof = cfg.get<null | string>("profile");
+      const config = vscode.workspace.getConfiguration("bedrock");
+      const prof = config.get<null | string>("profile");
       return prof ?? undefined;
     };
 
@@ -492,7 +497,7 @@ async function resolveSsmCredentials(
       return {
         accessKeyId,
         secretAccessKey,
-        ...(sessionToken ? { sessionToken } : {}),
+        ...(sessionToken && { sessionToken }),
       } satisfies AwsCredentialIdentity;
     };
 
@@ -500,15 +505,14 @@ async function resolveSsmCredentials(
     if (method === "access-keys") {
       const ak = await readAccessKeys();
       if (ak) return ak;
-    }
-    if (method === "profile") {
+    } else if (method === "profile") {
       const profile = await readProfile();
       if (profile) {
         const userAgentAppId = await getProfileSdkUaAppId(profile);
         const clientConfig = userAgentAppId ? { userAgentAppId } : undefined;
         // Return a refreshing provider from shared ini
         // Note: SSMClient accepts a provider; typing keeps identity, runtime is fine
-        return fromIni({ profile, ...(clientConfig ? { clientConfig } : {}) });
+        return fromIni({ profile, ...(clientConfig && { clientConfig }) });
       }
     }
 
@@ -519,7 +523,7 @@ async function resolveSsmCredentials(
     if (profile) {
       const userAgentAppId = await getProfileSdkUaAppId(profile);
       const clientConfig = userAgentAppId ? { userAgentAppId } : undefined;
-      return fromIni({ profile, ...(clientConfig ? { clientConfig } : {}) });
+      return fromIni({ profile, ...(clientConfig && { clientConfig }) });
     }
 
     // 3) Default chain

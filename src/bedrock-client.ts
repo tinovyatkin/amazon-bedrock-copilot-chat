@@ -587,6 +587,13 @@ export class BedrockAPIClient {
       regionPrefix,
     });
 
+    const createProfileCandidate = (baseModelId: string, displayName: string) => ({
+      baseModelId,
+      displayName,
+      globalProfileId: hasGlobalProfiles ? `global.${baseModelId}` : null,
+      regionalProfileIds: [`${regionPrefix}.${baseModelId}`],
+    });
+
     const candidates: {
       baseModelId: string;
       displayName: string;
@@ -613,6 +620,10 @@ export class BedrockAPIClient {
           "anthropic.claude-sonnet-4-7",
         ),
       },
+      createProfileCandidate("anthropic.claude-opus-5-5", "Claude Opus 5.5"),
+      createProfileCandidate("anthropic.claude-sonnet-5-5", "Claude Sonnet 5.5"),
+      createProfileCandidate("anthropic.claude-opus-5", "Claude Opus 5"),
+      createProfileCandidate("anthropic.claude-sonnet-5", "Claude Sonnet 5"),
       {
         baseModelId: "anthropic.claude-opus-4-6-v1",
         displayName: "Claude Opus 4.6",
