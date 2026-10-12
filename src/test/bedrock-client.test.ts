@@ -28,7 +28,7 @@ function awsError(
     $metadata?: { httpStatusCode: number };
     $response?: { statusCode: number };
   };
-  error.name = name;
+  Object.defineProperty(error, "name", { configurable: true, value: name });
   if (httpStatusCode) {
     error.$metadata = { httpStatusCode };
   }
@@ -255,7 +255,9 @@ suite("BedrockAPIClient unit tests", () => {
       const client = new BedrockAPIClient("us-east-1");
       const state = internals(client);
       const accessibleProfileIds = new Set([
+        "global.anthropic.claude-opus-5-5",
         "global.anthropic.claude-sonnet-4-7",
+        "global.anthropic.claude-sonnet-5-5",
         "us.anthropic.claude-opus-4-7",
       ]);
       const probedProfileIds: string[] = [];
@@ -284,9 +286,13 @@ suite("BedrockAPIClient unit tests", () => {
 
       assert.ok(modelIds.has("anthropic.claude-opus-4-7"));
       assert.ok(modelIds.has("anthropic.claude-sonnet-4-7"));
+      assert.ok(modelIds.has("anthropic.claude-opus-5-5"));
+      assert.ok(modelIds.has("anthropic.claude-sonnet-5-5"));
       assert.ok(probedProfileIds.includes("global.anthropic.claude-opus-4-7"));
       assert.ok(probedProfileIds.includes("us.anthropic.claude-opus-4-7"));
       assert.ok(probedProfileIds.includes("global.anthropic.claude-sonnet-4-7"));
+      assert.ok(probedProfileIds.includes("global.anthropic.claude-opus-5-5"));
+      assert.ok(probedProfileIds.includes("global.anthropic.claude-sonnet-5-5"));
       assert.ok(client.getFallbackInferenceProfileIds().has("us.anthropic.claude-opus-4-7"));
       assert.ok(client.getFallbackInferenceProfileIds().has("global.anthropic.claude-sonnet-4-7"));
     });

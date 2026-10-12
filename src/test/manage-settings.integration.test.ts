@@ -1,3 +1,5 @@
+/* eslint unicorn/no-this-outside-of-class: "off" -- Mocha binds timeout and skip methods to function callbacks. */
+
 import * as assert from "node:assert";
 
 import { getBedrockRegionsFromSSM } from "../commands/manage-settings";
@@ -11,14 +13,16 @@ import { shouldRunAwsIntegrationTests } from "./aws-integration";
  *
  * Prerequisites:
  * - AWS credentials configured via environment variables or AWS config files
- * - Network access to AWS SSM API endpoints in us-east-1
+ * - Network access to AWS SSM API endpoints in the configured AWS region
  * - IAM permissions for ssm:GetParametersByPath
  *
  * To run these tests:
- *   RUN_AWS_INTEGRATION_TESTS=1 bun run test
+ *   AWS_REGION=eu-west-1 AWS_DEFAULT_REGION=eu-west-1 AWS_PROFILE=bedrock RUN_AWS_INTEGRATION_TESTS=1 bun run test
  */
 
 suite("getBedrockRegionsFromSSM Integration Tests", () => {
+  const TEST_REGION = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1";
+
   setup(function () {
     if (!shouldRunAwsIntegrationTests()) {
       this.skip();
@@ -60,14 +64,11 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
       "Regions should be sorted lexicographically with numeric awareness",
     );
 
-    // Validate common Bedrock regions are present (as of 2024/2025)
-    const expectedCommonRegions = ["us-east-1", "us-west-2"];
-    for (const expectedRegion of expectedCommonRegions) {
-      assert.ok(
-        regions.includes(expectedRegion),
-        `Should include common Bedrock region: ${expectedRegion}`,
-      );
-    }
+    // The configured AWS region should be among Bedrock's supported regions.
+    assert.ok(
+      regions.includes(TEST_REGION),
+      `Should include configured Bedrock region: ${TEST_REGION}`,
+    );
 
     // Validate no duplicates
     const uniqueRegions = new Set(regions);
@@ -124,7 +125,7 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
 
     // Snapshot test: Validate the expected regions as of 2024/2025
     // This list should be updated when AWS adds new Bedrock regions
-    const expectedRegionsSnapshot = [
+    const expectedRegionsSnapshot = new Set([
       "ap-northeast-1", // Tokyo
       "ap-northeast-2", // Seoul
       "ap-south-1", // Mumbai
@@ -141,7 +142,7 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
       "us-gov-east-1", // AWS GovCloud (US-East)
       "us-gov-west-1", // AWS GovCloud (US-West)
       "us-west-2", // Oregon
-    ];
+    ]);
 
     // Check that all expected regions are present
     for (const expectedRegion of expectedRegionsSnapshot) {
@@ -153,12 +154,12 @@ suite("getBedrockRegionsFromSSM Integration Tests", () => {
     }
 
     // Log if there are any new regions not in our snapshot
-    const newRegions = regions.filter((r) => !expectedRegionsSnapshot.includes(r));
+    const newRegions = regions.filter((r) => !expectedRegionsSnapshot.has(r));
     if (newRegions.length > 0) {
       console.log(`⚠ New regions detected (update snapshot): ${JSON.stringify(newRegions)}`);
     }
 
     console.log(`✓ Region snapshot validated: ${regions.length} regions`);
-    console.log(`  Expected: ${expectedRegionsSnapshot.length}, Additional: ${newRegions.length}`);
+    console.log(`  Expected: ${expectedRegionsSnapshot.size}, Additional: ${newRegions.length}`);
   });
 });

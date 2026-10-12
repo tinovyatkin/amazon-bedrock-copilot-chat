@@ -5,8 +5,9 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
-import { getModelProfile, normalizeModelId } from "../profiles";
-import { BedrockChatModelProvider } from "../provider";
+import { loadModelsDevData as loadModelsDevelopmentData } from "../models-dev";
+import { getModelProfile, getModelTokenLimits, normalizeModelId } from "../profiles";
+import { BedrockChatModelProvider, getAccountDataRetentionGuidance } from "../provider";
 import type { BedrockModelSummary, ModelsDevMap as ModelsDevelopmentMap } from "../types";
 
 interface ProviderInternals {
@@ -19,33 +20,59 @@ interface ProviderInternals {
   buildBetaHeaders: (
     modelProfile: ReturnType<typeof getModelProfile>,
     modelId: string,
-    extendedThinkingEnabled: boolean,
-    context1MEnabled: boolean,
-    thinkingEffortEnabled: boolean,
+    isExtendedThinkingEnabled: boolean,
+    isContext1MEnabled: boolean,
+    isThinkingEffortEnabled: boolean,
   ) => string[];
   buildConfigurationSchema: (
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
     modelsDevelopmentMap?: ModelsDevelopmentMap,
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
-  formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
+  buildLocalPromptBudgetVariants: (
+    routeId: string,
+    modelName: string,
+    baseModelId: string,
+    limits: { maxInputTokens: number; maxOutputTokens: number },
+  ) => {
+    contextSize: number;
+    id: string;
+    limits: { maxInputTokens: number; maxOutputTokens: number };
+    name: string;
+  }[];
+  formatDetail: (
+    modelId: string,
+    maxInput: number,
+    maxOutput: number,
+    hasVision: boolean,
+  ) => string;
   formatTooltip: (arguments_: {
+    hasVision: boolean;
     maxInput: number;
     maxOutput: number;
     modelId: string;
     providerName: string;
     route: string;
-    vision: boolean;
   }) => string;
+  resolveBedrockRouteId: (modelId: string) => string;
   resolveModelLimits: (
     modelId: string,
-    context1MEnabled: boolean,
+    isContext1MEnabled: boolean,
     modelsDevelopmentMap: ModelsDevelopmentMap,
   ) => { maxInputTokens: number; maxOutputTokens: number };
 }
 
 function providerInternals(provider: BedrockChatModelProvider): ProviderInternals {
   return provider as unknown as ProviderInternals;
+}
+
+function recordLog(
+  logs: { args: unknown[]; level: string }[],
+  level: string,
+  message: string,
+  arguments_: unknown[],
+): void {
+  logs.push({ args: [message, ...arguments_], level });
 }
 
 // Mock implementations extracted to avoid function nesting depth issues
@@ -78,9 +105,9 @@ const createTestModel = (modelId: string): BedrockModelSummary => ({
 });
 
 // Helper to create a mock provider with controlled base model accessibility
-const createMockClientProvider = (baseModelAccessible: boolean) => {
+const createMockClientProvider = (isBaseModelAccessible: boolean) => {
   const mockClient = {
-    isModelAccessible: async () => baseModelAccessible,
+    isModelAccessible: async () => isBaseModelAccessible,
   };
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
 
@@ -93,21 +120,21 @@ const callCalcThinkingConfig = (
   modelProfile: { supportsThinking: boolean },
   maxOutputTokens: number,
   maxTokensForRequest: number,
-  thinkingEnabled: boolean,
+  isThinkingEnabled: boolean,
 ) => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
   return (provider as any).calculateThinkingConfig(
     modelProfile,
     maxOutputTokens,
     maxTokensForRequest,
-    thinkingEnabled,
+    isThinkingEnabled,
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
 const callBuildRequestInput = (
   modelId: string,
   options: vscode.LanguageModelChatRequestOptions = {},
-  extendedThinkingEnabled = false,
+  isExtendedThinkingEnabled = false,
 ) => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
   const modelProfile = getModelProfile(modelId);
@@ -125,17 +152,21 @@ const callBuildRequestInput = (
     { messages: [], system: [] },
     options,
     undefined,
-    extendedThinkingEnabled,
+    isExtendedThinkingEnabled,
     4096,
     [],
     undefined,
     modelProfile.temperatureDeprecated,
     modelProfile.requiresAdaptiveThinking,
     undefined,
+    modelProfile.disabledThinkingType,
   ) as ConverseStreamCommandInput;
 };
 
-const callBuildConfigSchema = (modelId: string, modelsDevelopmentMap: ModelsDevelopmentMap = new Map()) => {
+const callBuildConfigSchema = (
+  modelId: string,
+  modelsDevelopmentMap: ModelsDevelopmentMap = new Map(),
+) => {
   const provider = providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
   );
@@ -144,17 +175,61 @@ const callBuildConfigSchema = (modelId: string, modelsDevelopmentMap: ModelsDeve
 
 const callResolveModelLimits = (
   modelId: string,
-  context1MEnabled: boolean,
+  isContext1MEnabled: boolean,
   modelsDevelopmentMap: ModelsDevelopmentMap,
 ) =>
   providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
-  ).resolveModelLimits(modelId, context1MEnabled, modelsDevelopmentMap);
+  ).resolveModelLimits(modelId, isContext1MEnabled, modelsDevelopmentMap);
 
-const makeDevelopmentMapEntry = (modelId: string, context: number, output: number): ModelsDevelopmentMap =>
-  new Map([[modelId, { limit: { context, output } }]]);
+const makeDevelopmentMapEntry = (
+  modelId: string,
+  context: number,
+  output: number,
+): ModelsDevelopmentMap => new Map([[modelId, { limit: { context, output } }]]);
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
+  suite("account data-retention error guidance", () => {
+    test("explains how to enable AWS review when default retention blocks a model", () => {
+      const guidance = getAccountDataRetentionGuidance(
+        new Error(
+          "ValidationException: data retention mode 'default' is not available for this model",
+        ),
+        "global.anthropic.claude-fable-5",
+        "us-east-1",
+        "bedrock",
+      );
+
+      assert.ok(guidance);
+      assert.match(guidance, /global\.anthropic\.claude-fable-5/);
+      assert.match(guidance, /aws bedrock put-account-data-retention --mode aws_review/);
+      assert.match(guidance, /--region "us-east-1" --profile "bedrock"/);
+    });
+
+    test("omits --profile when default AWS credentials are configured", () => {
+      const guidance = getAccountDataRetentionGuidance(
+        new Error("data retention mode 'default' is not available for this model"),
+        "global.anthropic.claude-fable-5",
+        "us-east-1",
+      );
+
+      assert.ok(guidance);
+      assert.doesNotMatch(guidance, /--profile/);
+    });
+
+    test("does not rewrite other AWS errors", () => {
+      assert.equal(
+        getAccountDataRetentionGuidance(
+          new Error("AccessDeniedException: not authorized"),
+          "global.anthropic.claude-fable-5",
+          "us-east-1",
+          "bedrock",
+        ),
+        undefined,
+      );
+    });
+  });
+
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
       const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
@@ -245,6 +320,34 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(betaHeaders.includes("effort-2025-11-24"), true);
     });
 
+    test("uses between_tools when Sonnet 5.5 thinking is disabled", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-5-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "between_tools");
+    });
+
+    test("keeps disabled thinking mode for Sonnet 5", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "disabled");
+    });
+
+    test("uses adaptive low effort when Opus 5.5 thinking is disabled", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-5-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "adaptive");
+      assert.equal(additionalFields?.output_config?.effort, "low");
+    });
+
     test("adds interleaved thinking beta header for Opus 4.6", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
@@ -311,6 +414,24 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, "low");
     });
 
+    test("uses nested reasoning effort for GPT-6 Astra and Luna", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const requestInput: { additionalModelRequestFields?: Record<string, unknown> } = {};
+        provider.applyReasoningEffort(requestInput, modelId, modelId.replace("global.", ""), "low");
+
+        assert.deepEqual(requestInput.additionalModelRequestFields?.reasoning, { effort: "low" });
+        assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, undefined);
+      }
+    });
+
     test("labels non-adaptive effort-capable Claude models as budget thinking", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
@@ -319,12 +440,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
       const detail = provider.formatDetail(modelId, 872_000, 128_000, false);
       const tooltip = provider.formatTooltip({
+        hasVision: false,
         maxInput: 872_000,
         maxOutput: 128_000,
         modelId,
         providerName: "Anthropic",
         route: "Direct foundation model",
-        vision: false,
       });
 
       assert.match(detail, /budget thinking/);
@@ -344,12 +465,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
       const detail = provider.formatDetail(modelId, inputBudget, 98_304, false);
       const tooltip = provider.formatTooltip({
+        hasVision: false,
         maxInput: inputBudget,
         maxOutput: 98_304,
         modelId,
         providerName: "MiniMax",
         route: "Direct foundation model",
-        vision: false,
       });
 
       // detail should show total context (197K) and output (98K)
@@ -716,15 +837,15 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "debug" }),
+          recordLog(logs, "debug", message, arguments_),
         error: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "error" }),
+          recordLog(logs, "error", message, arguments_),
         info: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "info" }),
+          recordLog(logs, "info", message, arguments_),
         trace: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "trace" }),
+          recordLog(logs, "trace", message, arguments_),
         warn: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "warn" }),
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Development);
@@ -752,15 +873,15 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "debug" }),
+          recordLog(logs, "debug", message, arguments_),
         error: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "error" }),
+          recordLog(logs, "error", message, arguments_),
         info: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "info" }),
+          recordLog(logs, "info", message, arguments_),
         trace: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "trace" }),
+          recordLog(logs, "trace", message, arguments_),
         warn: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "warn" }),
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Production);
@@ -776,15 +897,15 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
         debug: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "debug" }),
+          recordLog(logs, "debug", message, arguments_),
         error: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "error" }),
+          recordLog(logs, "error", message, arguments_),
         info: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "info" }),
+          recordLog(logs, "info", message, arguments_),
         trace: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "trace" }),
+          recordLog(logs, "trace", message, arguments_),
         warn: (message: string, ...arguments_: unknown[]) =>
-          logs.push({ args: [message, ...arguments_], level: "warn" }),
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Development);
@@ -1337,9 +1458,47 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
       const te = schema.properties.thinkingEffort;
-      assert.deepEqual(te.enum, ["low", "medium", "high"]);
+      assert.deepEqual(te.enum, ["default", "low", "medium", "high"]);
       assert.equal(te.group, "navigation");
       assert.equal(te.default, "high");
+    });
+
+    test("offers model-default and all advertised Claude 5 effort tiers", () => {
+      for (const modelId of [
+        "global.anthropic.claude-fable-5",
+        "global.anthropic.claude-fable-5-1",
+        "global.anthropic.claude-haiku-5-5",
+        "global.anthropic.claude-opus-5",
+        "global.anthropic.claude-opus-5-5",
+        "global.anthropic.claude-sonnet-5-5",
+      ]) {
+        const schema = callBuildConfigSchema(modelId);
+        const effort = schema?.properties?.thinkingEffort;
+        assert.ok(effort, `${modelId} should expose Claude effort controls`);
+        assert.deepEqual(effort.enum, ["default", "low", "medium", "high", "xhigh", "max"]);
+        assert.equal((effort.enumItemLabels as string[])[0], "Model default");
+      }
+      assert.equal(
+        callBuildConfigSchema("global.anthropic.claude-sonnet-5")?.properties?.thinkingEffort,
+        undefined,
+        "Sonnet 5 uses adaptive thinking without output_config.effort",
+      );
+    });
+
+    test("offers nested reasoning effort controls for GPT-6 variants", () => {
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const schema = callBuildConfigSchema(modelId);
+        const effort = schema?.properties?.reasoningEffort;
+        assert.ok(effort, `${modelId} should expose reasoning controls`);
+        assert.deepEqual(effort.enum, ["default", "low", "medium", "high"]);
+        assert.equal((effort.enumItemLabels as string[])[0], "Model default");
+        assert.equal(getModelProfile(modelId).reasoningEffortField, "nested");
+      }
     });
 
     test("returns NO thinkingEffort picker for Sonnet 3.7 (thinking but not effort)", () => {
@@ -1351,7 +1510,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const schema = callBuildConfigSchema("deepseek.deepseek-v3-2-20250615");
       assert.ok(schema?.properties?.reasoningEffort, "should have reasoningEffort property");
       const re = schema.properties.reasoningEffort;
-      assert.deepEqual(re.enum, ["low", "medium", "high"]);
+      assert.deepEqual(re.enum, ["default", "low", "medium", "high"]);
       assert.equal(re.group, "navigation");
     });
 
@@ -1359,6 +1518,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const schema = callBuildConfigSchema("openai.gpt-oss-20b");
       assert.ok(schema?.properties?.reasoningEffort);
       assert.deepEqual(schema.properties.reasoningEffort.enum, [
+        "default",
         "minimal",
         "low",
         "medium",
@@ -1382,6 +1542,64 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       // (effort control is only on Opus 4.5/4.6/4.8 and Sonnet 4.6)
       assert.equal(schema?.properties?.thinkingEffort, undefined);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
+    });
+  });
+
+  suite("local prompt-budget model entries", () => {
+    test("offers max, 256K, and 750K windows with output tokens reserved", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const routeId = "global.openai.gpt-6-luna";
+      const variants = provider.buildLocalPromptBudgetVariants(
+        routeId,
+        "GPT-6 Luna",
+        "openai.gpt-6-luna",
+        { maxInputTokens: 922_000, maxOutputTokens: 128_000 },
+      );
+
+      assert.equal(variants.length, 3);
+      assert.equal(variants[0].id, routeId);
+      assert.equal(variants[0].limits.maxInputTokens, 922_000);
+      assert.match(variants[0].name, /Max: 1\.05M/);
+      assert.equal(variants[1].limits.maxInputTokens, 128_000); // 256K total - 128K output
+      assert.equal(variants[2].limits.maxInputTokens, 622_000); // 750K total - 128K output
+      assert.equal(variants[1].limits.maxOutputTokens, 128_000);
+      assert.equal(provider.resolveBedrockRouteId(variants[1].id), routeId);
+      assert.equal(provider.resolveBedrockRouteId(variants[2].id), routeId);
+    });
+
+    test("keeps Claude 4's existing Bedrock context controls without adding cap aliases", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const routeId = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc";
+      const variants = provider.buildLocalPromptBudgetVariants(
+        routeId,
+        "Claude Opus 4.6",
+        "anthropic.claude-opus-4-6-v1",
+        { maxInputTokens: 872_000, maxOutputTokens: 128_000 },
+      );
+
+      assert.equal(variants.length, 1);
+      assert.equal(variants[0].id, routeId);
+      assert.equal(provider.resolveBedrockRouteId(routeId), routeId);
+    });
+
+    test("offers only caps below the model maximum", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const variants = provider.buildLocalPromptBudgetVariants(
+        "us.anthropic.claude-fable-5",
+        "Claude Fable 5",
+        "anthropic.claude-fable-5",
+        { maxInputTokens: 872_000, maxOutputTokens: 128_000 },
+      );
+
+      assert.equal(variants.length, 3);
+      assert.equal(variants[1].limits.maxInputTokens, 128_000);
+      assert.equal(variants[2].limits.maxInputTokens, 622_000);
     });
   });
 
@@ -1442,6 +1660,48 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   });
 
   suite("resolveModelLimits", () => {
+    test("uses refreshed models.dev limits for GPT-6 Luna", () => {
+      const result = callResolveModelLimits(
+        "global.openai.gpt-6-luna",
+        false,
+        loadModelsDevelopmentData(),
+      );
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_050_000 - 128_000);
+    });
+
+    test("uses refreshed models.dev limits for Claude Sonnet 5.5", () => {
+      const result = callResolveModelLimits(
+        "global.anthropic.claude-sonnet-5-5",
+        false,
+        loadModelsDevelopmentData(),
+      );
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+    });
+
+    test("uses known offline limits for Claude Opus 5.5", () => {
+      const result = getModelTokenLimits("global.anthropic.claude-opus-5-5");
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+    });
+
+    test("uses known offline limits for all GPT-6 variants", () => {
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const result = getModelTokenLimits(modelId);
+        assert.equal(result.maxOutputTokens, 128_000, modelId);
+        assert.equal(result.maxInputTokens, 1_050_000 - 128_000, modelId);
+      }
+    });
+
     test("uses models.dev limits when available — Sonnet 4.6 is always-1M", () => {
       // models.dev says Sonnet 4.6 has 1M context / 64K output (always-on, no beta header).
       // context1M.enabled flag has no effect — 1M is the default.
@@ -1457,7 +1717,11 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("uses models.dev limits — Sonnet 4.5 is optional-1M (capped at 200K when disabled)", () => {
       // Sonnet 4.5 has optional 1M via beta header.
-      const map = makeDevelopmentMapEntry("anthropic.claude-sonnet-4-5-20250929-v1:0", 1_000_000, 64_000);
+      const map = makeDevelopmentMapEntry(
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        1_000_000,
+        64_000,
+      );
       const withoutExtended = callResolveModelLimits(
         "anthropic.claude-sonnet-4-5-20250929-v1:0",
         false,
