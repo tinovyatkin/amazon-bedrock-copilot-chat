@@ -206,19 +206,7 @@ suite("BedrockAPIClient Integration Tests", () => {
     });
   });
 
-  suite("setRegion and setProfile", () => {
-    test("should allow changing region after construction", async function () {
-      this.timeout(30_000);
-
-      client.setRegion(TEST_REGION);
-      const models = await client.fetchModels();
-
-      assert.ok(Array.isArray(models), "Should work after setRegion");
-      assert.ok(models.length > 0, "Should fetch models from new region");
-
-      console.log(`✓ Region set to ${TEST_REGION}: ${models.length} models`);
-    });
-
+  suite("setProfile", () => {
     test("should allow changing profile after construction", async function () {
       this.timeout(30_000);
 

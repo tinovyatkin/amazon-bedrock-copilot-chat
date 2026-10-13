@@ -30,6 +30,7 @@ import { getRegionPrefix } from "./aws-partition";
 import { BedrockAPIClient, ListFoundationModelsDeniedError } from "./bedrock-client";
 import { convertMessages } from "./converters/messages";
 import { convertTools } from "./converters/tools";
+import { getImageDimensions } from "./image-dimensions";
 import { logger } from "./logger";
 import { loadModelsDevData as loadModelsDevelopmentData } from "./models-dev";
 import {
@@ -990,32 +991,39 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       "image/webp",
     ]);
 
-    // Estimate the token cost of a single image data part. convertMessages
-    // sends PNG/JPEG/GIF/WebP LanguageModelDataPart values to Bedrock as
-    // image blocks, but images don't tokenize like text -- counting their
-    // raw byte length via char_count/4 would wildly overcount, while
-    // returning 0 (the previous behavior) undercounts and can cause context
-    // overflows to go undetected. Without decoding pixel dimensions, use a
-    // conservative estimate based on the base64-encoded payload size, which
-    // approximates Claude's vision token cost of roughly
-    // (width * height) / 750 for typical photo/screenshot compression ratios.
-    const estimateImageTokens = (dataLength: number): number => {
-      const base64Length = Math.ceil(dataLength / 3) * 4;
-      return Math.ceil(base64Length / 100);
+    // Estimate image tokens from pixel dimensions for Claude. Encoded byte size
+    // depends on compression and is not a reliable proxy for visual tokens.
+    const estimateImageTokens = (part: vscode.LanguageModelDataPart, modelId: string): number => {
+      const fallbackTokens = Math.max(
+        1,
+        Math.ceil((part.data.length / 1024) * getTokenMultiplier(modelId)),
+      );
+      const normalizedModelId = modelId.toLowerCase();
+      const isClaude = normalizedModelId.includes("anthropic.claude");
+      if (!isClaude) {
+        return fallbackTokens;
+      }
+
+      const dimensions = getImageDimensions(part.data, part.mimeType);
+      if (!dimensions) {
+        return fallbackTokens;
+      }
+
+      return Math.max(1, Math.ceil((dimensions.width * dimensions.height) / 750));
     };
 
     // Sum image token costs (bypasses the char_count/4 + multiplier path
     // used for text, since image tokenization doesn't scale the same way).
-    const estimateImagePartTokens = (part: unknown): number => {
+    const estimateImagePartTokens = (part: unknown, modelId: string): number => {
       if (
         part instanceof vscode.LanguageModelDataPart &&
         SUPPORTED_IMAGE_MIME_TYPES.has(part.mimeType)
       ) {
-        return estimateImageTokens(part.data.length);
+        return estimateImageTokens(part, modelId);
       }
       if (part instanceof vscode.LanguageModelToolResultPart) {
         return part.content.reduce(
-          (sum: number, inner: unknown) => sum + estimateImagePartTokens(inner),
+          (sum: number, inner: unknown) => sum + estimateImagePartTokens(inner, modelId),
           0,
         );
       }
@@ -1034,7 +1042,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         0,
       );
       const imageTokens = input.content.reduce(
-        (sum: number, part: unknown) => sum + estimateImagePartTokens(part),
+        (sum: number, part: unknown) => sum + estimateImagePartTokens(part, modelId),
         0,
       );
 
@@ -1728,6 +1736,23 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         temperatureDeprecated,
         requiresAdaptiveThinking,
       );
+    } else if (requiresAdaptiveThinking || disabledThinkingType) {
+      // Preserve the model's required thinking mode when the extension disables
+      // extended thinking. Opus 5.5 only accepts adaptive mode, at low effort.
+      const thinkingType = disabledThinkingType ?? "disabled";
+      const disabledModeEffort = disabledThinkingType === "adaptive" ? "low" : thinkingEffort;
+      requestInput.additionalModelRequestFields = {
+        thinking: { type: thinkingType },
+        ...(disabledModeEffort && { output_config: { effort: disabledModeEffort } }),
+        ...(betaHeaders.length > 0 && { anthropic_beta: betaHeaders }),
+      };
+
+      logger.debug("[Bedrock Model Provider] Adaptive thinking disabled", {
+        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
+        modelId,
+        thinkingEffort: disabledModeEffort,
+        thinkingType,
+      });
     } else if (thinkingEffort) {
       // Claude Opus 4.5 and Sonnet 4.6 effort parameter can be used even without extended thinking
       // This affects all token spend including tool calls
@@ -1740,22 +1765,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
         modelId,
         thinkingEffort,
-      });
-    } else if (requiresAdaptiveThinking || disabledThinkingType) {
-      // Some adaptive-thinking models require an explicit off mode. Sonnet 5.5
-      // uses "between_tools"; Opus 5.5 rejects "disabled" and requires
-      // adaptive thinking, so constrain that fallback to low effort.
-      requestInput.additionalModelRequestFields = {
-        thinking: { type: disabledThinkingType ?? "disabled" },
-        ...(disabledThinkingType === "adaptive" && {
-          output_config: { effort: "low" },
-        }),
-        ...(betaHeaders.length > 0 && { anthropic_beta: betaHeaders }),
-      };
-
-      logger.debug("[Bedrock Model Provider] Adaptive thinking disabled", {
-        anthropicBeta: betaHeaders.length > 0 ? betaHeaders : undefined,
-        modelId,
       });
     } else if (betaHeaders.length > 0) {
       // Add beta headers even without thinking or effort

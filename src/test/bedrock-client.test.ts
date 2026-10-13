@@ -9,6 +9,7 @@ interface BedrockAPIClientInternals {
   bedrockRuntimeClient: MockSendClient;
   detectAnthropicFallbackModels: (abortSignal?: AbortSignal) => Promise<BedrockModelSummary[]>;
   inferenceProfileCache: Map<string, string>;
+  region: string;
   unsupportedCountTokensModels: Set<string>;
 }
 
@@ -134,13 +135,18 @@ suite("BedrockAPIClient unit tests", () => {
       assert.equal(state.unsupportedCountTokensModels.has("openai.gpt-oss-120b-1:0"), true);
     });
 
-    test("clears CountTokens unsupported cache when clients are recreated", () => {
+    test("recreates clients and clears CountTokens cache when region changes", () => {
       const client = new BedrockAPIClient("us-east-1");
       const state = internals(client);
+      const bedrockClient = state.bedrockClient;
+      const bedrockRuntimeClient = state.bedrockRuntimeClient;
       state.unsupportedCountTokensModels.add("openai.gpt-oss-120b-1:0");
 
       client.setRegion("us-west-2");
 
+      assert.equal(state.region, "us-west-2");
+      assert.notEqual(state.bedrockClient, bedrockClient);
+      assert.notEqual(state.bedrockRuntimeClient, bedrockRuntimeClient);
       assert.equal(state.unsupportedCountTokensModels.size, 0);
     });
   });

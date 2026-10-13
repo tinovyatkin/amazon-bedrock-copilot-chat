@@ -40,19 +40,32 @@ interface ProviderInternals {
     limits: { maxInputTokens: number; maxOutputTokens: number };
     name: string;
   }[];
-  formatDetail: (
-    modelId: string,
-    maxInput: number,
-    maxOutput: number,
-    hasVision: boolean,
-  ) => string;
+  buildRequestInput: (
+    model: vscode.LanguageModelChatInformation,
+    baseModelId: string,
+    converted: {
+      messages: ConverseStreamCommandInput["messages"];
+      system: NonNullable<ConverseStreamCommandInput["system"]>;
+    },
+    options: vscode.LanguageModelChatRequestOptions,
+    toolConfig: undefined,
+    isExtendedThinkingEnabled: boolean,
+    budgetTokens: number,
+    betaHeaders: string[],
+    thinkingEffort?: "high" | "low" | "max" | "medium" | "xhigh",
+    isTemperatureDeprecated?: boolean,
+    requiresAdaptiveThinking?: boolean,
+    reasoningEffort?: "high" | "low" | "medium" | "minimal",
+    disabledThinkingType?: "adaptive" | "between_tools" | "disabled",
+  ) => ConverseStreamCommandInput;
+  formatDetail: (modelId: string, maxInput: number, maxOutput: number, isVision: boolean) => string;
   formatTooltip: (arguments_: {
-    hasVision: boolean;
     maxInput: number;
     maxOutput: number;
     modelId: string;
     providerName: string;
     route: string;
+    vision: boolean;
   }) => string;
   resolveBedrockRouteId: (modelId: string) => string;
   resolveModelLimits: (
@@ -60,6 +73,26 @@ interface ProviderInternals {
     isContext1MEnabled: boolean,
     modelsDevelopmentMap: ModelsDevelopmentMap,
   ) => { maxInputTokens: number; maxOutputTokens: number };
+}
+
+function pngFixture(width: number, height: number, payloadLength: number): Uint8Array {
+  const data = new Uint8Array(24 + payloadLength);
+  data.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  data.set([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52], 8);
+  data.set(
+    [
+      (width >>> 24) & 0xff,
+      (width >>> 16) & 0xff,
+      (width >>> 8) & 0xff,
+      width & 0xff,
+      (height >>> 24) & 0xff,
+      (height >>> 16) & 0xff,
+      (height >>> 8) & 0xff,
+      height & 0xff,
+    ],
+    16,
+  );
+  return data;
 }
 
 function providerInternals(provider: BedrockChatModelProvider): ProviderInternals {
@@ -301,6 +334,71 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(est, 25);
     });
 
+    test("Claude image estimates use dimensions rather than encoded payload size", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const model = {
+        capabilities: {},
+        family: "bedrock",
+        id: "global.anthropic.claude-sonnet-5-5",
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+        name: "Claude Sonnet 5.5",
+        version: "1.0.0",
+      };
+
+      const createMessage = (payloadLength: number): vscode.LanguageModelChatMessage => ({
+        content: [
+          new vscode.LanguageModelDataPart(
+            pngFixture(1200, 900, payloadLength),
+            "image/png",
+          ) as unknown as vscode.LanguageModelTextPart,
+        ],
+        name: undefined,
+        role: vscode.LanguageModelChatMessageRole.User,
+      });
+      const token = new vscode.CancellationTokenSource().token;
+      const lowCompressionTokens = await provider.provideTokenCount(
+        model,
+        createMessage(128),
+        token,
+      );
+      const highCompressionTokens = await provider.provideTokenCount(
+        model,
+        createMessage(8192),
+        token,
+      );
+
+      assert.equal(lowCompressionTokens, 1440);
+      assert.equal(highCompressionTokens, lowCompressionTokens);
+    });
+
+    test("non-Claude image estimates use model-aware encoded-size fallback", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const image = new vscode.LanguageModelDataPart(
+        pngFixture(1200, 900, 1000),
+        "image/png",
+      ) as unknown as vscode.LanguageModelTextPart;
+      const estimate = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "amazon.nova-pro-v1:0",
+          maxInputTokens: 300_000,
+          maxOutputTokens: 10_000,
+          name: "Nova Pro",
+          version: "1.0.0",
+        },
+        {
+          content: [image],
+          name: undefined,
+          role: vscode.LanguageModelChatMessageRole.User,
+        },
+        new vscode.CancellationTokenSource().token,
+      );
+
+      assert.equal(estimate, 1);
+    });
+
     test("does not add legacy opt-in beta headers for Opus 4.7", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
@@ -324,9 +422,80 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-5-5", {});
       const additionalFields = requestInput.additionalModelRequestFields as
         | undefined
-        | { thinking?: { type?: string } };
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
 
       assert.equal(additionalFields?.thinking?.type, "between_tools");
+      assert.equal(additionalFields?.output_config?.effort, undefined);
+    });
+
+    test("preserves Sonnet 5.5 thinking mode when an effort is selected", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput = provider.buildRequestInput(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-sonnet-5-5",
+          maxInputTokens: 872_000,
+          maxOutputTokens: 128_000,
+          name: "Claude Sonnet 5.5",
+          version: "1.0.0",
+        },
+        "anthropic.claude-sonnet-5-5",
+        { messages: [], system: [] },
+        {},
+        undefined,
+        false,
+        16_000,
+        [],
+        "high",
+        true,
+        true,
+        undefined,
+        "between_tools",
+      );
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "between_tools");
+      assert.equal(additionalFields?.output_config?.effort, "high");
+    });
+
+    test("preserves Opus 5.5 adaptive mode and low effort when thinking is disabled", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput = provider.buildRequestInput(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-opus-5-5",
+          maxInputTokens: 872_000,
+          maxOutputTokens: 128_000,
+          name: "Claude Opus 5.5",
+          version: "1.0.0",
+        },
+        "anthropic.claude-opus-5-5",
+        { messages: [], system: [] },
+        {},
+        undefined,
+        false,
+        16_000,
+        [],
+        "high",
+        true,
+        true,
+        undefined,
+        "adaptive",
+      );
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "adaptive");
+      assert.equal(additionalFields?.output_config?.effort, "low");
     });
 
     test("keeps disabled thinking mode for Sonnet 5", () => {
@@ -440,12 +609,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
       const detail = provider.formatDetail(modelId, 872_000, 128_000, false);
       const tooltip = provider.formatTooltip({
-        hasVision: false,
         maxInput: 872_000,
         maxOutput: 128_000,
         modelId,
         providerName: "Anthropic",
         route: "Direct foundation model",
+        vision: false,
       });
 
       assert.match(detail, /budget thinking/);
@@ -465,12 +634,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
       const detail = provider.formatDetail(modelId, inputBudget, 98_304, false);
       const tooltip = provider.formatTooltip({
-        hasVision: false,
         maxInput: inputBudget,
         maxOutput: 98_304,
         modelId,
         providerName: "MiniMax",
         route: "Direct foundation model",
+        vision: false,
       });
 
       // detail should show total context (197K) and output (98K)
