@@ -50,14 +50,6 @@ import type {
 } from "./types";
 import { validateBedrockMessages } from "./validation";
 
-interface LocalPromptBudgetVariant {
-  readonly contextSize: number;
-  readonly id: string;
-  readonly limits: { maxInputTokens: number; maxOutputTokens: number };
-  readonly name: string;
-}
-
-const LOCAL_PROMPT_BUDGET_PREFIX = "bedrock-prompt-budget:v1:";
 const LOCAL_PROMPT_CONTEXT_SIZES = [256_000, 750_000] as const;
 
 type PickerLanguageModelChatInformation = LanguageModelChatInformation & {
@@ -262,12 +254,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               settings.context1M.enabled,
               modelsDevelopmentMap,
             );
-            const variants = this.buildLocalPromptBudgetVariants(
-              modelIdToUse,
-              m.modelName,
-              modelIdToUse,
-              limits,
-            );
             // Use models.dev modalities when available (more accurate than Bedrock API)
             const developmentEntry = modelsDevelopmentMap.get(modelIdToUse);
             const isVision = developmentEntry
@@ -285,42 +271,43 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
             }
 
             const modelProfile = getModelProfile(modelIdToUse);
-            infos.push(
-              ...variants.map((variant): PickerLanguageModelChatInformation => {
-                const { maxInputTokens: maxInput, maxOutputTokens: maxOutput } = variant.limits;
-                return {
-                  capabilities: {
-                    agentMode: true,
-                    imageInput: isVision,
-                    // Advertise tool calling for all models: profiles.ts correctly gates
-                    // tool use at request time via supportsToolChoice, but advertising
-                    // false here would break agent mode for any model not yet enumerated.
-                    toolCalling: true,
-                  },
-                  configurationSchema: this.buildConfigurationSchema(
-                    modelIdToUse,
-                    modelProfile,
-                    modelsDevelopmentMap,
-                  ),
-                  detail: this.formatDetail(modelIdToUse, maxInput, maxOutput, isVision),
-                  family: "bedrock",
-                  id: variant.id,
-                  isUserSelectable: true,
-                  maxInputTokens: maxInput,
-                  maxOutputTokens: maxOutput,
-                  name: variant.name,
-                  tooltip: this.formatTooltip({
-                    maxInput,
-                    maxOutput,
-                    modelId: modelIdToUse,
-                    providerName: m.providerName,
-                    route,
-                    vision: isVision,
-                  }),
-                  version: "1.0.0",
-                };
+            infos.push({
+              capabilities: {
+                agentMode: true,
+                imageInput: isVision,
+                // Advertise tool calling for all models: profiles.ts correctly gates
+                // tool use at request time via supportsToolChoice, but advertising
+                // false here would break agent mode for any model not yet enumerated.
+                toolCalling: true,
+              },
+              configurationSchema: this.buildConfigurationSchema(
+                modelIdToUse,
+                modelProfile,
+                modelsDevelopmentMap,
+                limits,
+              ),
+              detail: this.formatDetail(
+                modelIdToUse,
+                limits.maxInputTokens,
+                limits.maxOutputTokens,
+                isVision,
+              ),
+              family: "bedrock",
+              id: modelIdToUse,
+              isUserSelectable: true,
+              maxInputTokens: limits.maxInputTokens,
+              maxOutputTokens: limits.maxOutputTokens,
+              name: m.modelName,
+              tooltip: this.formatTooltip({
+                maxInput: limits.maxInputTokens,
+                maxOutput: limits.maxOutputTokens,
+                modelId: modelIdToUse,
+                providerName: m.providerName,
+                route,
+                vision: isVision,
               }),
-            );
+              version: "1.0.0",
+            } as PickerLanguageModelChatInformation);
           }
 
           // Add application inference profiles
@@ -347,51 +334,46 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
               settings.context1M.enabled,
               modelsDevelopmentMap,
             );
-            const variants = this.buildLocalPromptBudgetVariants(
-              profile.modelArn,
-              profile.modelName,
-              modelIdForLimits,
-              limits,
-            );
             const developmentEntryForProfile = modelsDevelopmentMap.get(modelIdForLimits);
             const isVision = developmentEntryForProfile
               ? (developmentEntryForProfile.modalities?.input?.includes("image") ?? false)
               : profile.inputModalities.includes(ModelModality.IMAGE);
 
             const appProfileModelProfile = getModelProfile(modelIdForLimits);
-            infos.push(
-              ...variants.map((variant): PickerLanguageModelChatInformation => {
-                const { maxInputTokens: maxInput, maxOutputTokens: maxOutput } = variant.limits;
-                return {
-                  capabilities: {
-                    agentMode: true,
-                    imageInput: isVision,
-                    toolCalling: true,
-                  },
-                  configurationSchema: this.buildConfigurationSchema(
-                    modelIdForLimits,
-                    appProfileModelProfile,
-                    modelsDevelopmentMap,
-                  ),
-                  detail: this.formatDetail(modelIdForLimits, maxInput, maxOutput, isVision),
-                  family: "bedrock",
-                  id: variant.id,
-                  isUserSelectable: true,
-                  maxInputTokens: maxInput,
-                  maxOutputTokens: maxOutput,
-                  name: variant.name,
-                  tooltip: this.formatTooltip({
-                    maxInput,
-                    maxOutput,
-                    modelId: modelIdForLimits,
-                    providerName: profile.providerName,
-                    route: "Application inference profile",
-                    vision: isVision,
-                  }),
-                  version: "1.0.0",
-                };
+            infos.push({
+              capabilities: {
+                agentMode: true,
+                imageInput: isVision,
+                toolCalling: true,
+              },
+              configurationSchema: this.buildConfigurationSchema(
+                modelIdForLimits,
+                appProfileModelProfile,
+                modelsDevelopmentMap,
+                limits,
+              ),
+              detail: this.formatDetail(
+                modelIdForLimits,
+                limits.maxInputTokens,
+                limits.maxOutputTokens,
+                isVision,
+              ),
+              family: "bedrock",
+              id: profile.modelArn,
+              isUserSelectable: true,
+              maxInputTokens: limits.maxInputTokens,
+              maxOutputTokens: limits.maxOutputTokens,
+              name: profile.modelName,
+              tooltip: this.formatTooltip({
+                maxInput: limits.maxInputTokens,
+                maxOutput: limits.maxOutputTokens,
+                modelId: modelIdForLimits,
+                providerName: profile.providerName,
+                route: "Application inference profile",
+                vision: isVision,
               }),
-            );
+              version: "1.0.0",
+            } as PickerLanguageModelChatInformation);
           }
 
           // Sort models: inference profiles by updatedAt/createdAt (newest first), then others
@@ -584,8 +566,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         abortController.abort();
       });
 
-      const promptBudgetModel = parseLocalPromptBudgetModelId(model.id);
-      const bedrockRouteId = promptBudgetModel?.routeId ?? model.id;
+      const bedrockRouteId = model.id;
       let baseModelId: string;
       try {
         baseModelId = await this.client.resolveModelId(bedrockRouteId, abortController.signal);
@@ -656,6 +637,12 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       // context1M override: the picker value fully overrides settings.context1M.enabled
       // for this request — so the user can turn 1M *off* for a single request even when
       // the workspace setting has it enabled.
+      const selectedContextSize =
+        typeof mc?.contextSize === "number" && mc.contextSize > 0 ? mc.contextSize : undefined;
+      const usesLocalContextSize =
+        selectedContextSize !== undefined &&
+        !requires1MContextBetaHeader(baseModelId) &&
+        selectedContextSize < 1_000_000;
       const isContext1MEnabled =
         typeof mc?.contextSize === "number"
           ? mc.contextSize >= 1_000_000
@@ -823,8 +810,15 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       );
 
       // Build request input — use effective effort values (model-picker overrides win)
+      const requestModel = { ...model, id: bedrockRouteId };
+      if (usesLocalContextSize) {
+        requestModel.maxInputTokens = Math.min(
+          model.maxInputTokens,
+          Math.max(0, selectedContextSize - model.maxOutputTokens),
+        );
+      }
       const requestInput = this.buildRequestInput(
-        promptBudgetModel ? { ...model, id: bedrockRouteId } : model,
+        requestModel,
         baseModelId,
         converted,
         options,
@@ -1055,8 +1049,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       const cancellationListener = token.onCancellationRequested(() => {
         abortController.abort();
       });
-      const promptBudgetModel = parseLocalPromptBudgetModelId(model.id);
-      const bedrockRouteId = promptBudgetModel?.routeId ?? model.id;
+      const bedrockRouteId = model.id;
 
       // Resolve model ID for application inference profiles (ARNs) to base model ID
       // This is needed because convertMessages calls getModelProfile which expects base model IDs
@@ -1097,7 +1090,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
       } else {
         logger.warn("[Bedrock Model Provider] Token count failed, using estimation", error);
       }
-      return estimateTokens(text, parseLocalPromptBudgetModelId(model.id)?.routeId ?? model.id);
+      return estimateTokens(text, model.id);
     }
   }
 
@@ -1265,6 +1258,7 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
     modelsDevelopmentMap: ModelsDevelopmentMap = new Map(),
+    limits?: { maxInputTokens: number; maxOutputTokens: number },
   ): LanguageModelConfigurationSchema | undefined {
     // Mutable during construction; returned as LanguageModelConfigurationSchema.
     const properties: Record<string, Record<string, unknown>> = {};
@@ -1285,28 +1279,44 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     );
 
     // ── Context size picker ────────────────────────────────────────────────
-    // Only shown for models where 1M context is an *optional* beta-header opt-in
-    // (Opus 4.6, Sonnet 4.5). Always-1M models (Opus 4.7/4.8, Sonnet 4.6) and
-    // models with no 1M support get no picker.
-    // Enum values are the full context window sizes (200_000 / 1_000_000) so that
-    // the contextSize override check in provideLanguageModelChatResponse can simply
-    // test `contextSize >= 1_000_000`. The picker is skipped if both options are equal.
-    if (requires1MContextBetaHeader(modelId)) {
-      const standardContextTotal = 200_000;
-      const extended1MTotal = 1_000_000;
-      const fmt = (n: number) => {
-        const k = Math.round(n / 1000);
-        return k >= 1000 ? `${Math.round(k / 1000)}M` : `${k}K`;
-      };
+    // Expose the local prompt cap on the single model entry. The selected total
+    // context value reserves the model's output allowance in the request path.
+    if (limits) {
+      const totalContext = limits.maxInputTokens + limits.maxOutputTokens;
+      const contextSizes: number[] = [
+        totalContext,
+        ...LOCAL_PROMPT_CONTEXT_SIZES.filter(
+          (contextSize) => contextSize < totalContext && contextSize > limits.maxOutputTokens,
+        ),
+      ];
+      if (requires1MContextBetaHeader(modelId)) {
+        contextSizes.push(200_000, 1_000_000);
+      }
+      const uniqueContextSizes = [...new Set(contextSizes)];
+      const fmt = (tokens: number) =>
+        tokens >= 1_000_000
+          ? `${Number((tokens / 1_000_000).toFixed(2))}M`
+          : `${Math.round(tokens / 1000)}K`;
+      const contextDescriptions = uniqueContextSizes.map((size) => {
+        if (size === totalContext) {
+          return "Use the model's maximum context";
+        }
+        if (size === 1_000_000 && requires1MContextBetaHeader(modelId)) {
+          return "Extended 1M context window (may increase cost)";
+        }
+        if (size === 200_000 && requires1MContextBetaHeader(modelId)) {
+          return "Default context window (standard pricing)";
+        }
+        return "Limit the local prompt budget";
+      });
       properties.contextSize = {
-        default: standardContextTotal,
+        default: totalContext,
         description: "Context window size for this request",
-        enum: [standardContextTotal, extended1MTotal],
-        enumDescriptions: [
-          "Default context window (standard pricing)",
-          "Extended 1M context window (may increase cost)",
-        ],
-        enumItemLabels: [fmt(standardContextTotal), fmt(extended1MTotal)],
+        enum: uniqueContextSizes,
+        enumDescriptions: contextDescriptions,
+        enumItemLabels: uniqueContextSizes.map((size) =>
+          size === totalContext ? `${fmt(size)} Max` : fmt(size),
+        ),
         group: "tokens",
         title: "Context Size",
         type: "number",
@@ -1387,68 +1397,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
   }
 
   /**
-   * Publish extra picker entries with smaller local prompt budgets. These do
-   * not change Bedrock's context mode; their maxInputTokens metadata asks
-   * Copilot to prepare a smaller prompt. Claude 4 keeps its existing 1M beta
-   * header control and is deliberately excluded from these new entries.
-   */
-  private buildLocalPromptBudgetVariants(
-    routeId: string,
-    modelName: string,
-    baseModelId: string,
-    limits: { maxInputTokens: number; maxOutputTokens: number },
-  ): LocalPromptBudgetVariant[] {
-    const totalContext = limits.maxInputTokens + limits.maxOutputTokens;
-    const isClaude4 = /anthropic\.claude-(?:opus|sonnet|haiku)-4(?:[.-]|$)/i.test(baseModelId);
-    const eligibleSizes = isClaude4
-      ? []
-      : LOCAL_PROMPT_CONTEXT_SIZES.filter(
-          (contextSize) => contextSize < totalContext && contextSize > limits.maxOutputTokens,
-        );
-
-    const formatContextSize = (tokens: number) =>
-      tokens >= 1_000_000
-        ? `${Number((tokens / 1_000_000).toFixed(2))}M`
-        : `${Math.round(tokens / 1000)}K`;
-    if (eligibleSizes.length === 0) {
-      return [
-        {
-          contextSize: totalContext,
-          id: routeId,
-          limits,
-          name: `${modelName} (Max: ${formatContextSize(totalContext)} context)`,
-        },
-      ];
-    }
-
-    const variants: LocalPromptBudgetVariant[] = [
-      {
-        contextSize: totalContext,
-        id: routeId,
-        limits,
-        name: `${modelName} (Max: ${formatContextSize(totalContext)} context)`,
-      },
-    ];
-
-    for (const contextSize of eligibleSizes) {
-      variants.push({
-        contextSize,
-        id: `${LOCAL_PROMPT_BUDGET_PREFIX}${contextSize}:${encodeURIComponent(routeId)}`,
-        limits: {
-          // VS Code/Copilot model metadata separates input and output capacities.
-          // These selections are total context caps, so reserve the full output
-          // allowance when calculating the advertised input budget.
-          maxInputTokens: Math.min(contextSize - limits.maxOutputTokens, limits.maxInputTokens),
-          maxOutputTokens: limits.maxOutputTokens,
-        },
-        name: `${modelName} (${formatContextSize(contextSize)} context cap)`,
-      });
-    }
-
-    return variants;
-  }
-
-  /**
    * Allow users with restricted permissions to manually supply a model or inference profile ID.
    */
   private async buildManualModelInformation(
@@ -1481,7 +1429,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         settings.context1M.enabled,
         manualModelsDevelopmentMap,
       );
-      const variants = this.buildLocalPromptBudgetVariants(modelId, modelId, baseModelId, limits);
       const developmentEntry = resolveModelsDevelopmentEntry(
         baseModelId,
         normalizeModelId(baseModelId),
@@ -1491,37 +1438,40 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
         ? (developmentEntry.modalities?.input?.includes("image") ?? false)
         : /anthropic\.|nova\.|llama\.|pixtral|gpt-oss/i.test(baseModelId);
 
-      return variants.map((variant) => ({
-        capabilities: {
-          imageInput: isLikelyVisionCapable,
-          toolCalling: true,
+      return [
+        {
+          capabilities: {
+            imageInput: isLikelyVisionCapable,
+            toolCalling: true,
+          },
+          configurationSchema: this.buildConfigurationSchema(
+            baseModelId,
+            manualModelProfile,
+            manualModelsDevelopmentMap,
+            limits,
+          ),
+          detail: this.formatDetail(
+            baseModelId,
+            limits.maxInputTokens,
+            limits.maxOutputTokens,
+            isLikelyVisionCapable,
+          ),
+          family: "bedrock",
+          id: modelId,
+          maxInputTokens: limits.maxInputTokens,
+          maxOutputTokens: limits.maxOutputTokens,
+          name: modelId,
+          tooltip: this.formatTooltip({
+            maxInput: limits.maxInputTokens,
+            maxOutput: limits.maxOutputTokens,
+            modelId: baseModelId,
+            providerName: "Bedrock",
+            route: "Manual entry",
+            vision: isLikelyVisionCapable,
+          }),
+          version: "1.0.0",
         },
-        configurationSchema: this.buildConfigurationSchema(
-          baseModelId,
-          manualModelProfile,
-          manualModelsDevelopmentMap,
-        ),
-        detail: this.formatDetail(
-          baseModelId,
-          variant.limits.maxInputTokens,
-          variant.limits.maxOutputTokens,
-          isLikelyVisionCapable,
-        ),
-        family: "bedrock",
-        id: variant.id,
-        maxInputTokens: variant.limits.maxInputTokens,
-        maxOutputTokens: variant.limits.maxOutputTokens,
-        name: variant.name,
-        tooltip: this.formatTooltip({
-          maxInput: variant.limits.maxInputTokens,
-          maxOutput: variant.limits.maxOutputTokens,
-          modelId: baseModelId,
-          providerName: "Bedrock",
-          route: "Manual entry",
-          vision: isLikelyVisionCapable,
-        }),
-        version: "1.0.0",
-      }));
+      ];
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
         logger.error("[Bedrock Model Provider] Manual model setup failed", error);
@@ -2425,10 +2375,6 @@ export class BedrockChatModelProvider implements vscode.Disposable, LanguageMode
     }
   }
 
-  private resolveBedrockRouteId(modelId: string): string {
-    return parseLocalPromptBudgetModelId(modelId)?.routeId ?? modelId;
-  }
-
   /**
    * Resolve token limits for a model, preferring live data from models.dev over
    * the hardcoded `getModelTokenLimits` fallback.
@@ -2532,34 +2478,6 @@ function isNamedGpt5Variant(baseModelId: string): boolean {
       normalizedId.includes("-sol") ||
       normalizedId.includes("-terra"))
   );
-}
-
-function parseLocalPromptBudgetModelId(
-  modelId: string,
-): undefined | { contextSize: number; routeId: string } {
-  if (!modelId.startsWith(LOCAL_PROMPT_BUDGET_PREFIX)) {
-    return undefined;
-  }
-
-  const encodedValue = modelId.slice(LOCAL_PROMPT_BUDGET_PREFIX.length);
-  const separatorIndex = encodedValue.indexOf(":");
-  const contextSize = Number(encodedValue.slice(0, separatorIndex));
-  const encodedRouteId = encodedValue.slice(separatorIndex + 1);
-  if (
-    separatorIndex < 1 ||
-    !LOCAL_PROMPT_CONTEXT_SIZES.includes(
-      contextSize as (typeof LOCAL_PROMPT_CONTEXT_SIZES)[number],
-    ) ||
-    !encodedRouteId
-  ) {
-    throw new Error(`Invalid Bedrock local prompt-budget model ID: ${modelId}`);
-  }
-
-  try {
-    return { contextSize, routeId: decodeURIComponent(encodedRouteId) };
-  } catch (error) {
-    throw new Error(`Invalid Bedrock local prompt-budget model ID: ${modelId}`, { cause: error });
-  }
 }
 
 /**

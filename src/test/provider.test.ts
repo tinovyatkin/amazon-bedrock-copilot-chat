@@ -28,18 +28,8 @@ interface ProviderInternals {
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
     modelsDevelopmentMap?: ModelsDevelopmentMap,
+    limits?: { maxInputTokens: number; maxOutputTokens: number },
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
-  buildLocalPromptBudgetVariants: (
-    routeId: string,
-    modelName: string,
-    baseModelId: string,
-    limits: { maxInputTokens: number; maxOutputTokens: number },
-  ) => {
-    contextSize: number;
-    id: string;
-    limits: { maxInputTokens: number; maxOutputTokens: number };
-    name: string;
-  }[];
   buildRequestInput: (
     model: vscode.LanguageModelChatInformation,
     baseModelId: string,
@@ -67,7 +57,6 @@ interface ProviderInternals {
     route: string;
     vision: boolean;
   }) => string;
-  resolveBedrockRouteId: (modelId: string) => string;
   resolveModelLimits: (
     modelId: string,
     isContext1MEnabled: boolean,
@@ -199,11 +188,17 @@ const callBuildRequestInput = (
 const callBuildConfigSchema = (
   modelId: string,
   modelsDevelopmentMap: ModelsDevelopmentMap = new Map(),
+  limits?: { maxInputTokens: number; maxOutputTokens: number },
 ) => {
   const provider = providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
   );
-  return provider.buildConfigurationSchema(modelId, getModelProfile(modelId), modelsDevelopmentMap);
+  return provider.buildConfigurationSchema(
+    modelId,
+    getModelProfile(modelId),
+    modelsDevelopmentMap,
+    limits,
+  );
 };
 
 const callResolveModelLimits = (
@@ -1604,7 +1599,10 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("returns contextSize picker for Opus 4.6 (optional 1M context)", () => {
       // Opus 4.6 default: 200K context window (full, not context-output)
-      const schema = callBuildConfigSchema("anthropic.claude-opus-4-6-v1");
+      const schema = callBuildConfigSchema("anthropic.claude-opus-4-6-v1", new Map(), {
+        maxInputTokens: 72_000,
+        maxOutputTokens: 128_000,
+      });
       assert.ok(schema?.properties?.contextSize, "should have contextSize property");
       const cs = schema.properties.contextSize;
       assert.deepEqual(cs.enum, [200_000, 1_000_000]);
@@ -1612,14 +1610,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(cs.group, "tokens");
     });
 
-    test("returns NO contextSize picker for Opus 4.7 (always 1M context)", () => {
-      // Opus 4.7: 1M context is always-on — no picker needed
-      const schema = callBuildConfigSchema("anthropic.claude-opus-4-7-20260420-v1:0");
-      assert.equal(
-        schema?.properties?.contextSize,
-        undefined,
-        "Opus 4.7 always uses 1M — no picker needed",
-      );
+    test("shows local caps for always-1M Opus 4.7 without a redundant 1M choice", () => {
+      const schema = callBuildConfigSchema("anthropic.claude-opus-4-7-20260420-v1:0", new Map(), {
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+      });
+      assert.deepEqual(schema?.properties?.contextSize?.enum, [1_000_000, 256_000, 750_000]);
     });
 
     test("returns thinkingEffort picker for Sonnet 4.6 (supportsThinkingEffort)", () => {
@@ -1695,17 +1691,22 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
     });
 
-    test("Sonnet 4.6 has no contextSize picker (always-1M) but has thinkingEffort picker", () => {
-      // Sonnet 4.6 is always-1M — no optional context extension, so no picker.
-      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6");
-      assert.equal(schema?.properties?.contextSize, undefined, "should NOT have contextSize");
+    test("Sonnet 4.6 has contextSize and thinkingEffort pickers", () => {
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6", new Map(), {
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+      });
+      assert.ok(schema?.properties?.contextSize);
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort");
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
 
     test("Sonnet 4.5 returns contextSize picker and thinkingEffort picker", () => {
       // Sonnet 4.5 has optional 1M via beta header, and supports extended thinking.
-      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-5-20250929-v1:0");
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-5-20250929-v1:0", new Map(), {
+        maxInputTokens: 72_000,
+        maxOutputTokens: 128_000,
+      });
       assert.ok(schema?.properties?.contextSize, "should have contextSize");
       // Sonnet 4.5 supports thinking (supportsThinking) but not thinkingEffort
       // (effort control is only on Opus 4.5/4.6/4.8 and Sonnet 4.6)
@@ -1714,61 +1715,22 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     });
   });
 
-  suite("local prompt-budget model entries", () => {
-    test("offers max, 256K, and 750K windows with output tokens reserved", () => {
-      const provider = providerInternals(
-        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
-      );
-      const routeId = "global.openai.gpt-6-luna";
-      const variants = provider.buildLocalPromptBudgetVariants(
-        routeId,
-        "GPT-6 Luna",
-        "openai.gpt-6-luna",
-        { maxInputTokens: 922_000, maxOutputTokens: 128_000 },
-      );
+  suite("local prompt context choices", () => {
+    test("exposes maximum, 256K, and 750K choices in the model configuration", () => {
+      const schema = callBuildConfigSchema("global.openai.gpt-6-luna", new Map(), {
+        maxInputTokens: 922_000,
+        maxOutputTokens: 128_000,
+      });
+      const contextSize = schema?.properties?.contextSize;
 
-      assert.equal(variants.length, 3);
-      assert.equal(variants[0].id, routeId);
-      assert.equal(variants[0].limits.maxInputTokens, 922_000);
-      assert.match(variants[0].name, /Max: 1\.05M/);
-      assert.equal(variants[1].limits.maxInputTokens, 128_000); // 256K total - 128K output
-      assert.equal(variants[2].limits.maxInputTokens, 622_000); // 750K total - 128K output
-      assert.equal(variants[1].limits.maxOutputTokens, 128_000);
-      assert.equal(provider.resolveBedrockRouteId(variants[1].id), routeId);
-      assert.equal(provider.resolveBedrockRouteId(variants[2].id), routeId);
-    });
-
-    test("keeps Claude 4's existing Bedrock context controls without adding cap aliases", () => {
-      const provider = providerInternals(
-        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
-      );
-      const routeId = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc";
-      const variants = provider.buildLocalPromptBudgetVariants(
-        routeId,
-        "Claude Opus 4.6",
-        "anthropic.claude-opus-4-6-v1",
-        { maxInputTokens: 872_000, maxOutputTokens: 128_000 },
-      );
-
-      assert.equal(variants.length, 1);
-      assert.equal(variants[0].id, routeId);
-      assert.equal(provider.resolveBedrockRouteId(routeId), routeId);
-    });
-
-    test("offers only caps below the model maximum", () => {
-      const provider = providerInternals(
-        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
-      );
-      const variants = provider.buildLocalPromptBudgetVariants(
-        "us.anthropic.claude-fable-5",
-        "Claude Fable 5",
-        "anthropic.claude-fable-5",
-        { maxInputTokens: 872_000, maxOutputTokens: 128_000 },
-      );
-
-      assert.equal(variants.length, 3);
-      assert.equal(variants[1].limits.maxInputTokens, 128_000);
-      assert.equal(variants[2].limits.maxInputTokens, 622_000);
+      assert.ok(contextSize);
+      assert.deepEqual(contextSize.enum, [1_050_000, 256_000, 750_000]);
+      assert.deepEqual(contextSize.enumItemLabels, ["1.05M Max", "256K", "750K"]);
+      assert.deepEqual(contextSize.enumDescriptions, [
+        "Use the model's maximum context",
+        "Limit the local prompt budget",
+        "Limit the local prompt budget",
+      ]);
     });
   });
 
@@ -1949,8 +1911,12 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
           { limit: { context: 100_000, output: 8000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigSchema("newprovider.new-reasoning-model", developmentMap);
+      const schema = callBuildConfigSchema("newprovider.new-reasoning-model", developmentMap, {
+        maxInputTokens: 92_000,
+        maxOutputTokens: 8000,
+      });
       assert.ok(schema?.properties?.reasoningEffort);
+      assert.ok(schema?.properties?.contextSize);
     });
 
     test("reasoningEffort picker does NOT appear for Anthropic models via models.dev reasoning flag", () => {
