@@ -9,6 +9,7 @@ interface BedrockAPIClientInternals {
   bedrockRuntimeClient: MockSendClient;
   detectAnthropicFallbackModels: (abortSignal?: AbortSignal) => Promise<BedrockModelSummary[]>;
   inferenceProfileCache: Map<string, string>;
+  region: string;
   unsupportedCountTokensModels: Set<string>;
 }
 
@@ -28,7 +29,7 @@ function awsError(
     $metadata?: { httpStatusCode: number };
     $response?: { statusCode: number };
   };
-  error.name = name;
+  Object.defineProperty(error, "name", { configurable: true, value: name });
   if (httpStatusCode) {
     error.$metadata = { httpStatusCode };
   }
@@ -134,13 +135,18 @@ suite("BedrockAPIClient unit tests", () => {
       assert.equal(state.unsupportedCountTokensModels.has("openai.gpt-oss-120b-1:0"), true);
     });
 
-    test("clears CountTokens unsupported cache when clients are recreated", () => {
+    test("recreates clients and clears CountTokens cache when region changes", () => {
       const client = new BedrockAPIClient("us-east-1");
       const state = internals(client);
+      const bedrockClient = state.bedrockClient;
+      const bedrockRuntimeClient = state.bedrockRuntimeClient;
       state.unsupportedCountTokensModels.add("openai.gpt-oss-120b-1:0");
 
       client.setRegion("us-west-2");
 
+      assert.equal(state.region, "us-west-2");
+      assert.notEqual(state.bedrockClient, bedrockClient);
+      assert.notEqual(state.bedrockRuntimeClient, bedrockRuntimeClient);
       assert.equal(state.unsupportedCountTokensModels.size, 0);
     });
   });
@@ -255,7 +261,9 @@ suite("BedrockAPIClient unit tests", () => {
       const client = new BedrockAPIClient("us-east-1");
       const state = internals(client);
       const accessibleProfileIds = new Set([
+        "global.anthropic.claude-opus-5-5",
         "global.anthropic.claude-sonnet-4-7",
+        "global.anthropic.claude-sonnet-5-5",
         "us.anthropic.claude-opus-4-7",
       ]);
       const probedProfileIds: string[] = [];
@@ -284,9 +292,13 @@ suite("BedrockAPIClient unit tests", () => {
 
       assert.ok(modelIds.has("anthropic.claude-opus-4-7"));
       assert.ok(modelIds.has("anthropic.claude-sonnet-4-7"));
+      assert.ok(modelIds.has("anthropic.claude-opus-5-5"));
+      assert.ok(modelIds.has("anthropic.claude-sonnet-5-5"));
       assert.ok(probedProfileIds.includes("global.anthropic.claude-opus-4-7"));
       assert.ok(probedProfileIds.includes("us.anthropic.claude-opus-4-7"));
       assert.ok(probedProfileIds.includes("global.anthropic.claude-sonnet-4-7"));
+      assert.ok(probedProfileIds.includes("global.anthropic.claude-opus-5-5"));
+      assert.ok(probedProfileIds.includes("global.anthropic.claude-sonnet-5-5"));
       assert.ok(client.getFallbackInferenceProfileIds().has("us.anthropic.claude-opus-4-7"));
       assert.ok(client.getFallbackInferenceProfileIds().has("global.anthropic.claude-sonnet-4-7"));
     });

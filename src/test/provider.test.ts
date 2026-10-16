@@ -5,9 +5,10 @@ import * as vscode from "vscode";
 import { convertMessages, stripThinkingContent } from "../converters/messages";
 import { convertTools } from "../converters/tools";
 import { logger } from "../logger";
-import { getModelProfile, normalizeModelId } from "../profiles";
-import { BedrockChatModelProvider } from "../provider";
-import type { BedrockModelSummary, ModelsDevMap } from "../types";
+import { loadModelsDevData as loadModelsDevelopmentData } from "../models-dev";
+import { getModelProfile, getModelTokenLimits, normalizeModelId } from "../profiles";
+import { BedrockChatModelProvider, getAccountDataRetentionGuidance } from "../provider";
+import type { BedrockModelSummary, ModelsDevMap as ModelsDevelopmentMap } from "../types";
 
 interface ProviderInternals {
   applyReasoningEffort: (
@@ -19,17 +20,36 @@ interface ProviderInternals {
   buildBetaHeaders: (
     modelProfile: ReturnType<typeof getModelProfile>,
     modelId: string,
-    extendedThinkingEnabled: boolean,
-    context1MEnabled: boolean,
-    thinkingEffortEnabled: boolean,
+    isExtendedThinkingEnabled: boolean,
+    isContext1MEnabled: boolean,
+    isThinkingEffortEnabled: boolean,
   ) => string[];
   buildConfigurationSchema: (
     modelId: string,
     modelProfile: ReturnType<typeof getModelProfile>,
-    modelsDevMap?: ModelsDevMap,
+    modelsDevelopmentMap?: ModelsDevelopmentMap,
+    limits?: { maxInputTokens: number; maxOutputTokens: number },
   ) => undefined | { properties?: Record<string, Record<string, unknown>> };
-  formatDetail: (modelId: string, maxInput: number, maxOutput: number, vision: boolean) => string;
-  formatTooltip: (args: {
+  buildRequestInput: (
+    model: vscode.LanguageModelChatInformation,
+    baseModelId: string,
+    converted: {
+      messages: ConverseStreamCommandInput["messages"];
+      system: NonNullable<ConverseStreamCommandInput["system"]>;
+    },
+    options: vscode.LanguageModelChatRequestOptions,
+    toolConfig: undefined,
+    isExtendedThinkingEnabled: boolean,
+    budgetTokens: number,
+    betaHeaders: string[],
+    thinkingEffort?: "high" | "low" | "max" | "medium" | "xhigh",
+    isTemperatureDeprecated?: boolean,
+    requiresAdaptiveThinking?: boolean,
+    reasoningEffort?: "high" | "low" | "medium" | "minimal",
+    disabledThinkingType?: "adaptive" | "between_tools" | "disabled",
+  ) => ConverseStreamCommandInput;
+  formatDetail: (modelId: string, maxInput: number, maxOutput: number, isVision: boolean) => string;
+  formatTooltip: (arguments_: {
     maxInput: number;
     maxOutput: number;
     modelId: string;
@@ -39,13 +59,42 @@ interface ProviderInternals {
   }) => string;
   resolveModelLimits: (
     modelId: string,
-    context1MEnabled: boolean,
-    modelsDevMap: ModelsDevMap,
+    isContext1MEnabled: boolean,
+    modelsDevelopmentMap: ModelsDevelopmentMap,
   ) => { maxInputTokens: number; maxOutputTokens: number };
+}
+
+function pngFixture(width: number, height: number, payloadLength: number): Uint8Array {
+  const data = new Uint8Array(24 + payloadLength);
+  data.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  data.set([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52], 8);
+  data.set(
+    [
+      (width >>> 24) & 0xff,
+      (width >>> 16) & 0xff,
+      (width >>> 8) & 0xff,
+      width & 0xff,
+      (height >>> 24) & 0xff,
+      (height >>> 16) & 0xff,
+      (height >>> 8) & 0xff,
+      height & 0xff,
+    ],
+    16,
+  );
+  return data;
 }
 
 function providerInternals(provider: BedrockChatModelProvider): ProviderInternals {
   return provider as unknown as ProviderInternals;
+}
+
+function recordLog(
+  logs: { args: unknown[]; level: string }[],
+  level: string,
+  message: string,
+  arguments_: unknown[],
+): void {
+  logs.push({ args: [message, ...arguments_], level });
 }
 
 // Mock implementations extracted to avoid function nesting depth issues
@@ -78,9 +127,9 @@ const createTestModel = (modelId: string): BedrockModelSummary => ({
 });
 
 // Helper to create a mock provider with controlled base model accessibility
-const createMockClientProvider = (baseModelAccessible: boolean) => {
+const createMockClientProvider = (isBaseModelAccessible: boolean) => {
   const mockClient = {
-    isModelAccessible: async () => baseModelAccessible,
+    isModelAccessible: async () => isBaseModelAccessible,
   };
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
 
@@ -93,21 +142,21 @@ const callCalcThinkingConfig = (
   modelProfile: { supportsThinking: boolean },
   maxOutputTokens: number,
   maxTokensForRequest: number,
-  thinkingEnabled: boolean,
+  isThinkingEnabled: boolean,
 ) => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
   return (provider as any).calculateThinkingConfig(
     modelProfile,
     maxOutputTokens,
     maxTokensForRequest,
-    thinkingEnabled,
+    isThinkingEnabled,
   ) as { budgetTokens: number; extendedThinkingEnabled: boolean };
 };
 
 const callBuildRequestInput = (
   modelId: string,
   options: vscode.LanguageModelChatRequestOptions = {},
-  extendedThinkingEnabled = false,
+  isExtendedThinkingEnabled = false,
 ) => {
   const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
   const modelProfile = getModelProfile(modelId);
@@ -125,36 +174,90 @@ const callBuildRequestInput = (
     { messages: [], system: [] },
     options,
     undefined,
-    extendedThinkingEnabled,
+    isExtendedThinkingEnabled,
     4096,
     [],
     undefined,
     modelProfile.temperatureDeprecated,
     modelProfile.requiresAdaptiveThinking,
     undefined,
+    modelProfile.disabledThinkingType,
   ) as ConverseStreamCommandInput;
 };
 
-const callBuildConfigurationSchema = (modelId: string, modelsDevMap: ModelsDevMap = new Map()) => {
+const callBuildConfigSchema = (
+  modelId: string,
+  modelsDevelopmentMap: ModelsDevelopmentMap = new Map(),
+  limits?: { maxInputTokens: number; maxOutputTokens: number },
+) => {
   const provider = providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
   );
-  return provider.buildConfigurationSchema(modelId, getModelProfile(modelId), modelsDevMap);
+  return provider.buildConfigurationSchema(
+    modelId,
+    getModelProfile(modelId),
+    modelsDevelopmentMap,
+    limits,
+  );
 };
 
 const callResolveModelLimits = (
   modelId: string,
-  context1MEnabled: boolean,
-  modelsDevMap: ModelsDevMap,
+  isContext1MEnabled: boolean,
+  modelsDevelopmentMap: ModelsDevelopmentMap,
 ) =>
   providerInternals(
     new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
-  ).resolveModelLimits(modelId, context1MEnabled, modelsDevMap);
+  ).resolveModelLimits(modelId, isContext1MEnabled, modelsDevelopmentMap);
 
-const makeDevMapEntry = (modelId: string, context: number, output: number): ModelsDevMap =>
-  new Map([[modelId, { limit: { context, output } }]]);
+const makeDevelopmentMapEntry = (
+  modelId: string,
+  context: number,
+  output: number,
+): ModelsDevelopmentMap => new Map([[modelId, { limit: { context, output } }]]);
 
 suite("Amazon Bedrock Chat Provider Extension", () => {
+  suite("account data-retention error guidance", () => {
+    test("explains how to enable AWS review when default retention blocks a model", () => {
+      const guidance = getAccountDataRetentionGuidance(
+        new Error(
+          "ValidationException: data retention mode 'default' is not available for this model",
+        ),
+        "global.anthropic.claude-fable-5",
+        "us-east-1",
+        "bedrock",
+      );
+
+      assert.ok(guidance);
+      assert.match(guidance, /global\.anthropic\.claude-fable-5/);
+      assert.match(guidance, /aws bedrock put-account-data-retention --mode aws_review/);
+      assert.match(guidance, /--region "us-east-1" --profile "bedrock"/);
+    });
+
+    test("omits --profile when default AWS credentials are configured", () => {
+      const guidance = getAccountDataRetentionGuidance(
+        new Error("data retention mode 'default' is not available for this model"),
+        "global.anthropic.claude-fable-5",
+        "us-east-1",
+      );
+
+      assert.ok(guidance);
+      assert.doesNotMatch(guidance, /--profile/);
+    });
+
+    test("does not rewrite other AWS errors", () => {
+      assert.equal(
+        getAccountDataRetentionGuidance(
+          new Error("AccessDeniedException: not authorized"),
+          "global.anthropic.claude-fable-5",
+          "us-east-1",
+          "bedrock",
+        ),
+        undefined,
+      );
+    });
+  });
+
   suite("provider", () => {
     test("prepareLanguageModelChatInformation returns array (no key -> empty)", async () => {
       const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
@@ -186,6 +289,111 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.ok(est > 0);
     });
 
+    test("provideTokenCount applies the Sonnet local estimation multiplier", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+
+      const est = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-sonnet-5-20251001-v1:0",
+          maxInputTokens: 1_000_000,
+          maxOutputTokens: 64_000,
+          name: "Claude Sonnet",
+          version: "1.0.0",
+        },
+        "a".repeat(100),
+        new vscode.CancellationTokenSource().token,
+      );
+
+      assert.equal(est, 33);
+    });
+
+    test("provideTokenCount keeps the baseline estimate for Haiku", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+
+      const est = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+          maxInputTokens: 200_000,
+          maxOutputTokens: 64_000,
+          name: "Claude Haiku",
+          version: "1.0.0",
+        },
+        "a".repeat(100),
+        new vscode.CancellationTokenSource().token,
+      );
+
+      assert.equal(est, 25);
+    });
+
+    test("Claude image estimates use dimensions rather than encoded payload size", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const model = {
+        capabilities: {},
+        family: "bedrock",
+        id: "global.anthropic.claude-sonnet-5-5",
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+        name: "Claude Sonnet 5.5",
+        version: "1.0.0",
+      };
+
+      const createMessage = (payloadLength: number): vscode.LanguageModelChatMessage => ({
+        content: [
+          new vscode.LanguageModelDataPart(
+            pngFixture(1200, 900, payloadLength),
+            "image/png",
+          ) as unknown as vscode.LanguageModelTextPart,
+        ],
+        name: undefined,
+        role: vscode.LanguageModelChatMessageRole.User,
+      });
+      const token = new vscode.CancellationTokenSource().token;
+      const lowCompressionTokens = await provider.provideTokenCount(
+        model,
+        createMessage(128),
+        token,
+      );
+      const highCompressionTokens = await provider.provideTokenCount(
+        model,
+        createMessage(8192),
+        token,
+      );
+
+      assert.equal(lowCompressionTokens, 1440);
+      assert.equal(highCompressionTokens, lowCompressionTokens);
+    });
+
+    test("non-Claude image estimates use model-aware encoded-size fallback", async () => {
+      const provider = new BedrockChatModelProvider(mockSecretStorage, mockGlobalState);
+      const image = new vscode.LanguageModelDataPart(
+        pngFixture(1200, 900, 1000),
+        "image/png",
+      ) as unknown as vscode.LanguageModelTextPart;
+      const estimate = await provider.provideTokenCount(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "amazon.nova-pro-v1:0",
+          maxInputTokens: 300_000,
+          maxOutputTokens: 10_000,
+          name: "Nova Pro",
+          version: "1.0.0",
+        },
+        {
+          content: [image],
+          name: undefined,
+          role: vscode.LanguageModelChatMessageRole.User,
+        },
+        new vscode.CancellationTokenSource().token,
+      );
+
+      assert.equal(estimate, 1);
+    });
+
     test("does not add legacy opt-in beta headers for Opus 4.7", () => {
       const provider = providerInternals(
         new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
@@ -203,6 +411,105 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(betaHeaders.includes("context-1m-2025-08-07"), false);
       assert.equal(betaHeaders.includes("interleaved-thinking-2025-05-14"), false);
       assert.equal(betaHeaders.includes("effort-2025-11-24"), true);
+    });
+
+    test("uses between_tools when Sonnet 5.5 thinking is disabled", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-5-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "between_tools");
+      assert.equal(additionalFields?.output_config?.effort, undefined);
+    });
+
+    test("preserves Sonnet 5.5 thinking mode when an effort is selected", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput = provider.buildRequestInput(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-sonnet-5-5",
+          maxInputTokens: 872_000,
+          maxOutputTokens: 128_000,
+          name: "Claude Sonnet 5.5",
+          version: "1.0.0",
+        },
+        "anthropic.claude-sonnet-5-5",
+        { messages: [], system: [] },
+        {},
+        undefined,
+        false,
+        16_000,
+        [],
+        "high",
+        true,
+        true,
+        undefined,
+        "between_tools",
+      );
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "between_tools");
+      assert.equal(additionalFields?.output_config?.effort, "high");
+    });
+
+    test("preserves Opus 5.5 adaptive mode and low effort when thinking is disabled", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      const requestInput = provider.buildRequestInput(
+        {
+          capabilities: {},
+          family: "bedrock",
+          id: "global.anthropic.claude-opus-5-5",
+          maxInputTokens: 872_000,
+          maxOutputTokens: 128_000,
+          name: "Claude Opus 5.5",
+          version: "1.0.0",
+        },
+        "anthropic.claude-opus-5-5",
+        { messages: [], system: [] },
+        {},
+        undefined,
+        false,
+        16_000,
+        [],
+        "high",
+        true,
+        true,
+        undefined,
+        "adaptive",
+      );
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "adaptive");
+      assert.equal(additionalFields?.output_config?.effort, "low");
+    });
+
+    test("keeps disabled thinking mode for Sonnet 5", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-sonnet-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "disabled");
+    });
+
+    test("uses adaptive low effort when Opus 5.5 thinking is disabled", () => {
+      const requestInput = callBuildRequestInput("global.anthropic.claude-opus-5-5", {});
+      const additionalFields = requestInput.additionalModelRequestFields as
+        | undefined
+        | { output_config?: { effort?: string }; thinking?: { type?: string } };
+
+      assert.equal(additionalFields?.thinking?.type, "adaptive");
+      assert.equal(additionalFields?.output_config?.effort, "low");
     });
 
     test("adds interleaved thinking beta header for Opus 4.6", () => {
@@ -269,6 +576,24 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       );
 
       assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, "low");
+    });
+
+    test("uses nested reasoning effort for GPT-6 Astra and Luna", () => {
+      const provider = providerInternals(
+        new BedrockChatModelProvider(mockSecretStorage, mockGlobalState),
+      );
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const requestInput: { additionalModelRequestFields?: Record<string, unknown> } = {};
+        provider.applyReasoningEffort(requestInput, modelId, modelId.replace("global.", ""), "low");
+
+        assert.deepEqual(requestInput.additionalModelRequestFields?.reasoning, { effort: "low" });
+        assert.equal(requestInput.additionalModelRequestFields?.reasoning_effort, undefined);
+      }
     });
 
     test("labels non-adaptive effort-capable Claude models as budget thinking", () => {
@@ -423,6 +748,31 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       const resultContent: any = toolResultBlock.content?.[0];
       assert.ok(resultContent.text);
       assert.equal(resultContent.text, "Search results: Found 5 items");
+    });
+
+    test("serializes structured tool results as JSON text", () => {
+      const toolResult = new vscode.LanguageModelToolResultPart("call1", [
+        { result: "ok", values: [1, 2, 3] },
+      ]);
+      const messages: vscode.LanguageModelChatMessage[] = [
+        {
+          content: [new vscode.LanguageModelToolCallPart("call1", "search", { q: "cats" })],
+          name: undefined,
+          role: vscode.LanguageModelChatMessageRole.Assistant,
+        },
+        {
+          content: [toolResult],
+          name: undefined,
+          role: vscode.LanguageModelChatMessageRole.User,
+        },
+      ];
+
+      const out = convertMessages(messages, "test.model-id");
+      const resultContent = out.messages[1].content?.[0]?.toolResult?.content?.[0] as {
+        text?: string;
+      };
+
+      assert.equal(resultContent.text, '{"result":"ok","values":[1,2,3]}');
     });
 
     test("merges consecutive user messages", () => {
@@ -650,16 +1000,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("logger supports all log levels", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
-        debug: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "debug" }),
-        error: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "error" }),
-        info: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "info" }),
-        trace: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "trace" }),
-        warn: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "warn" }),
+        debug: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "debug", message, arguments_),
+        error: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "error", message, arguments_),
+        info: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "info", message, arguments_),
+        trace: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "trace", message, arguments_),
+        warn: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Development);
@@ -686,16 +1036,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("logger.log (deprecated) uses info level", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
-        debug: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "debug" }),
-        error: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "error" }),
-        info: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "info" }),
-        trace: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "trace" }),
-        warn: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "warn" }),
+        debug: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "debug", message, arguments_),
+        error: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "error", message, arguments_),
+        info: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "info", message, arguments_),
+        trace: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "trace", message, arguments_),
+        warn: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Production);
@@ -710,16 +1060,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("logger passes structured data directly", () => {
       const logs: { args: unknown[]; level: string }[] = [];
       const mockChannel = {
-        debug: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "debug" }),
-        error: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "error" }),
-        info: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "info" }),
-        trace: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "trace" }),
-        warn: (msg: string, ...args: unknown[]) =>
-          logs.push({ args: [msg, ...args], level: "warn" }),
+        debug: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "debug", message, arguments_),
+        error: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "error", message, arguments_),
+        info: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "info", message, arguments_),
+        trace: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "trace", message, arguments_),
+        warn: (message: string, ...arguments_: unknown[]) =>
+          recordLog(logs, "warn", message, arguments_),
       } as unknown as vscode.LogOutputChannel;
 
       logger.initialize(mockChannel, vscode.ExtensionMode.Development);
@@ -1243,13 +1593,16 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("buildConfigurationSchema", () => {
     test("returns undefined for models with no configurable options (Nova Lite)", () => {
       // Nova Lite: 300K context, 8192 output — no thinking, no reasoning, no 1M opt-in
-      const schema = callBuildConfigurationSchema("amazon.nova-lite-v1:0");
+      const schema = callBuildConfigSchema("amazon.nova-lite-v1:0");
       assert.equal(schema, undefined);
     });
 
     test("returns contextSize picker for Opus 4.6 (optional 1M context)", () => {
       // Opus 4.6 default: 200K context window (full, not context-output)
-      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-6-v1");
+      const schema = callBuildConfigSchema("anthropic.claude-opus-4-6-v1", new Map(), {
+        maxInputTokens: 72_000,
+        maxOutputTokens: 128_000,
+      });
       assert.ok(schema?.properties?.contextSize, "should have contextSize property");
       const cs = schema.properties.contextSize;
       assert.deepEqual(cs.enum, [200_000, 1_000_000]);
@@ -1257,43 +1610,80 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       assert.equal(cs.group, "tokens");
     });
 
-    test("returns NO contextSize picker for Opus 4.7 (always 1M context)", () => {
-      // Opus 4.7: 1M context is always-on — no picker needed
-      const schema = callBuildConfigurationSchema("anthropic.claude-opus-4-7-20260420-v1:0");
-      assert.equal(
-        schema?.properties?.contextSize,
-        undefined,
-        "Opus 4.7 always uses 1M — no picker needed",
-      );
+    test("shows local caps for always-1M Opus 4.7 without a redundant 1M choice", () => {
+      const schema = callBuildConfigSchema("anthropic.claude-opus-4-7-20260420-v1:0", new Map(), {
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+      });
+      assert.deepEqual(schema?.properties?.contextSize?.enum, [1_000_000, 256_000, 750_000]);
     });
 
     test("returns thinkingEffort picker for Sonnet 4.6 (supportsThinkingEffort)", () => {
       // Sonnet 4.6 default: 200K context window
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6");
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6");
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort property");
       const te = schema.properties.thinkingEffort;
-      assert.deepEqual(te.enum, ["low", "medium", "high"]);
+      assert.deepEqual(te.enum, ["default", "low", "medium", "high"]);
       assert.equal(te.group, "navigation");
       assert.equal(te.default, "high");
     });
 
+    test("offers model-default and all advertised Claude 5 effort tiers", () => {
+      for (const modelId of [
+        "global.anthropic.claude-fable-5",
+        "global.anthropic.claude-fable-5-1",
+        "global.anthropic.claude-haiku-5-5",
+        "global.anthropic.claude-opus-5",
+        "global.anthropic.claude-opus-5-5",
+        "global.anthropic.claude-sonnet-5-5",
+      ]) {
+        const schema = callBuildConfigSchema(modelId);
+        const effort = schema?.properties?.thinkingEffort;
+        assert.ok(effort, `${modelId} should expose Claude effort controls`);
+        assert.deepEqual(effort.enum, ["default", "low", "medium", "high", "xhigh", "max"]);
+        assert.equal((effort.enumItemLabels as string[])[0], "Model default");
+      }
+      assert.equal(
+        callBuildConfigSchema("global.anthropic.claude-sonnet-5")?.properties?.thinkingEffort,
+        undefined,
+        "Sonnet 5 uses adaptive thinking without output_config.effort",
+      );
+    });
+
+    test("offers nested reasoning effort controls for GPT-6 variants", () => {
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const schema = callBuildConfigSchema(modelId);
+        const effort = schema?.properties?.reasoningEffort;
+        assert.ok(effort, `${modelId} should expose reasoning controls`);
+        assert.deepEqual(effort.enum, ["default", "low", "medium", "high"]);
+        assert.equal((effort.enumItemLabels as string[])[0], "Model default");
+        assert.equal(getModelProfile(modelId).reasoningEffortField, "nested");
+      }
+    });
+
     test("returns NO thinkingEffort picker for Sonnet 3.7 (thinking but not effort)", () => {
-      const schema = callBuildConfigurationSchema("anthropic.claude-3-7-sonnet-20250219-v1:0");
+      const schema = callBuildConfigSchema("anthropic.claude-3-7-sonnet-20250219-v1:0");
       assert.equal(schema?.properties?.thinkingEffort, undefined);
     });
 
     test("returns reasoningEffort picker for DeepSeek V3.2 (supportsReasoningEffort)", () => {
-      const schema = callBuildConfigurationSchema("deepseek.deepseek-v3-2-20250615");
+      const schema = callBuildConfigSchema("deepseek.deepseek-v3-2-20250615");
       assert.ok(schema?.properties?.reasoningEffort, "should have reasoningEffort property");
       const re = schema.properties.reasoningEffort;
-      assert.deepEqual(re.enum, ["low", "medium", "high"]);
+      assert.deepEqual(re.enum, ["default", "low", "medium", "high"]);
       assert.equal(re.group, "navigation");
     });
 
     test("includes minimal effort level for OpenAI gpt-oss", () => {
-      const schema = callBuildConfigurationSchema("openai.gpt-oss-20b");
+      const schema = callBuildConfigSchema("openai.gpt-oss-20b");
       assert.ok(schema?.properties?.reasoningEffort);
       assert.deepEqual(schema.properties.reasoningEffort.enum, [
+        "default",
         "minimal",
         "low",
         "medium",
@@ -1301,22 +1691,46 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
       ]);
     });
 
-    test("Sonnet 4.6 has no contextSize picker (always-1M) but has thinkingEffort picker", () => {
-      // Sonnet 4.6 is always-1M — no optional context extension, so no picker.
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6");
-      assert.equal(schema?.properties?.contextSize, undefined, "should NOT have contextSize");
+    test("Sonnet 4.6 has contextSize and thinkingEffort pickers", () => {
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6", new Map(), {
+        maxInputTokens: 872_000,
+        maxOutputTokens: 128_000,
+      });
+      assert.ok(schema?.properties?.contextSize);
       assert.ok(schema?.properties?.thinkingEffort, "should have thinkingEffort");
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
 
     test("Sonnet 4.5 returns contextSize picker and thinkingEffort picker", () => {
       // Sonnet 4.5 has optional 1M via beta header, and supports extended thinking.
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-5-20250929-v1:0");
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-5-20250929-v1:0", new Map(), {
+        maxInputTokens: 72_000,
+        maxOutputTokens: 128_000,
+      });
       assert.ok(schema?.properties?.contextSize, "should have contextSize");
       // Sonnet 4.5 supports thinking (supportsThinking) but not thinkingEffort
       // (effort control is only on Opus 4.5/4.6/4.8 and Sonnet 4.6)
       assert.equal(schema?.properties?.thinkingEffort, undefined);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
+    });
+  });
+
+  suite("local prompt context choices", () => {
+    test("exposes maximum, 256K, and 750K choices in the model configuration", () => {
+      const schema = callBuildConfigSchema("global.openai.gpt-6-luna", new Map(), {
+        maxInputTokens: 922_000,
+        maxOutputTokens: 128_000,
+      });
+      const contextSize = schema?.properties?.contextSize;
+
+      assert.ok(contextSize);
+      assert.deepEqual(contextSize.enum, [1_050_000, 256_000, 750_000]);
+      assert.deepEqual(contextSize.enumItemLabels, ["1.05M Max", "256K", "750K"]);
+      assert.deepEqual(contextSize.enumDescriptions, [
+        "Use the model's maximum context",
+        "Limit the local prompt budget",
+        "Limit the local prompt budget",
+      ]);
     });
   });
 
@@ -1377,10 +1791,52 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   });
 
   suite("resolveModelLimits", () => {
+    test("uses refreshed models.dev limits for GPT-6 Luna", () => {
+      const result = callResolveModelLimits(
+        "global.openai.gpt-6-luna",
+        false,
+        loadModelsDevelopmentData(),
+      );
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_050_000 - 128_000);
+    });
+
+    test("uses refreshed models.dev limits for Claude Sonnet 5.5", () => {
+      const result = callResolveModelLimits(
+        "global.anthropic.claude-sonnet-5-5",
+        false,
+        loadModelsDevelopmentData(),
+      );
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+    });
+
+    test("uses known offline limits for Claude Opus 5.5", () => {
+      const result = getModelTokenLimits("global.anthropic.claude-opus-5-5");
+
+      assert.equal(result.maxOutputTokens, 128_000);
+      assert.equal(result.maxInputTokens, 1_000_000 - 128_000);
+    });
+
+    test("uses known offline limits for all GPT-6 variants", () => {
+      for (const modelId of [
+        "global.openai.gpt-6-astra",
+        "global.openai.gpt-6-luna",
+        "global.openai.gpt-6-sol",
+        "global.openai.gpt-6.1-sol",
+      ]) {
+        const result = getModelTokenLimits(modelId);
+        assert.equal(result.maxOutputTokens, 128_000, modelId);
+        assert.equal(result.maxInputTokens, 1_050_000 - 128_000, modelId);
+      }
+    });
+
     test("uses models.dev limits when available — Sonnet 4.6 is always-1M", () => {
       // models.dev says Sonnet 4.6 has 1M context / 64K output (always-on, no beta header).
       // context1M.enabled flag has no effect — 1M is the default.
-      const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
+      const map = makeDevelopmentMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       const withoutExtended = callResolveModelLimits("anthropic.claude-sonnet-4-6", false, map);
       assert.equal(withoutExtended.maxOutputTokens, 64_000);
       assert.equal(withoutExtended.maxInputTokens, 1_000_000 - 64_000); // always 1M - 64K
@@ -1392,7 +1848,11 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("uses models.dev limits — Sonnet 4.5 is optional-1M (capped at 200K when disabled)", () => {
       // Sonnet 4.5 has optional 1M via beta header.
-      const map = makeDevMapEntry("anthropic.claude-sonnet-4-5-20250929-v1:0", 1_000_000, 64_000);
+      const map = makeDevelopmentMapEntry(
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        1_000_000,
+        64_000,
+      );
       const withoutExtended = callResolveModelLimits(
         "anthropic.claude-sonnet-4-5-20250929-v1:0",
         false,
@@ -1413,7 +1873,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
     test("uses models.dev limits for always-1M models (Opus 4.7)", () => {
       // Opus 4.7 doesn't require beta header — 1M is always-on.
       // maxInputTokens = 1M - 128K (input budget; picker shows 1M total).
-      const map = makeDevMapEntry("anthropic.claude-opus-4-7", 1_000_000, 128_000);
+      const map = makeDevelopmentMapEntry("anthropic.claude-opus-4-7", 1_000_000, 128_000);
       const result = callResolveModelLimits("anthropic.claude-opus-4-7", false, map);
       assert.equal(result.maxOutputTokens, 128_000);
       assert.equal(result.maxInputTokens, 1_000_000 - 128_000); // input budget = 1M - 128K
@@ -1421,7 +1881,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("uses models.dev limits for non-Claude models (Nova Pro)", () => {
       // Nova Pro: 300K context window, 8192 output.
-      const map = makeDevMapEntry("amazon.nova-pro-v1:0", 300_000, 8192);
+      const map = makeDevelopmentMapEntry("amazon.nova-pro-v1:0", 300_000, 8192);
       const result = callResolveModelLimits("amazon.nova-pro-v1:0", false, map);
       assert.equal(result.maxOutputTokens, 8192);
       assert.equal(result.maxInputTokens, 300_000 - 8192); // input budget = 300K - 8K
@@ -1436,7 +1896,7 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
 
     test("strips regional prefix when looking up models.dev entry", () => {
       // models.dev has bare ID; model ID has regional prefix
-      const map = makeDevMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
+      const map = makeDevelopmentMapEntry("anthropic.claude-sonnet-4-6", 1_000_000, 64_000);
       const result = callResolveModelLimits("us.anthropic.claude-sonnet-4-6", true, map);
       assert.equal(result.maxInputTokens, 1_000_000 - 64_000); // always 1M - 64K
     });
@@ -1445,25 +1905,29 @@ suite("Amazon Bedrock Chat Provider Extension", () => {
   suite("buildConfigurationSchema with models.dev data", () => {
     test("reasoningEffort picker appears for new non-Anthropic reasoning model via models.dev", () => {
       // Simulate a brand-new model not in profiles.ts but present in models.dev
-      const devMap: ModelsDevMap = new Map([
+      const developmentMap: ModelsDevelopmentMap = new Map([
         [
           "newprovider.new-reasoning-model",
           { limit: { context: 100_000, output: 8000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigurationSchema("newprovider.new-reasoning-model", devMap);
+      const schema = callBuildConfigSchema("newprovider.new-reasoning-model", developmentMap, {
+        maxInputTokens: 92_000,
+        maxOutputTokens: 8000,
+      });
       assert.ok(schema?.properties?.reasoningEffort);
+      assert.ok(schema?.properties?.contextSize);
     });
 
     test("reasoningEffort picker does NOT appear for Anthropic models via models.dev reasoning flag", () => {
       // Anthropic models use thinkingEffort, not reasoningEffort
-      const devMap: ModelsDevMap = new Map([
+      const developmentMap: ModelsDevelopmentMap = new Map([
         [
           "anthropic.claude-sonnet-4-6",
           { limit: { context: 1_000_000, output: 64_000 }, reasoning: true },
         ],
       ]);
-      const schema = callBuildConfigurationSchema("anthropic.claude-sonnet-4-6", devMap);
+      const schema = callBuildConfigSchema("anthropic.claude-sonnet-4-6", developmentMap);
       assert.equal(schema?.properties?.reasoningEffort, undefined);
     });
   });
