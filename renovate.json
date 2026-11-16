@@ -1,7 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices", ":gitSignOff", ":semanticCommits"],
-  "dependencyDashboard": false,
+  "dependencyDashboard": {
+    "enabled": false
+  },
   "automerge": true,
   "platformAutomerge": true,
   "lockFileMaintenance": {
